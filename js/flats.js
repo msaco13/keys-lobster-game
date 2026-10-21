@@ -15,7 +15,7 @@ class FlatsScene extends SessionBase {
     this.poler = crew.find((c) => c !== this.ch) || null;
     this.buildTerrain();
   }
-  enter() { SFX.setAmbient(0.6, false); Game.toast('Florida Bay', { color: PAL.coral, size: 46, y: 200, sub: 'Press and hold to aim. Release to cast.' }); }
+  enter() { SFX.setAmbient(0.6, false); Music.play('boat'); Game.toast('Florida Bay', { color: PAL.coral, size: 46, y: 200, sub: 'Press and hold to aim. Release to cast.' }); }
   exit() { SFX.setAmbient(0); }
   resize() { this.buildTerrain(); }
   skiff() { return { x: Game.W / 2, y: Game.H - 70 }; }

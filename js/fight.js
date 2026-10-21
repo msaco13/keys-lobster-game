@@ -33,7 +33,7 @@ class FightScene {
     this.fx = 0; this.fy = 0; this.fang = 0;
   }
   enter() {
-    Game.toasts = [];
+    Game.toasts = []; Music.play('fight');
     SFX.play('hookset'); Game.vibrate(60);
     Game.toast('FISH ON!', { color: PAL.sun, size: 48, dur: 1.3, y: 120 });
     if (this.phase === 'turn') Game.toast(this.kind === 'flats' ? 'Heading for the roots!' : 'Diving for the reef!', { size: 26, color: '#fff', dur: 1.6, y: 175 });

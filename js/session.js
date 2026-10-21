@@ -9,7 +9,7 @@ class SessionBase {
     this.len = o.len || 120; this.timeLeft = this.len; this.t = 0;
     this.paused = false; this.ended = false; this.endT = 0; this.endReason = null;
     this.catches = []; this.extraLines = []; this.score = 0;
-    this.parts = new Particles(); this.fl = new Floaters(); this.child = null;
+    this.parts = new Particles(); this.fl = new Floaters(); this.child = null; this.music = 'boat';
   }
   tickTime(dt) {
     if (this.timeLeft <= 0) return;
@@ -23,7 +23,7 @@ class SessionBase {
     const fs = new FightScene(Object.assign({
       ch: this.ch, spot: this.spot, weather: this.weather,
       tick: (dt) => this.tickTime(dt), timeLeft: () => this.timeLeft,
-      onDone: (r) => { this.child = null; if (r.ok) this.addCatch(r.catch); if (this.onFightDone) this.onFightDone(r); if (this.timeLeft <= 0) this.end('time'); }
+      onDone: (r) => { this.child = null; Music.play(this.music); if (r.ok) this.addCatch(r.catch); if (this.onFightDone) this.onFightDone(r); if (this.timeLeft <= 0) this.end('time'); }
     }, opts));
     this.child = fs; fs.enter();
   }
@@ -75,7 +75,8 @@ class SessionBase {
     text(ctx, 'Paused', W / 2, 150, { display: true, size: 54, align: 'center', color: '#fff' });
     text(ctx, SPOTS[this.spot].name + ' · ' + fmtTime(this.timeLeft) + ' left', W / 2, 192, { size: 20, align: 'center', color: '#cfe3ea', weight: 600 });
     UI.button(ctx, 'resume', W / 2 - 130, 236, 260, 56, 'Resume', () => { this.paused = false; }, { key: 'Escape|Enter|Space', size: 22 });
-    UI.button(ctx, 'mute', W / 2 - 130, 308, 260, 50, SFX.muted ? 'Sound: off' : 'Sound: on', () => SFX.setMuted(!SFX.muted), { style: 'secondary' });
+    UI.button(ctx, 'mute', W / 2 - 130, 308, 125, 50, SFX.muted ? 'Sound: off' : 'Sound: on', () => SFX.setMuted(!SFX.muted), { style: 'secondary', size: 17 });
+    UI.button(ctx, 'music', W / 2 + 5, 308, 125, 50, Music.on ? 'Music: on' : 'Music: off', () => Music.setOn(!Music.on), { style: 'secondary', size: 17 });
     UI.button(ctx, 'quit', W / 2 - 130, 374, 260, 50, 'End my turn now', () => { this.paused = false; this.end('quit'); }, { style: 'coral' });
     text(ctx, 'Your catches so far still count.', W / 2, 452, { size: 16, align: 'center', color: '#9fb8c2', weight: 600 });
   }

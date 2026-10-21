@@ -22,7 +22,8 @@ await shot('map');
 const spots = ['bughunt', 'flats'];
 for (const sp of spots) {
   await click('pin-' + sp); await shot('map-' + sp);
-  await click('go'); await page.waitForTimeout(1400); console.log('turn intro:', await scene());
+  await click('go'); await page.waitForTimeout(1600); console.log(' run:', await scene()); await shot('run-' + sp);
+  await click('skip'); await page.waitForTimeout(1400); console.log('turn intro:', await scene());
   for (let turn = 0; turn < 2; turn++) {
     await shot(`intro-${sp}-${turn}`);
     await click('ready'); await page.waitForTimeout(1200); console.log(' session:', await scene());

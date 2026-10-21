@@ -20,7 +20,7 @@ class TrollScene extends SessionBase {
     this.edgeAt = [this.len * 0.62, this.len * 0.25];
     this.waves = []; for (let i = 0; i < 70; i++) this.waves.push({ x: rand(0, 1400), y: rand(0, 540), l: rand(8, 22) });
   }
-  enter() { SFX.setAmbient(1, false); Game.toast('The Weedline', { color: PAL.coral, size: 46, y: 200, sub: 'Drag to steer. Pull your lures past the fish.' }); }
+  enter() { SFX.setAmbient(1, false); Music.play('boat'); Game.toast('The Weedline', { color: PAL.coral, size: 46, y: 200, sub: 'Drag to steer. Pull your lures past the fish.' }); }
   exit() { SFX.setAmbient(0); }
   boatX() { return Game.W * 0.42; }
   pointerDown(p) { if (this.basePointerDown(p)) return; this.dragId = p.id; this.ty = clamp(p.y, 120, Game.H - 50); }

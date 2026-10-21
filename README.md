@@ -4,7 +4,8 @@ A lobstering and fishing game set in the Florida Keys, made for one phone passed
 Three friends, four spots, one day on the water. Whoever brings in the most points is Captain of the Day.
 
 It's plain HTML and JavaScript drawn on a canvas. There's no install, no build step needed to play,
-and no art files: every fish, lobster, boat and face is drawn in code.
+and no art or audio files: every fish, lobster, boat and face is drawn in code, and the steel-drum
+soundtrack is played live by a small synthesizer inside the game (Music on/off is in the pause menu).
 
 ## Play it
 
@@ -22,6 +23,15 @@ and no art files: every fish, lobster, boat and face is drawn in code.
 
 Change names, colors, perks or looks in `js/data.js` (`CHARS`).
 
+## Running the boat
+
+Pick a spot on the chart and you drive there yourself, top-down, from the home dock. The captain rotates
+through the crew each spot. Drag to steer and pick a throttle notch: IDLE, SLOW, CRUISE or FULL.
+Idle out of the no-wake canal or FWC pulls you over. Read the water: light water is shallow, and running a
+flat at speed puts you aground. Dodge trap floats and channel markers, catch air off other boats' wakes,
+let dolphins ride the bow, slow down for manatees, and thread the bridge span on the way to the bay.
+Driving earns (or costs) the captain a few points. There's a Skip ride button if you just want to fish.
+
 ## The spots
 
 **Patch Reefs: Bug Hunt.** Free-dive for spiny lobster. Look for antennae poking out of holes in the ledges.
@@ -29,6 +39,10 @@ Hold TICKLE to coax a bug out, and let go when its antennae twitch or it backs i
 shrinks onto the gold circle; miss and it tail-flips away. Then gauge it: keep it only if the back of the shell
 sits past the end of the 3" gauge and there are no eggs under the tail. Six per person. The FWC checks your bag
 at the ramp, and shorts or egg-bearing females cost you. Watch your air, the jellyfish and the moray holes.
+The NET button (and the bug itself) is what you tap: wait for the ring and button to turn green.
+The reef has company: a sea turtle, an eagle ray, a sleeping nurse shark, an octopus that inks you,
+crabs, parrotfish and angelfish. Rare golden bugs score triple. And now and then a shark shows up, and you
+have to race it back to the boat while the crew heckles you.
 
 **The Ledge: Bottom Fishing.** Anchored in 95 feet. Squid for snapper, live pinfish for grouper and amberjack.
 Drag to set your depth, sit through the nibbles, and tap when the rod slams down. Grouper dive for the rocks,
@@ -59,7 +73,7 @@ Check current FWC regulations before you actually go.
 
 ```
 index.html        page shell; loads the scripts in order
-js/core.js        canvas, loop, input, buttons, synthesized sound, storage
+js/core.js        canvas, loop, input, buttons, synthesized sound and music, storage
 js/data.js        the crew, species, spots, captions, trip state, logbook
 js/art.js         all drawing: fish, lobsters, people, boats, scenery, brag cards
 js/fight.js       the fish fight shared by every fishing spot
@@ -68,6 +82,7 @@ js/bughunt.js     Patch Reefs
 js/bottom.js      The Ledge
 js/troll.js       The Weedline
 js/flats.js       Florida Bay
+js/run.js         driving the boat from the dock to a spot
 js/screens.js     title, crew pick, chart, hand-offs, results, end of day, logbook, how-to
 js/main.js        boot
 tools/build.mjs   bundles everything into dist/keys-crew.html

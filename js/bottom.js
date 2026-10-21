@@ -24,7 +24,7 @@ class BottomScene extends SessionBase {
     this.others = (Trip.cur && Trip.cur.crew ? Trip.cur.crew : CHAR_ORDER).filter((c) => c !== this.ch).slice(0, 2);
     for (let i = 0; i < 6; i++) this.spawn(true);
   }
-  enter() { SFX.setAmbient(0.8, false); Game.toast('The Ledge', { color: PAL.coral, size: 46, y: 200, sub: 'Drag to set your depth. Tap on the BITE.' }); }
+  enter() { SFX.setAmbient(0.8, false); Music.play('boat'); Game.toast('The Ledge', { color: PAL.coral, size: 46, y: 200, sub: 'Drag to set your depth. Tap on the BITE.' }); }
   exit() { SFX.setAmbient(0); }
   pxPerFt() { return (BOT.FLOOR - BOT.SURF) / BOT.MAXFT; }
   yOf(ft) { return BOT.SURF + ft * this.pxPerFt(); }

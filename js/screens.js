@@ -20,6 +20,14 @@ function afterResults() {
     Game.go(c.done.length >= c.spotsNeeded ? new DayEndScene() : new MapScene());
   } else { if (!c.done.includes(c.spot)) c.done.push(c.spot); c.spot = null; Game.go(new MapScene()); }
 }
+function runDriver() { const c = Trip.cur; return c.mode === 'crew' ? c.crew[c.done.length % c.crew.length] : c.crew[0]; }
+function startRun(id) {
+  const c = Trip.cur, driver = runDriver();
+  Game.go(new BoatRunScene({ to: id, driver, weather: c.weather, onArrive: (pts) => {
+    if (pts) { c.scores[driver] = (c.scores[driver] || 0) + pts; c.turns.push({ ch: driver, spot: 'run:' + id, total: pts, n: 0 }); }
+    c.spot = id; c.turn = 0; Trip.save(); Game.go(new TurnIntroScene());
+  } }));
+}
 function dayLabel() { return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }); }
 function crewAvatar(ctx, ch, x, y, r, o = {}) {
   const C = CHARS[ch];
@@ -55,7 +63,7 @@ function oceanBackdrop(ctx, W, H, t, mood = 'day') {
 /* ================= TITLE ================= */
 class TitleScene {
   constructor() { this.t = 0; this.saved = Trip.load(); }
-  enter() { SFX.setAmbient(0.7, false); }
+  enter() { SFX.setAmbient(0.7, false); Music.play('title'); }
   update(dt) { this.t += dt; }
   draw(ctx) {
     const W = Game.W, H = Game.H, t = this.t;
@@ -80,7 +88,8 @@ class TitleScene {
     UI.button(ctx, 'log', bx, y, bw / 2 - 6, 46, 'Logbook', () => Game.go(new LogbookScene()), { style: 'ghost', size: 18 });
     UI.button(ctx, 'how', bx + bw / 2 + 6, y, bw / 2 - 6, 46, 'How to play', () => Game.go(new HowToScene()), { style: 'ghost', size: 18 });
     UI.button(ctx, 'snd', W - 64, H - 60, 48, 44, SFX.muted ? '🔇' : '🔊', () => SFX.setMuted(!SFX.muted), { style: 'dark', size: 18 });
-    text(ctx, 'For Michael, Jorge & Jemel', W - 80, H - 32, { size: 16, align: 'right', color: '#fff', weight: 600, alpha: 0.85 });
+    UI.button(ctx, 'mus', W - 120, H - 60, 48, 44, '♫', () => Music.setOn(!Music.on), { style: Music.on ? 'dark' : 'ghost', size: 20, color: Music.on ? '#fff' : '#9fb8c2' });
+    text(ctx, 'For Michael, Jorge & Jemel', W - 136, H - 32, { size: 16, align: 'right', color: '#fff', weight: 600, alpha: 0.85 });
   }
 }
 
@@ -100,6 +109,7 @@ function charCard(ctx, ch, x, y, w, h, on, t, fn, id) {
 }
 class CrewSetupScene {
   constructor() { this.t = 0; this.crew = new Set(CHAR_ORDER); this.plan = 'full'; this.len = 120; }
+  enter() { Music.play('title'); }
   update(dt) { this.t += dt; }
   draw(ctx) {
     const W = Game.W, H = Game.H;
@@ -124,6 +134,7 @@ class CrewSetupScene {
 }
 class SoloSetupScene {
   constructor() { this.t = 0; this.ch = 'michael'; this.len = 120; }
+  enter() { Music.play('title'); }
   update(dt) { this.t += dt; }
   draw(ctx) {
     const W = Game.W, H = Game.H;
@@ -143,6 +154,7 @@ class SoloSetupScene {
 /* ================= THE CHART ================= */
 class MapScene {
   constructor() { this.t = 0; this.sel = null; this.travel = null; this.confirmQuit = false; this.buildChart(); }
+  enter() { Music.play('title'); }
   resize() { this.buildChart(); }
   pins() {
     const W = Game.W, H = Game.H;
@@ -245,7 +257,7 @@ class MapScene {
     para(ctx, S.blurb, cx + 20, cy + 68, cw - 210, { size: 15, weight: 500, color: '#dcebf0', lh: 19 });
     S.species.slice(0, 7).forEach((k, i) => { ctx.save(); ctx.translate(cx + 40 + i * 50, cy + ch - 26); if (k === 'lobster') drawLobsterSide(ctx, 24, {}); else drawFish(ctx, k, 40, { wig: 0 }); ctx.restore(); });
     UI.button(ctx, 'close', cx + cw - 44, cy + 10, 34, 34, '✕', () => (this.sel = null), { style: 'ghost', size: 16, r: 17, key: 'Escape' });
-    if (ok) UI.button(ctx, 'go', cx + cw - 180, cy + ch - 70, 164, 56, c.mode === 'crew' ? 'Run there' : 'Fish it', () => { this.travel = { spot: id, t: 0, dur: 1.1 }; SFX.play('horn'); }, { style: 'primary', size: 22, key: 'Enter' });
+    if (ok) UI.button(ctx, 'go', cx + cw - 180, cy + ch - 70, 164, 56, 'Run there', () => { SFX.play('horn'); startRun(id); }, { style: 'primary', size: 22, key: 'Enter', sub: 'Captain ' + CHARS[runDriver()].name });
     else text(ctx, c.done.includes(id) ? 'Already fished today' : 'Day’s spots are set', cx + cw - 20, cy + ch - 34, { size: 16, align: 'right', color: '#9fb8c2', weight: 700 });
   }
 }
@@ -253,6 +265,7 @@ class MapScene {
 /* ================= TURN HAND-OFF ================= */
 class TurnIntroScene {
   constructor() { this.t = 0; }
+  enter() { Music.play('title'); }
   update(dt) { this.t += dt; }
   draw(ctx) {
     const W = Game.W, H = Game.H, c = Trip.cur, ch = c.mode === 'crew' ? c.crew[c.turn] : c.crew[0], C = CHARS[ch], S = SPOTS[c.spot];
@@ -277,7 +290,7 @@ class TurnIntroScene {
 class ResultsScene {
   constructor(ch, spot, res) { this.ch = ch; this.spot = spot; this.res = res; this.t = 0; this.parts = new Particles(); this.shown = 0; this.caption = res.best ? captionFor(res.best, Trip.cur.weather) : null; this.comments = randi(1, 9); }
   enter() {
-    SFX.setAmbient(0.4, false);
+    SFX.setAmbient(0.4, false); Music.play('title');
     if (this.res.total > 0) this.parts.burst(Game.W * 0.72, 120, 40, { kind: 'confetti', color: [PAL.sun, PAL.coral, '#42d3c4', '#fff'], min: 100, max: 380, g: 400, lifeMin: 1.4, lifeMax: 2.4, sMin: 3, sMax: 6, drag: 0.5 });
   }
   update(dt) {
@@ -345,7 +358,7 @@ class DayEndScene {
   enter() {
     const c = this.c;
     if (c.mode === 'crew') { Records.addTrip({ date: c.date, crew: c.crew, scores: c.scores, winner: this.order[0] }); Trip.clear(); }
-    SFX.play('slam'); SFX.setAmbient(0.6, false);
+    SFX.play('slam'); SFX.setAmbient(0.6, false); Music.play('sunset');
     this.parts.burst(Game.W / 2, 160, 80, { kind: 'confetti', color: [PAL.sun, PAL.coral, '#42d3c4', '#fff'], min: 120, max: 460, g: 380, lifeMin: 1.8, lifeMax: 3, sMin: 3, sMax: 7, drag: 0.5 });
   }
   update(dt) { this.t += dt; this.parts.update(dt); }
@@ -398,7 +411,7 @@ class DayEndScene {
 /* ================= LOGBOOK ================= */
 class LogbookScene {
   constructor() { this.t = 0; this.scroll = 0; this.drag = null; this.rec = Records.all(); this.trips = Records.trips(); this.onWheel = (e) => { this.scroll += e.deltaY * 0.6; }; }
-  enter() { window.addEventListener('wheel', this.onWheel, { passive: true }); }
+  enter() { window.addEventListener('wheel', this.onWheel, { passive: true }); Music.play('title'); }
   exit() { window.removeEventListener('wheel', this.onWheel); }
   pointerDown(p) { this.drag = { id: p.id, y: p.y, s: this.scroll }; }
   pointerMove(p) { if (this.drag && this.drag.id === p.id) this.scroll = this.drag.s - (p.y - this.drag.y); }
@@ -445,7 +458,8 @@ class LogbookScene {
 /* ================= HOW TO PLAY ================= */
 const HOWTO = [
   { title: 'The trip', art: 'boat', lines: ['Crew Trip: pass one phone around. Everyone fishes each spot, then you run to the next.', 'Bigger fish and bigger bugs score more. Trophies, slams and clean releases add bonuses.', 'Full day is all four spots. Half day is two. Most points is Captain of the Day.', 'Each angler has perks. Michael dives longer, Jorge gets more bites, Jemel reels harder.'] },
-  { title: 'Bug Hunt', art: 'lobster', lines: ['Swim down to the ledges and look for antennae poking out of holes.', 'Hold TICKLE to coax the bug out. When the antennae twitch, let go or it backs in.', 'Tap NET when the white ring shrinks onto the gold circle. Miss and it tail-flips away.', 'Gauge every bug: the carapace has to reach past the 3" gauge, and no eggs. FWC checks your bag.'] },
+  { title: 'Running the boat', art: 'boat', lines: ['Pick a spot on the chart and the captain drives you there. The captain rotates every spot.', 'Drag to steer. Tap IDLE, SLOW, CRUISE or FULL on the throttle (← → on a keyboard).', 'No-wake zones mean SLOW, or FWC pulls you over. Light water is shallow: slow down or run aground.', 'Hit another boat’s wake at full speed for airtime. Dolphins, manatees and a clean run earn captain’s points.'] },
+  { title: 'Bug Hunt', art: 'lobster', lines: ['Swim down to the ledges and look for antennae poking out of holes.', 'Hold TICKLE to coax the bug out. When it says LET GO, let go or it backs in.', 'When it’s out, tap NET (or the bug itself) the moment the ring and the button turn GREEN.', 'Gauge every bug: the shell has to reach past the 3" gauge, and no eggs. Watch for golden bugs, and if a shark shows up, race it back to the boat.'] },
   { title: 'The Ledge', art: 'grouper', lines: ['Squid for snapper, live pinfish for grouper and amberjack.', 'Drag up or down to set your depth. Grouper live on the bottom by the ledge.', 'Small twitches are nibbles. Wait. When the rod slams down, tap to set the hook.', 'Hooked a grouper? Tap fast to pull it off the reef before it rocks you up.'] },
   { title: 'The Weedline', art: 'mahi', lines: ['Drag up and down to steer. Your lures follow the path the boat took.', 'Mahi hang under weedlines and floating logs. Birds mean tuna are feeding.', 'The blue-water edge holds wahoo, kingfish and sailfish.', 'Trap floats wrap your prop and foul your lures. Steer around them.'] },
   { title: 'Florida Bay', art: 'bonefish', lines: ['Your buddy on the pole calls out fish by the clock: 12 is straight ahead.', 'Press and hold where you want the fly. The circle tightens. Let go to cast.', 'Land it a few feet in front of the fish. Too close or behind it, and it spooks.', 'Tap to strip in the fish’s rhythm. When it eats, tap to set. Tarpon, bonefish and permit is a Grand Slam.'] },
@@ -453,6 +467,7 @@ const HOWTO = [
 ];
 class HowToScene {
   constructor() { this.t = 0; this.page = 0; }
+  enter() { Music.play('title'); }
   update(dt) { this.t += dt; }
   keyDown(c) { if (c === 'ArrowRight') this.page = Math.min(HOWTO.length - 1, this.page + 1); if (c === 'ArrowLeft') this.page = Math.max(0, this.page - 1); }
   draw(ctx) {

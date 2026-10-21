@@ -118,7 +118,15 @@ const SFX = {
       const g2 = ac.createGain(); g2.gain.value = 0;
       s2.connect(lp); lp.connect(g2); g2.connect(this.master); s2.start();
       this.amb = { g: g2, lp };
+      // outboard engine drone for the boat run
+      const e1 = ac.createOscillator(); e1.type = 'sawtooth'; e1.frequency.value = 42;
+      const e2 = ac.createOscillator(); e2.type = 'sawtooth'; e2.frequency.value = 42.7;
+      const elp = ac.createBiquadFilter(); elp.type = 'lowpass'; elp.frequency.value = 500;
+      const eg = ac.createGain(); eg.gain.value = 0;
+      e1.connect(elp); e2.connect(elp); elp.connect(eg); eg.connect(this.master); e1.start(); e2.start();
+      this.engine = { e1, e2, lp: elp, g: eg };
     } catch (e) { this.ac = null; }
+    if (this.ac) { try { Music.attach(); } catch (e) { console.warn('music unavailable', e); } }
   },
   setMuted(m) { this.muted = m; Store.set('muted', m); if (this.master) this.master.gain.setTargetAtTime(m ? 0 : 0.55, this.ac.currentTime, 0.05); },
   setDrag(level, pitch = 1) {
@@ -126,6 +134,11 @@ const SFX = {
     this.drag.g.gain.setTargetAtTime(clamp(level, 0, 1) * 0.2, t, 0.04);
     this.drag.lfo.frequency.setTargetAtTime(26 + 34 * pitch, t, 0.05);
     this.drag.bp.frequency.setTargetAtTime(2000 + 1400 * pitch, t, 0.05);
+  },
+  setEngine(level, rpm = 0) {
+    if (!this.engine) return; const t = this.ac.currentTime, e = this.engine, f = 38 + 74 * clamp(rpm, 0, 1);
+    e.g.gain.setTargetAtTime(level ? 0.035 + 0.05 * rpm : 0, t, 0.12);
+    e.e1.frequency.setTargetAtTime(f, t, 0.25); e.e2.frequency.setTargetAtTime(f * 1.017, t, 0.25); e.lp.frequency.setTargetAtTime(380 + 1500 * rpm, t, 0.25);
   },
   setAmbient(level, under) {
     if (!this.amb) return; const t = this.ac.currentTime;
@@ -171,8 +184,8 @@ const SFX = {
       case 'bite': this.tone(150, 0.16, { vol: 0.4, to: 60 }); this.noise(0.1, { f: 400, vol: 0.2 }); break;
       case 'hookset': this.noise(0.14, { filter: 'highpass', f: 1800, vol: 0.25 }); this.tone(220, 0.12, { to: 520, type: 'sawtooth', vol: 0.1 }); break;
       case 'snap': this.noise(0.09, { filter: 'highpass', f: 3000, vol: 0.5 }); this.tone(1300, 0.16, { to: 180, type: 'square', vol: 0.1 }); break;
-      case 'catch': [523, 659, 784, 1046].forEach((f, i) => this.steel(f, i * 0.09)); break;
-      case 'trophy': [523, 659, 784, 1046, 784, 1046, 1318].forEach((f, i) => this.steel(f, i * 0.1, 0.18)); break;
+      case 'catch': Music.duck(1.4); [523, 659, 784, 1046].forEach((f, i) => this.steel(f, i * 0.09)); break;
+      case 'trophy': Music.duck(1.8); [523, 659, 784, 1046, 784, 1046, 1318].forEach((f, i) => this.steel(f, i * 0.1, 0.18)); break;
       case 'coin': this.tone(988, 0.08, { type: 'square', vol: 0.05 }); this.tone(1319, 0.14, { type: 'square', vol: 0.05, delay: 0.07 }); break;
       case 'bubble': this.tone(rand(500, 900), 0.09, { to: 1500, vol: 0.06 }); break;
       case 'warn': this.tone(880, 0.12, { type: 'square', vol: 0.06 }); break;
@@ -185,9 +198,154 @@ const SFX = {
       case 'strip': this.noise(0.05, { filter: 'highpass', f: 2500, vol: 0.05 }); break;
       case 'horn': this.tone(196, 0.5, { type: 'sawtooth', vol: 0.07 }); this.tone(247, 0.5, { type: 'sawtooth', vol: 0.05 }); break;
       case 'tick': this.tone(2300, 0.02, { type: 'square', vol: 0.03 }); break;
-      case 'slam': [392, 523, 659, 784, 1046, 1318, 1568].forEach((f, i) => this.steel(f, i * 0.08, 0.2)); break;
+      case 'siren': for (let i = 0; i < 4; i++) { this.tone(720, 0.28, { type: 'square', vol: 0.05, delay: i * 0.6 }); this.tone(980, 0.28, { type: 'square', vol: 0.05, delay: i * 0.6 + 0.3 }); } break;
+      case 'woo': this.tone(520, 0.35, { type: 'triangle', vol: 0.08, to: 900 }); this.noise(0.3, { filter: 'bandpass', f: 1200, vol: 0.12 }); break;
+      case 'slam': Music.duck(2); [392, 523, 659, 784, 1046, 1318, 1568].forEach((f, i) => this.steel(f, i * 0.08, 0.2)); break;
     }
   }
+};
+
+/* ---------- music: a small step sequencer playing synthesized island tunes ---------- */
+const NOTE_CACHE = {};
+function nf(name) { // 'C4', 'F#3', 'Bb2' -> Hz
+  if (NOTE_CACHE[name]) return NOTE_CACHE[name];
+  const m = /^([A-G])([#b]?)(\d)$/.exec(name);
+  const semi = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0);
+  return (NOTE_CACHE[name] = 440 * Math.pow(2, (12 * (+m[3] + 1) + semi - 69) / 12));
+}
+const Music = {
+  on: true, want: null, cur: null, song: null, i: 0, next: 0, bus: null, lp: null, duckG: null, timer: null, intensity: 0,
+  init() { this.on = Store.get('music', true) !== false; },
+  attach() {
+    const ac = SFX.ac;
+    this.bus = ac.createGain(); this.bus.gain.value = 0.0001;
+    this.lp = ac.createBiquadFilter(); this.lp.type = 'lowpass'; this.lp.frequency.value = 16000;
+    this.duckG = ac.createGain(); this.duckG.gain.value = 1;
+    this.bus.connect(this.lp); this.lp.connect(this.duckG); this.duckG.connect(SFX.master);
+    this.timer = setInterval(() => this.tick(), 40);
+    document.addEventListener('visibilitychange', () => { if (!SFX.ac) return; if (document.hidden) SFX.ac.suspend().catch(() => {}); else SFX.ac.resume().catch(() => {}); });
+    if (this.want) { const w = this.want; this.cur = null; this.play(w); }
+  },
+  play(name) {
+    this.want = name;
+    if (!this.bus || this.cur === name || !SONGS[name]) return;
+    const t = SFX.ac.currentTime, g = this.bus.gain;
+    this.cur = name; this.song = SONGS[name]; this.i = 0; this.next = t + 0.32; this.intensity = 0;
+    g.cancelScheduledValues(t); g.setValueAtTime(Math.max(0.0001, g.value), t); g.linearRampToValueAtTime(0.0001, t + 0.28);
+    g.linearRampToValueAtTime(this.on ? this.song.vol : 0.0001, t + 1.1);
+    this.lp.frequency.setTargetAtTime(this.song.lp || 16000, t, 0.25);
+  },
+  setOn(v) {
+    this.on = v; Store.set('music', v);
+    if (this.bus && this.song) this.bus.gain.setTargetAtTime(v ? this.song.vol : 0.0001, SFX.ac.currentTime, 0.15);
+  },
+  duck(d = 1.5) {
+    if (!this.duckG) return; const t = SFX.ac.currentTime, g = this.duckG.gain;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0.28, t + 0.08); g.setValueAtTime(0.28, t + d * 0.6); g.linearRampToValueAtTime(1, t + d);
+  },
+  tick() {
+    const ac = SFX.ac; if (!this.song || !ac || ac.state !== 'running') return;
+    const now = ac.currentTime; if (this.next < now - 0.2) this.next = now + 0.05;
+    while (this.next < now + 0.3) {
+      if (this.on && !SFX.muted) { try { this.song.step(this.i, this.next, this); } catch (e) { /* a bad note never stops the game */ } }
+      this.i++; this.next += 60 / this.song.bpm / 4;
+    }
+  },
+  // instruments
+  osc(t, f, dur, o = {}) {
+    const ac = SFX.ac, osc = ac.createOscillator(); osc.type = o.type || 'sine'; osc.frequency.setValueAtTime(f, t);
+    if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + dur); if (o.detune) osc.detune.value = o.detune;
+    const g = ac.createGain(); const v = o.vol || 0.1;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + (o.att || 0.005)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g);
+    if (o.lp) { const fl = ac.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = o.lp; g.connect(fl); fl.connect(this.bus); } else g.connect(this.bus);
+    osc.start(t); osc.stop(t + dur + 0.05);
+  },
+  nz(t, dur, o = {}) {
+    const ac = SFX.ac, src = ac.createBufferSource(); src.buffer = SFX.nb;
+    const fl = ac.createBiquadFilter(); fl.type = o.filter || 'highpass'; fl.frequency.value = o.f || 7000; fl.Q.value = o.q || 0.8;
+    const g = ac.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(o.vol || 0.03, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(fl); fl.connect(g); g.connect(this.bus); src.start(t, Math.random() * 1.5); src.stop(t + dur + 0.05);
+  },
+  steel(t, f, v, len = 0.5) { this.osc(t, f, len, { vol: v }); this.osc(t, f * 2.01, len * 0.55, { vol: v * 0.33 }); this.osc(t, f * 3.9, 0.1, { vol: v * 0.1, type: 'triangle' }); },
+  bass(t, f, v, len = 0.3) { this.osc(t, f, len, { type: 'triangle', vol: v }); this.osc(t, f, len * 0.8, { vol: v * 0.6 }); },
+  pad(t, f, v, len) { this.osc(t, f, len, { type: 'triangle', vol: v, att: len * 0.35 }); this.osc(t, f, len, { vol: v * 0.8, att: len * 0.4, detune: 8 }); },
+  pluck(t, f, v) { this.osc(t, f, 0.35, { vol: v }); this.osc(t, f * 4, 0.06, { vol: v * 0.25 }); },
+  kick(t, v) { this.osc(t, 140, 0.22, { vol: v, to: 45 }); },
+  rim(t, v) { this.nz(t, 0.04, { filter: 'bandpass', f: 2300, q: 3, vol: v }); this.osc(t, 820, 0.03, { type: 'triangle', vol: v * 0.4 }); },
+  snare(t, v) { this.nz(t, 0.16, { filter: 'bandpass', f: 1700, q: 0.8, vol: v }); this.osc(t, 190, 0.08, { type: 'triangle', vol: v * 0.5 }); },
+  hat(t, v) { this.nz(t, 0.035, { vol: v }); },
+  low(t, f, v, len) { this.osc(t, f, len, { type: 'sawtooth', vol: v, att: 0.02, lp: 420 }); }
+};
+const TITLE_MEL = [['E5', 'G5', 'A5', 'G5', 'E5', null, 'D5', 'C5'], ['D5', 'E5', 'G5', 'E5', 'D5', null, null, null], ['C5', 'E5', 'A5', 'G5', 'E5', null, 'C5', 'D5'], ['E5', 'D5', 'C5', 'A4', 'C5', null, null, null]];
+const BOAT_MEL = [['D5', null, 'B4', 'D5', 'E5', null, 'D5', null], ['B4', null, 'A4', 'G4', null, null, null, null], ['E5', null, 'D5', 'E5', 'G5', null, 'E5', 'D5'], ['B4', 'A4', 'G4', null, null, null, null, null]];
+const RUN_MEL = [['G5', 'E5', 'G5', 'A5', 'G5', null, 'E5', 'D5'], ['C5', 'D5', 'E5', null, 'D5', 'C5', 'A4', null], ['G5', 'E5', 'G5', 'A5', 'C6', null, 'A5', 'G5'], ['E5', 'D5', 'C5', 'D5', 'C5', null, null, null]];
+const SONGS = {
+  // menus and the chart: bright calypso
+  title: { bpm: 116, vol: 0.8, step(i, t, M) {
+    const bar = Math.floor(i / 16), p = i % 16;
+    const [root, tri] = [['C3', ['C4', 'E4', 'G4']], ['G2', ['D4', 'G4', 'B4']], ['A2', ['C4', 'E4', 'A4']], ['F2', ['C4', 'F4', 'A4']]][bar % 4];
+    if (p === 0) M.bass(t, nf(root), 0.3, 0.4); if (p === 6) M.bass(t, nf(root), 0.2, 0.2); if (p === 8) M.bass(t, nf(root) * 1.5, 0.24, 0.35); if (p === 14) M.bass(t, nf(root), 0.17, 0.2);
+    if (p % 4 === 2) for (const n of tri) M.steel(t, nf(n), 0.032, 0.35);
+    if (p % 2 === 0) M.hat(t, p % 4 === 2 ? 0.045 : 0.022);
+    if (p === 0 || p === 8) M.kick(t, 0.22); if (p === 4 || p === 12) M.rim(t, 0.1);
+    const ph = bar % 8; if (ph >= 4 && p % 2 === 0) { const n = TITLE_MEL[ph - 4][p / 2]; if (n) M.steel(t, nf(n), 0.085, 0.5); }
+  } },
+  // underwater: slow, dreamy, filtered
+  reef: { bpm: 80, vol: 0.88, lp: 2600, step(i, t, M) {
+    const bar = Math.floor(i / 16), p = i % 16, beat = 60 / 80;
+    const [root, ch] = [['F2', ['F3', 'A3', 'C4', 'E4']], ['E2', ['E3', 'G3', 'B3', 'D4']], ['D2', ['D3', 'F3', 'A3', 'C4']], ['C2', ['C3', 'E3', 'G3', 'B3']]][bar % 4];
+    if (p === 0) { for (const n of ch) M.pad(t, nf(n), 0.026, beat * 4.2); M.osc(t, nf(root), beat * 3, { vol: 0.2, att: 0.05 }); }
+    if (p % 2 === 0 && p !== 10) { const k = [0, 2, 1, 3, 2, 1, 3, 2][p / 2]; M.pluck(t, nf(ch[k]) * 2, 0.034); }
+    if (p === 10 && bar % 2) M.pluck(t, nf(ch[3]) * 4, 0.014);
+    if (p === 8) M.osc(t, nf(root) * 1.5, beat * 1.5, { vol: 0.1, att: 0.05 });
+  } },
+  // anchored up and fishing: laid-back reggae one-drop
+  boat: { bpm: 92, vol: 0.8, step(i, t, M) {
+    const bar = Math.floor(i / 16), p = i % 16;
+    const [root, tri] = [['G2', ['B3', 'D4', 'G4']], ['C3', ['C4', 'E4', 'G4']], ['D3', ['D4', 'F#4', 'A4']], ['C3', ['C4', 'E4', 'G4']]][bar % 4];
+    const r = nf(root);
+    if (p === 4 || p === 12) for (const n of tri) M.steel(t, nf(n), 0.036, 0.18);
+    if (p % 4 === 2) for (const n of tri) M.osc(t, nf(n), 0.08, { type: 'triangle', vol: 0.012 });
+    if (p === 8) { M.kick(t, 0.28); M.rim(t, 0.12); }
+    if (p % 2 === 0) M.hat(t, 0.018);
+    const bl = { 0: 1, 3: 1, 6: 1.5, 10: 2, 12: 1.26, 14: 1.5 }; if (bl[p]) M.bass(t, r * bl[p], 0.24, 0.24);
+    const ph = bar % 8; if (ph >= 4 && p % 2 === 0) { const n = BOAT_MEL[ph - 4][p / 2]; if (n) M.steel(t, nf(n), 0.07, 0.45); }
+  } },
+  // a fish is on: driving drums
+  fight: { bpm: 138, vol: 0.66, step(i, t, M) {
+    const bar = Math.floor(i / 16), p = i % 16;
+    const [root, tri] = [['E2', ['E4', 'G4', 'B4']], ['C3', ['C4', 'E4', 'G4']], ['D3', ['D4', 'F#4', 'A4']], ['B2', ['B3', 'D#4', 'F#4']]][bar % 4];
+    if (p % 4 === 0) M.kick(t, 0.26); if (p === 4 || p === 12) M.snare(t, 0.08); M.hat(t, p % 2 ? 0.026 : 0.014);
+    if (p % 2 === 0) M.bass(t, nf(root) * (p % 4 === 2 ? 2 : 1), 0.2, 0.12);
+    if (p === 3 || p === 6 || p === 10) for (const n of tri) M.steel(t, nf(n), 0.026, 0.14);
+    if (p % 4 === 0 && bar % 2) M.steel(t, nf(['B4', 'E5', 'D5', 'B4'][p / 4]), 0.05, 0.25);
+  } },
+  // the shark is coming: two notes, faster as it gets closer
+  shark: { bpm: 100, vol: 0.95, lp: 7000, step(i, t, M) {
+    const p = i % 16, k = M.intensity, every = k > 0.7 ? 2 : k > 0.35 ? 4 : 8;
+    if (i % every === 0) { const hi = Math.floor(i / every) % 2; M.low(t, hi ? 43.65 : 41.2, 0.32, every * 0.12); M.low(t, hi ? 87.3 : 82.4, 0.12, every * 0.1); }
+    if (p === 0 || p === 3) M.kick(t, p ? 0.16 : 0.24);
+    if (k > 0.5 && p % 2 === 1) M.osc(t, nf('E5') * (p % 4 === 1 ? 1 : 1.06), 0.1, { type: 'sawtooth', vol: 0.012, lp: 3000 });
+  } },
+  // running the boat: upbeat soca groove
+  run: { bpm: 124, vol: 0.74, step(i, t, M) {
+    const bar = Math.floor(i / 16), p = i % 16;
+    const [root, tri] = [['C3', ['C4', 'E4', 'G4']], ['F2', ['C4', 'F4', 'A4']], ['G2', ['B3', 'D4', 'G4']], ['C3', ['C4', 'E4', 'G4']]][bar % 4];
+    if (p % 4 === 0) M.kick(t, 0.24); if (p === 6 || p === 14) M.rim(t, 0.1); M.hat(t, p % 2 ? 0.03 : 0.012);
+    const bl = { 0: 1, 3: 1, 6: 1.5, 8: 1, 11: 1, 14: 2 }; if (bl[p]) M.bass(t, nf(root) * bl[p], 0.22, 0.18);
+    if (p % 4 === 2) for (const n of tri) M.steel(t, nf(n), 0.03, 0.2);
+    const ph = bar % 8; if (ph >= 2 && p % 2 === 0) { const n = RUN_MEL[(ph - 2) % 4][p / 2]; if (n) M.steel(t, nf(n), 0.07, 0.4); }
+  } },
+  // heading home
+  sunset: { bpm: 76, vol: 0.8, step(i, t, M) {
+    const bar = Math.floor(i / 16), p = i % 16, beat = 60 / 76;
+    const [root, ch] = [['C3', ['E4', 'G4', 'B4']], ['A2', ['C4', 'E4', 'G4']], ['F2', ['A3', 'C4', 'E4']], ['G2', ['B3', 'D4', 'E4']]][bar % 4];
+    if (p === 0) { for (const n of ch) M.pad(t, nf(n), 0.02, beat * 4.2); M.bass(t, nf(root), 0.24, beat * 1.6); }
+    if (p === 10) M.bass(t, nf(root) * 1.5, 0.15, beat);
+    if (p % 2 === 0) M.steel(t, nf(ch[[0, 1, 2, 1, 0, 2, 1, 2][p / 2]]) * 2, 0.04, 0.6);
+    if (p % 4 === 2) M.hat(t, 0.012);
+  } }
 };
 
 /* ---------- immediate-mode buttons ---------- */
@@ -309,7 +467,7 @@ const Game = {
     const onResize = () => this.resize();
     window.addEventListener('resize', onResize);
     if (window.ResizeObserver) new ResizeObserver(onResize).observe(this.wrap);
-    this.resize(); this.bindInput(); SFX.init();
+    this.resize(); this.bindInput(); SFX.init(); Music.init();
     this.go(first, true);
     requestAnimationFrame((ts) => this.frame(ts));
   },
@@ -332,7 +490,7 @@ const Game = {
   switchTo(scene) {
     if (this.scene && this.scene.exit) this.scene.exit();
     this.scene = scene; UI.reset(); this.toasts = [];
-    SFX.setDrag(0);
+    SFX.setDrag(0); SFX.setEngine(0);
     if (scene.enter) scene.enter();
   },
   toast(msg, o = {}) {
