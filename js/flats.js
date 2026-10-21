@@ -20,7 +20,7 @@ const FLATS_WEIGHT = {
 };
 // per-spot water: how clear it is, how much of a shadow a fish throws, the light net on the bottom
 const FLATS_KIND = {
-  bay: { clarity: 1, shadow: 1, caustic: 0.13, mud: '#e6e0c4', shadeCol: '#1b4842', critters: ['ray', 'shark', 'cuda'],
+  bay: { clarity: 1, shadow: 1, caustic: 0.09, mud: '#d8d0ae', shadeCol: '#1b4842', critters: ['ray', 'shark', 'cuda'],
     hint: 'Look for tails and nervous water. I’ll call ’em by the clock.' },
   bridge: { clarity: 0.6, shadow: 0.3, caustic: 0.045, mud: '#cfd2b4', shadeCol: '#0b2a2a', critters: ['ray', 'cuda', 'turtle'],
     hint: 'Tide’s ripping. Cast up-current of them and let it swing.' },
@@ -245,8 +245,8 @@ class FlatsScene extends SessionBase {
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       let f1 = 1e9, f2 = 1e9;
       for (const p of pts) { let dx = Math.abs(x - p[0]), dy = Math.abs(y - p[1]); if (dx > N / 2) dx = N - dx; if (dy > N / 2) dy = N - dy; const q = dx * dx + dy * dy; if (q < f1) { f2 = f1; f1 = q; } else if (q < f2) f2 = q; }
-      const a = clamp(1 - (Math.sqrt(f2) - Math.sqrt(f1)) / 2.6, 0, 1), k = (y * N + x) * 4;
-      d[k] = 255; d[k + 1] = 255; d[k + 2] = 236; d[k + 3] = Math.round(a * a * 255);
+      const a = clamp(1 - (Math.sqrt(f2) - Math.sqrt(f1)) / 3.6, 0, 1), k = (y * N + x) * 4;
+      d[k] = 255; d[k + 1] = 255; d[k + 2] = 236; d[k + 3] = Math.round(a * a * a * 230);
     }
     g.putImageData(img, 0, 0); return c;
   }
@@ -258,10 +258,9 @@ class FlatsScene extends SessionBase {
       g.stroke();
     }
     for (const p of this.holes) {   // potholes: bright sand bowls in the grass
-      const rg = g.createRadialGradient(p.x - p.r * 0.2, p.y - p.r * 0.2, 1, p.x, p.y, p.r * 1.2);
-      rg.addColorStop(0, 'rgba(236,248,232,0.6)'); rg.addColorStop(0.75, 'rgba(220,240,226,0.22)'); rg.addColorStop(1, 'rgba(220,240,226,0)');
-      g.fillStyle = rg; ell(g, p.x, p.y, p.r * 1.2, p.r); g.fill();
-      g.strokeStyle = 'rgba(36,92,62,0.28)'; g.lineWidth = 2; ell(g, p.x, p.y + 1, p.r * 1.05, p.r * 0.86); g.stroke();
+      const rg = g.createRadialGradient(p.x - p.r * 0.15, p.y - p.r * 0.15, 1, p.x, p.y, p.r * 1.3);
+      rg.addColorStop(0, 'rgba(236,248,232,0.5)'); rg.addColorStop(0.6, 'rgba(222,242,228,0.2)'); rg.addColorStop(0.82, 'rgba(30,84,58,0.16)'); rg.addColorStop(1, 'rgba(30,84,58,0)');
+      g.fillStyle = rg; ell(g, p.x, p.y, p.r * 1.3, p.r * 1.08); g.fill();
     }
     g.lineCap = 'round'; g.lineWidth = 1.1;   // turtle grass blades
     for (const col of ['rgba(36,96,64,0.34)', 'rgba(58,122,82,0.3)', 'rgba(28,82,58,0.28)']) {
@@ -633,7 +632,8 @@ class FlatsScene extends SessionBase {
       if (!this.lure) { f.state = 'cruise'; return; }
       const L = this.lure, dd = dist(f.x, f.y, L.x, L.y);
       f.hd += angleDiff(f.hd, Math.atan2(L.y - f.y, L.x - f.x)) * Math.min(1, dt * 4);
-      const spd = dd > f.len * 0.55 ? sp.speed * 1.25 : 4; f.spd = spd;
+      // a fish on the fly closes fast: it can sprint well past its cruising speed to catch up
+      const gap = dd - f.len * 0.55, spd = gap > 0 ? Math.min(sp.speed * 1.3 + gap * 1.2, sp.speed * 3) : 4; f.spd = spd;
       f.x += (Math.cos(f.hd) * spd + cur.x * 0.9) * dt; f.y += (Math.sin(f.hd) * spd + cur.y * 0.9) * dt;
       if (this.t - f.lastStrip > sp.strip * 3) f.interest -= dt * 0.12;
       if (f.interest <= 0) { f.state = 'cruise'; f.hd += rand(-1.2, 1.2); this.fl.add(f.x, f.y - 26, 'Refused', PAL.warn, 18); }
@@ -863,6 +863,10 @@ class FlatsScene extends SessionBase {
     this.critters = this.critters.filter((c) => (c.life > 0 || c.alpha > 0) && c.x > this.camX - 400 && c.x < this.camX + W + 400);
     for (const p of this.puffs) { p.t += dt; const c = this.current(p.x, p.y); p.x += c.x * 0.8 * dt; p.y += c.y * 0.8 * dt; }
     this.puffs = this.puffs.filter((p) => p.t < p.life);
+    if (this.variant === 'bridge' && chance(dt * 1.4)) {   // boils welling up in the tide
+      const x = this.camX + rand(20, W - 20), y = rand(130, Game.H - 160), c = this.current(x, y);
+      this.parts.add({ kind: 'ring', x, y, vx: c.x, vy: c.y, size: rand(4, 9), grow: 12, life: 2.4, color: 'rgba(230,250,242,0.2)', flat: 0.65, lw: 2 });
+    }
     for (const car of this.cars) { car.x += car.v * dt; if (car.x > this.WW + 60) car.x -= this.WW + 120; if (car.x < -60) car.x += this.WW + 120; }
     this.spotting(dt);
     if (this.callout) { this.callout.t -= dt; if (this.callout.t <= 0) this.callout = null; }
@@ -918,7 +922,7 @@ class FlatsScene extends SessionBase {
     const s = this.skiff(), a = Math.atan2(f.x - s.x, -(f.y - s.y)), hour = Math.round(((a + TAU) % TAU) / (TAU / 12)) % 12;
     const ft = Math.max(10, Math.round(dist(f.x, f.y, s.x, s.y) / 5 / 5) * 5), what = this.sayWhat(f);
     let msg;
-    if (far) msg = `${what} way off to the ${f.x < s.x ? 'left' : 'right'}, ${ft} feet. Pole us over!`;
+    if (far) msg = `${what} ${ft > 200 ? 'way off' : 'off'} to the ${f.x < s.x ? 'left' : 'right'}, ${ft} feet. Pole us over!`;
     else {
       const still = f.brain === 'hold' || (f.brain === 'tail' && !f.leaving);
       const mv = still ? '' : f.brain === 'school' && Math.sin(f.hd) > 0.3 ? 'coming fast' : Math.cos(f.hd) > 0.4 ? 'moving right' : Math.cos(f.hd) < -0.4 ? 'moving left' : Math.sin(f.hd) > 0 ? 'coming at us' : 'heading away';
@@ -977,7 +981,7 @@ class FlatsScene extends SessionBase {
     if (!this.causticImg) return;
     if (!this.causticPat) this.causticPat = ctx.createPattern(this.causticImg, 'repeat');
     const W = Game.W, H = Game.H, P = 128, wid = this.weather.id, A = this.K.caustic * (wid === 'glass' ? 1.35 : wid === 'breezy' ? 0.6 : 1);
-    for (const [sc, vx, vy, a] of [[1.7, 7, 4, 1], [2.3, -5, 7, 0.75]]) {
+    for (const [sc, vx, vy, a] of [[1.45, 7, 4, 1], [1.95, -5, 7, 0.8]]) {
       ctx.save(); ctx.globalAlpha = A * a; ctx.scale(sc, sc);
       const ox = ((-cam / sc + t * vx) % P) - P, oy = ((t * vy) % P) - P;
       ctx.translate(ox, oy); ctx.fillStyle = this.causticPat; ctx.fillRect(0, 0, W / sc + 2 * P, H / sc + 2 * P);
@@ -1001,28 +1005,34 @@ class FlatsScene extends SessionBase {
     if (breezy) { ctx.fillStyle = 'rgba(255,255,255,0.35)'; for (let i = 0; i < 10; i++) { const k = (t * 0.5 + flHash(i, 34, 0)) % 1; if (k > 0.35) continue; const x = ((((flHash(i, 35, 0) * span + drift - cam) % span) + span) % span) - 80 + cam, y = 110 + flHash(i, 36, 0) * (H - 200); ell(ctx, x, y, 7 * (1 - k / 0.35) + 2, 2); ctx.fill(); } }
   }
   drawFlow(ctx, cam, t) {
-    const W = Game.W, H = Game.H, TW = 400, n = 12, span = H - 100;
-    ctx.lineCap = 'round'; ctx.lineWidth = 1.6; ctx.strokeStyle = 'rgba(220,245,235,0.17)'; ctx.beginPath();
-    for (let ti = Math.floor(cam / TW); ti * TW < cam + W; ti++) for (let i = 0; i < n; i++) {
-      const x = ti * TW + flHash(i, 41, ti) * TW, sp = 0.75 + 0.5 * flHash(i, 43, ti);
-      const y = 100 + ((flHash(i, 42, ti) * span + t * FL_TIDE * 1.4 * sp) % span), c = this.current(x, y), m = Math.hypot(c.x, c.y) / FL_TIDE;
-      if (m < 0.3) continue;
-      const len = (16 + 26 * sp) * m, wv = Math.sin(t * 2 + i) * 2;
-      ctx.moveTo(x, y); ctx.quadraticCurveTo(x + wv + c.x * 0.4, y + len * 0.5, x + c.x * len / FL_TIDE, y + len);
+    // long seams of tide running down-current; the dashes slide along them with the water
+    const W = Game.W, H = Game.H, TW = 300;
+    ctx.lineCap = 'round'; ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(225,248,238,0.15)';
+    for (let grp = 0; grp < 2; grp++) {
+      ctx.setLineDash(grp ? [10, 26] : [16, 22]); ctx.lineDashOffset = -t * FL_TIDE * (grp ? 1.2 : 1.6); ctx.beginPath();
+      for (let ti = Math.floor(cam / TW); ti * TW < cam + W; ti++) for (let i = grp; i < 4; i += 2) {
+        let x = ti * TW + (i + flHash(i, 41, ti)) * TW / 4, y = 108 + flHash(i, 42, ti) * 40;
+        ctx.moveTo(x, y);
+        while (y < H) {
+          const c = this.current(x, y), ny = y + 40, nx = x + c.x * 1.6 + Math.sin(y * 0.021 + ti * 3 + i) * 6;
+          ctx.quadraticCurveTo(x + Math.sin(y * 0.03 + i) * 4, y + 20, nx, ny); x = nx; y = ny;
+        }
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
     // wakes and eddies spinning off the pilings
-    ctx.strokeStyle = 'rgba(235,250,245,0.24)'; ctx.lineWidth = 1.3; ctx.beginPath();
+    ctx.strokeStyle = 'rgba(235,250,245,0.26)'; ctx.lineWidth = 1.4; ctx.setLineDash([6, 7]); ctx.lineDashOffset = -t * 30; ctx.beginPath();
     for (const p of this.pilings) {
       if (p.x < cam - 80 || p.x > cam + W + 80) continue;
-      for (const ox of [-22, 22]) {
-        const x = p.x + ox;
-        ctx.moveTo(x - 6, p.y + 2); ctx.quadraticCurveTo(x - 12, p.y + 30, x - 18, p.y + 64);
-        ctx.moveTo(x + 6, p.y + 2); ctx.quadraticCurveTo(x + 12, p.y + 30, x + 22, p.y + 64);
-        for (let k = 0; k < 3; k++) {
-          const ph = (t * 0.5 + k / 3 + flHash(ox, k, p.x)) % 1, ey = p.y + 8 + ph * 84, ex = x + 3 + Math.sin(ph * 9 + k) * 8 * ph, er = 3 + ph * 8;
-          ctx.moveTo(ex + er, ey); ctx.ellipse(ex, ey, er, er * 0.6, 0, 0, TAU * 0.75);
-        }
+      for (const ox of [-22, 22]) { const x = p.x + ox; ctx.moveTo(x - 7, p.y + 3); ctx.quadraticCurveTo(x - 12, p.y + 22, x - 22, p.y + 50); ctx.moveTo(x + 7, p.y + 3); ctx.quadraticCurveTo(x + 12, p.y + 22, x + 24, p.y + 50); }
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(235,250,245,0.2)'; ctx.lineWidth = 1.3; ctx.beginPath();
+    for (const p of this.pilings) {
+      if (p.x < cam - 80 || p.x > cam + W + 80) continue;
+      for (const ox of [-22, 22]) for (let k = 0; k < 3; k++) {
+        const ph = (t * 0.45 + k / 3 + flHash(ox, k, p.x)) % 1, x = p.x + ox, ey = p.y + 10 + ph * 80, ex = x + 3 + Math.sin(ph * 9 + k) * 8 * ph, er = 3 + ph * 8;
+        ctx.moveTo(ex + er, ey); ctx.ellipse(ex, ey, er, er * 0.6, 0, 0, TAU * 0.7);
       }
     }
     ctx.stroke();
@@ -1114,14 +1124,25 @@ class FlatsScene extends SessionBase {
     return this.shLooks[key];
   }
   drawWake(ctx, f) {
-    const spd = f.spd || 0; if (spd < 12 || f.alpha < 0.05) return;
-    const k = this.wakeK * clamp((spd - 8) / 40, 0, 1) * (1 - this.depthAt(f.x, f.y) * 0.85) * f.alpha * (f.brain === 'school' ? 1.3 : 1);
+    if (f.lead) return;   // a school's leader pushes the water for all of them
+    const spd = Math.min(f.spd || 0, 70); if (spd < 12 || f.alpha < 0.05) return;
+    const school = f.brain === 'school' && f.state === 'cruise';
+    const k = this.wakeK * clamp((spd - 8) / 40, 0, 1) * (1 - this.depthAt(f.x, f.y) * 0.85) * f.alpha * (school ? 1.3 : 1);
     if (k < 0.05) return;
-    const c = Math.cos(f.hd), s = Math.sin(f.hd), L = f.len, hx = f.x + c * L * 0.42, hy = f.y + s * L * 0.42, back = L * 0.7 + spd * 0.5, wob = Math.sin(f.t * 6) * 1.5;
-    ctx.strokeStyle = `rgba(255,255,255,${Math.min(0.5, 0.34 * k).toFixed(3)})`; ctx.lineWidth = 1.5; ctx.beginPath();
-    for (const sd of [-1, 1]) { const a = f.hd + Math.PI + sd * 0.5; ctx.moveTo(hx + c * 3, hy + s * 3); ctx.quadraticCurveTo(hx + Math.cos(a) * back * 0.5 - s * sd * wob, hy + Math.sin(a) * back * 0.5 + c * sd * wob, hx + Math.cos(a) * back, hy + Math.sin(a) * back); }
-    ctx.moveTo(hx + Math.cos(f.hd - 1.1) * (L * 0.16 + 3), hy + Math.sin(f.hd - 1.1) * (L * 0.16 + 3)); ctx.arc(hx, hy, L * 0.16 + 3, f.hd - 1.1, f.hd + 1.1);
-    ctx.stroke();
+    const c = Math.cos(f.hd), s = Math.sin(f.hd), L = f.len, hx = f.x + c * L * 0.42, hy = f.y + s * L * 0.42, back = L * 0.45 + spd * 0.35, br = L * 0.14 + 3;
+    ctx.strokeStyle = `rgba(255,255,255,${Math.min(0.5, 0.36 * k).toFixed(3)})`; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+    ctx.setLineDash([5, 5]); ctx.lineDashOffset = -f.t * 22; ctx.beginPath();
+    for (const sd of [-1, 1]) { const a = f.hd + Math.PI + sd * 0.55, x0 = hx + Math.cos(f.hd + sd * 1.2) * br, y0 = hy + Math.sin(f.hd + sd * 1.2) * br; ctx.moveTo(x0, y0); ctx.quadraticCurveTo(x0 + Math.cos(a) * back * 0.5, y0 + Math.sin(a) * back * 0.5 + 1, x0 + Math.cos(a) * back, y0 + Math.sin(a) * back); }
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(hx, hy, br, f.hd - 1.1, f.hd + 1.1); ctx.stroke();
+    if (school) {   // nervous water over the whole school
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = flHash(f.unit, i, 61) * TAU + f.t * 0.7, q = 10 + flHash(f.unit, i, 62) * 26, px = f.x - c * 22 + Math.cos(a) * q, py = f.y - s * 22 + Math.sin(a) * q * 0.7, l = 5 + flHash(i, f.unit, 63) * 6;
+        ctx.moveTo(px - l, py); ctx.quadraticCurveTo(px, py - 2.5, px + l, py);
+      }
+      ctx.stroke();
+    }
   }
   drawFlatsFish(ctx, f, t) {
     const a = this.vis(f), L = f.len, sp = f.state === 'spooked' ? 20 : f.state === 'follow' ? 12 : f.tailing > 0 ? 3 : f.brain === 'hold' ? 4 : 8;

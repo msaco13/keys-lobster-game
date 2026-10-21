@@ -74,55 +74,89 @@ if (what === 'shots' || what === 'all') {
 
 if (what === 'sim' || what === 'all') {
   const page = await open(960, 540);
-  const res = await page.evaluate(async ([SPOTS, RUNS]) => {
+  const res = await page.evaluate(async ([SPOTS, RUNS, PROFILE]) => {
     const dt = 1 / 30;
     const W = { glass: { id: 'glass', name: 'Glass calm', vis: 1.25, drift: 0, aim: 0.75 }, light: { id: 'light', name: 'Light chop', vis: 1, drift: 0.5, aim: 1 }, breezy: { id: 'breezy', name: 'Breezy', vis: 0.8, drift: 1, aim: 1.35 } };
-    // a fight takes ~15–25 s of turn time; resolve it at once and charge the clock
-    const finishChild = (s, log) => {
-      if (!s.child) return;
-      const f = s.child; s.timeLeft = Math.max(0.01, s.timeLeft - 18);
-      if (Math.random() < 0.8) { log.push(f.key + ' ' + f.weight); f.toOver(); } else { f.lose('slack'); log.push('(lost ' + f.key + ')'); }
-      f.finish();
-    };
-    const out = {};
+    // the fight is played for real (the session clock keeps running), by a decent fight bot
+    function fightStep(fs, st) {
+      if (fs.phase === 'turn') { st.hold = true; st.tap += dt; if (st.tap > 1 / 6) { st.tap = 0; fs.tap(); } return; }
+      if (fs.tele && st.tele < 0) st.tele = st.t; if (!fs.tele && !fs.running) st.tele = -1;
+      if (fs.running && st.run < 0) st.run = st.t; if (!fs.running) st.run = -1;
+      const L = fs.perks.line;
+      st.hold = !((st.tele >= 0 && st.t - st.tele > 0.25) || (st.run >= 0 && st.t - st.run > 0.18) || fs.jumpT > 0 || fs.T > 0.82 * L);
+    }
+    const out = {}, why = {};
     for (const spot of SPOTS) for (const wid of ['glass', 'light', 'breezy']) {
       const rows = [];
       for (let run = 0; run < RUNS; run++) {
-        const log = []; let ended = null, casts = 0, spooks = 0, seenAt = new Map(), spawned = 0;
+        const log = []; let ended = null, casts = 0, spooks = 0, spawned = 0, fights = 0, fightT = 0, poled = 0, refusals = 0;
         const s = new FlatsScene({ ch: 'michael', spot, len: 120, weather: W[wid], onEnd: (r) => { ended = r; } });
         Game.scene = s; s.enter();
         const sf = s.spawnFish.bind(s); s.spawnFish = (...a) => { spawned++; return sf(...a); };
-        const sp0 = s.spookFish.bind(s); s.spookFish = (f, m) => { if (f.state !== 'spooked') spooks++; return sp0(f, m); };
-        let stripT = 0, reactT = 0;
-        for (let i = 0; i < 120 / dt + 300 && !ended; i++) {
-          if (s.eat && s.eat.t < s.eat.t0 - 0.18) s.setHook();
+        const sp0 = s.spookFish.bind(s); s.spookFish = (f, m) => { if (f.state !== 'spooked') { spooks++; const k = (m || 'silent') + (f.lead ? ' [school]' : ''); why[k] = (why[k] || 0) + 1; } return sp0(f, m); };
+        let stripT = 0, nextStrip = 0, seenAt = new Map(), target = null, idleT = 0, fst = null, castWait = 0, huntT = 0, visT = 0, firstSeen = -1;
+        const CASUAL = PROFILE === 'casual', SK = PROFILE === 'sharp';
+        for (let i = 0; i < 120 / dt + 600 && !ended; i++) {
+          if (s.child) {
+            const fs = s.child;
+            if (!fst) { fst = { t: 0, tap: 0, tele: -1, run: -1, hold: true }; fs.holding = () => fst.hold; fights++; }
+            fst.t += dt; fightT += dt;
+            if (fs.phase === 'over') { if (fs.overT > 1.4) { if (fs.won) log.push(fs.key + ' ' + fs.weight); else log.push('(lost ' + fs.key + ': ' + fs.reason + ')'); fs.finish(); } }
+            else if (fs.phase !== 'landing') fightStep(fs, fst);
+            s.update(dt); continue;
+          }
+          fst = null;
+          if (s.eat && s.eat.t < s.eat.t0 - (SK ? 0.22 : CASUAL ? 0.4 : 0.32)) s.setHook();
           const fol = s.fishList.find((f) => f.state === 'follow');
-          if (fol) { stripT += dt; if (stripT > fol.sp.strip * 1.05) { stripT = 0; s.strip(); } }
-          else if (!s.cast && (!s.lure || s.lure.t > 2.2)) {
-            // the "decent player": only casts at fish it can actually see on screen, after a human reaction delay
-            const vis = s.fishList.filter((f) => f.state === 'cruise' && s.vis(f) > 0.3 && f.x > 30 && f.x < Game.W - 30 && f.y > 90 && f.y < Game.H - 150);
-            for (const f of vis) if (!seenAt.has(f)) seenAt.set(f, s.t);
-            const tg = vis.find((f) => s.t - seenAt.get(f) > 0.8);
+          if (fol) {
+            stripT += dt;
+            if (stripT > nextStrip) { stripT = 0; nextStrip = fol.sp.strip * (SK ? (0.9 + Math.random() * 0.35) : CASUAL ? (0.6 + Math.random() * 1.1) : (0.75 + Math.random() * 0.7)); s.strip(); }
+          } else if (!s.cast && s.snagT <= 0 && (!s.lure || s.lure.t > 2.6)) {
+            // a decent player: notices a fish after ~0.8 s if it shows (or the poler calls it), then leads it
+            const cam = s.camX;
+            const cand = s.fishList.filter((f) => f.state === 'cruise' && !f.leaving && f.x - cam > 30 && f.x - cam < Game.W - 30 && f.y < Game.H - 150 && (f.called || s.signal(f) > (CASUAL ? 0.5 : 0.32)));
+            huntT += dt; if (cand.length) { visT += dt; if (firstSeen < 0) firstSeen = s.t; }
+            for (const f of cand) if (!seenAt.has(f)) seenAt.set(f, s.t);
+            const tg = cand.filter((f) => s.t - seenAt.get(f) > 0.8).sort((a, b) => dist(a.x, a.y, s.bx, 470) - dist(b.x, b.y, s.bx, 470))[0];
             if (tg) {
-              const lead = tg.len * 0.4 + tg.sp.spook + 34 + tg.speed * 0.9;
-              let tx = tg.x + Math.cos(tg.hd) * lead, ty = tg.y + Math.sin(tg.hd) * lead;
-              const c = s.current ? s.current(tx, ty) : { x: 0, y: 0 }; tx -= c.x * 1.2; ty -= c.y * 1.2;
-              s.pickUp(); casts++; s.doCast({ x: tx, y: ty, t: 1.2 });
+              castWait += dt;
+              if (castWait > 0.25) {
+                castWait = 0;
+                const still = tg.brain === 'hold' || tg.brain === 'tail';
+                const lead = tg.len * 0.4 + tg.sp.spook + (still ? 26 : 34 + tg.speed * 0.9);
+                let tx = tg.x + Math.cos(tg.hd) * lead, ty = tg.y + Math.sin(tg.hd) * lead;
+                const c = s.current(tx, ty); tx -= c.x * 1.6; ty -= c.y * 1.6;   // cast up-current of it
+                const e = SK ? 10 : CASUAL ? 60 : 30; tx += (Math.random() - 0.5) * e; ty += (Math.random() - 0.5) * e;
+                if (s.lure) s.pickUp(); casts++; s.doCast({ x: tx, y: ty, t: SK ? 1.1 : CASUAL ? 0.45 : 0.7 }); idleT = 0;
+              }
+            } else {
+              // nothing to throw at: follow the poler's pointer, or pole down the flat when it's dead
+              idleT += dt;
+              const far = s.pointTo && s.pointTo.f;
+              if (far) { const want = far.x < s.bx ? -1 : 1; if (s.poleDir !== want) { s.setPole(want); poled++; } }
+              else if (idleT > 9 && s.poleDir === 0) { s.setPole(s.bx < s.WW / 2 ? 1 : -1); poled++; idleT = 0; }
+              else if (s.poleDir && idleT > 6) { s.poleDir = 0; idleT = 0; }
             }
           }
-          s.update(dt); finishChild(s, log);
+          s.update(dt);
         }
-        rows.push({ n: log.filter((l) => l[0] !== '(').length, casts, spooks, spawned, log: log.join(', ') });
+        rows.push({ n: log.filter((l) => l[0] !== '(').length, casts, spooks, spawned, fights, fightT: Math.round(fightT), poled, vis: visT / Math.max(1, huntT), first: firstSeen, log: log.join(', ') });
       }
       out[spot + '/' + wid] = rows;
     }
+    out.__why = why;
     return out;
-  }, [SPOTS, RUNS]);
+  }, [SPOTS, RUNS, process.env.PROFILE || 'decent']);
+  const why = res.__why; delete res.__why;
+  let all = 0, cnt = 0;
   for (const [k, rows] of Object.entries(res)) {
-    const avg = rows.reduce((a, r) => a + r.n, 0) / rows.length;
-    console.log(k.padEnd(18), 'avg landed', avg.toFixed(2), '|', rows.map((r) => `${r.n} (${r.casts}c ${r.spooks}sp ${r.spawned}sw)`).join('  '));
-    for (const r of rows) console.log('   ', r.log);
+    const avg = rows.reduce((a, r) => a + r.n, 0) / rows.length; all += avg; cnt++;
+    const vf = rows.reduce((a, r) => a + r.vis, 0) / rows.length, fs = rows.reduce((a, r) => a + r.first, 0) / rows.length;
+    console.log(k.padEnd(18), 'avg landed', avg.toFixed(2), `| fish showing ${(vf * 100).toFixed(0)}% of hunt time, first at ${fs.toFixed(1)}s |`, rows.map((r) => `${r.n} (${r.casts}c ${r.fights}f ${r.spooks}sp ${r.spawned}sw ${r.poled}p ${r.fightT}s)`).join('  '));
+    if (process.env.VERBOSE) for (const r of rows) console.log('   ', r.log);
   }
+  console.log('overall avg landed per 2-min turn:', (all / cnt).toFixed(2));
+  console.log('spooks by reason:', JSON.stringify(why));
   const ge = await page.evaluate(() => (Game.error ? String(Game.error.stack || Game.error) : null));
   if (ge) errs.push('Game.error: ' + ge);
   await page.close();

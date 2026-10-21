@@ -14,20 +14,21 @@ const LURES = [
   { Ld: 310, off: 0, color: '#ffe14a', head: '#fff7cf', name: 'Shotgun' }
 ];
 
-/* How each fish behaves behind a boat. notice: how far it sees a lure (px). eager: chance per second it
-   commits once it sees one. speed: chase speed. vis: how easy it is to spot from the boat. size: drawn length. */
+/* How each fish behaves behind a boat. notice: how far it sees a lure (px). eager: how keen it is when a lure
+   runs right over it (it falls off fast with distance, so the spread has to go through the fish, not past them).
+   speed: chase speed. vis: how easy it is to spot from the boat. size: drawn length. */
 const TROLL_FISH = {
-  mahi: { notice: 58, eager: 1.6, speed: 250, vis: 1, size: 1 },
-  tripletail: { notice: 42, eager: 1.2, speed: 170, vis: 0.5, size: 0.85 },
-  bonita: { notice: 52, eager: 1.5, speed: 300, vis: 0.8, size: 0.85 },
-  blackfin: { notice: 54, eager: 1.4, speed: 300, vis: 0.85, size: 1 },
-  yellowfin: { notice: 58, eager: 1.1, speed: 320, vis: 0.95, size: 1.2 },
-  wahoo: { notice: 62, eager: 1.3, speed: 340, vis: 0.7, size: 1.2 },
-  kingfish: { notice: 56, eager: 1.4, speed: 300, vis: 0.75, size: 1.05 },
-  barracuda: { notice: 50, eager: 1.1, speed: 280, vis: 0.85, size: 1 },
-  amberjack: { notice: 52, eager: 1.1, speed: 230, vis: 0.6, size: 1.05 },
-  sailfish: { notice: 64, eager: 1, speed: 280, vis: 1, size: 1.25 },
-  bluemarlin: { notice: 70, eager: 0.9, speed: 280, vis: 1, size: 1.6 }
+  mahi: { notice: 46, eager: 5.5, speed: 250, vis: 1, size: 1 },
+  tripletail: { notice: 36, eager: 4.5, speed: 170, vis: 0.5, size: 0.85 },
+  bonita: { notice: 44, eager: 5, speed: 300, vis: 0.8, size: 0.85 },
+  blackfin: { notice: 44, eager: 4.8, speed: 300, vis: 0.85, size: 1 },
+  yellowfin: { notice: 48, eager: 4, speed: 320, vis: 0.95, size: 1.2 },
+  wahoo: { notice: 50, eager: 4.4, speed: 340, vis: 0.7, size: 1.2 },
+  kingfish: { notice: 46, eager: 4.6, speed: 300, vis: 0.75, size: 1.05 },
+  barracuda: { notice: 42, eager: 4, speed: 280, vis: 0.85, size: 1 },
+  amberjack: { notice: 44, eager: 4, speed: 230, vis: 0.6, size: 1.05 },
+  sailfish: { notice: 52, eager: 3.6, speed: 280, vis: 1, size: 1.25 },
+  bluemarlin: { notice: 58, eager: 3.2, speed: 280, vis: 1, size: 1.6 }
 };
 // Top-down looks: dim is the dark shape you see cruising deep, lit is the fish lit up on a lure
 const TROLL_LOOK = {
@@ -159,8 +160,8 @@ class TrollScene extends SessionBase {
     this.taught = new Set(); this.hint = null; this.strikes = 0;
     const hump = this.variant === 'hump';
     this.timers = hump
-      ? { rip: rand(30, 38), bait: rand(4, 7), birds: rand(12, 17), weed: rand(14, 22), buoy: rand(3, 6), raise: rand(28, 42), blind: rand(22, 34), slick: 0.5 }
-      : { weed: rand(7, 9), frigates: rand(8, 12), birds: rand(18, 26), debris: rand(4, 7), buoy: 1.2, blind: rand(16, 26) };
+      ? { rip: rand(30, 38), bait: rand(4, 7), birds: rand(12, 17), weed: rand(14, 22), buoy: rand(3, 6), raise: rand(30, 46), blind: rand(26, 40), slick: 0.5 }
+      : { weed: rand(7, 9), frigates: rand(8, 12), birds: rand(18, 26), debris: rand(4, 7), buoy: 1.2, blind: rand(22, 34) };
     this.edgeAt = !hump && this.len >= 60 ? [this.len * 0.5] : [];
     // the sea itself
     this.scroll = 0; this.crests = []; this.clouds = []; this.glints = [];
@@ -263,7 +264,7 @@ class TrollScene extends SessionBase {
     f.spr = this.weedSprite(f);
     this.features.push(f);
     // most weed is empty water: only some of it holds fish
-    const pMahi = kind === 'mat' ? 0.5 : kind === 'line' ? 0.3 : hump ? 0.3 : 0.08;
+    const pMahi = kind === 'mat' ? 0.45 : kind === 'line' ? 0.25 : hump ? 0.3 : 0.06;
     if (chance(pMahi)) {
       const n = kind === 'scatter' ? randi(1, 2) : randi(2, 3); let first = null;
       for (let i = 0; i < n; i++) { const p = this.weedSpot(f, false); const fi = this.spawnFish('mahi', p.x, p.y, f, kind === 'mat' && i === 0 ? { big: true } : { maxW: 18 }); first = first || fi; }
@@ -305,19 +306,19 @@ class TrollScene extends SessionBase {
   spawnFrigates(x) {
     const f = this.birdFeature('frigates', x, this.freeY(160, Game.H - 80), randi(1, 3));
     f.spd = 30; f.vx = rand(-30, 30); f.vy = rand(-20, 20); f.turnT = rand(2, 4); f.holds = true;
-    const n = randi(2, 3); for (let i = 0; i < n; i++) this.spawnFish('mahi', f.x + rand(-50, 50), f.y + rand(-34, 34), f, i ? { maxW: 22 } : {});
+    const n = randi(2, 3); for (let i = 0; i < n; i++) this.spawnFish('mahi', f.x + rand(-40, 40), f.y + rand(-22, 22), f, i ? { maxW: 22 } : {});
     return f;
   }
   // tuna (or bonita) blitzing bait with terns diving on it; the school comes up and goes back down
   spawnBirds(x) {
     const hump = this.variant === 'hump';
     const f = this.birdFeature('birds', x, this.freeY(160, Game.H - 80), hump ? randi(1, 2) : 0);
-    Object.assign(f, { kind: hump ? 'pile' : 'terns', sign: hump ? 'pile' : 'terns', spd: hump ? 55 : 45, vx: rand(-40, 40), vy: rand(-30, 30), turnT: rand(1.5, 3), up: true, cycle: rand(6, 9), bustT: 0.3, school: true, terns: [], holds: true });
+    Object.assign(f, { kind: hump ? 'pile' : 'terns', sign: hump ? 'pile' : 'terns', spd: hump ? 38 : 34, vx: rand(-40, 40), vy: rand(-30, 30), turnT: rand(1.5, 3), up: true, cycle: rand(6, 9), bustT: 0.3, school: true, terns: [], holds: true });
     this.addTerns(f, hump ? randi(7, 10) : randi(4, 6));
     let key = 'blackfin', n = randi(2, 3), big = false;
     if (hump) { if (chance(0.16)) { key = 'yellowfin'; n = randi(1, 2); big = true; } else n = randi(2, 4); }
     else if (chance(0.7)) { key = 'bonita'; n = randi(2, 4); }
-    for (let i = 0; i < n; i++) this.spawnFish(key, f.x + rand(-45, 45), f.y + rand(-34, 34), f, { school: true, big });
+    for (let i = 0; i < n; i++) this.spawnFish(key, f.x + rand(-40, 40), f.y + rand(-22, 22), f, { school: true, big });
     return f;
   }
   addTerns(f, n) {
@@ -380,18 +381,18 @@ class TrollScene extends SessionBase {
     const f = { type: 'edge', x, y: Game.H / 2, slope: rand(-0.15, 0.15), ph: rand(0, TAU), t: 0, len: 900, ext: 980, wide: true };
     this.features.push(f);
     const at = (key) => this.spawnFish(key, x + rand(60, 760), rand(160, Game.H - 80), f);
-    if (chance(0.55)) at('wahoo');
-    if (chance(0.4)) { const fi = at('sailfish'); if (fi && chance(0.6)) fi.fin = true; }
-    if (chance(0.35)) at('kingfish');
-    if (chance(0.3)) at('blackfin');
-    if (chance(0.05)) { const fi = at('bluemarlin'); if (fi) fi.fin = chance(0.5); }
+    if (chance(0.4)) at('wahoo');
+    if (chance(0.3)) { const fi = at('sailfish'); if (fi && chance(0.7)) fi.fin = true; }
+    if (chance(0.25)) at('kingfish');
+    if (chance(0.2)) at('blackfin');
+    if (chance(0.05)) { const fi = at('bluemarlin'); if (fi) fi.fin = chance(0.6); }
     Game.toast('Blue water edge ahead', { color: '#9fd8ff', size: 28, y: 110, sub: 'Wahoo and sailfish cruise the color change' });
     return f;
   }
   // out of nowhere: a fish comes up on a lure in open water
   blindStrike() {
     const hump = this.variant === 'hump';
-    if (this.strike || !chance(hump ? 0.45 : 0.6)) return;
+    if (this.strike || !chance(hump ? 0.35 : 0.4)) return;
     const open = this.lures.filter((l) => !l.fouled); if (!open.length) return;
     const table = (hump ? [['wahoo', 5], ['blackfin', 3], ['amberjack', 2]] : [['bonita', 3], ['kingfish', 3], ['barracuda', 2.5], ['wahoo', 1.5]]).filter((r) => !this.allowed.size || this.allowed.has(r[0]));
     const key = trollPickW(table); if (!key) return;
@@ -480,15 +481,15 @@ class TrollScene extends SessionBase {
       if (T.weed <= 0) { this.spawnFeature('weed'); T.weed = rand(18, 28); }
       if (T.buoy <= 0) { this.spawnFeature('buoy'); T.buoy = rand(5, 8); }
       if (T.raise <= 0) { this.raiseBill(); T.raise = rand(30, 46); }
-      if (T.blind <= 0) { this.blindStrike(); T.blind = rand(26, 38); }
+      if (T.blind <= 0) { this.blindStrike(); T.blind = rand(30, 44); }
       if (T.slick <= 0) { this.spawnFeature('slick', W + rand(40, 120)); T.slick = rand(3, 6); }
     } else {
       if (T.weed <= 0) { this.spawnFeature('weed'); T.weed = rand(8, 12); }
-      if (T.frigates <= 0) { this.spawnFeature('frigates'); T.frigates = rand(24, 34); }
-      if (T.birds <= 0) { this.spawnFeature('birds'); T.birds = rand(28, 40); }
-      if (T.debris <= 0) { this.spawnFeature('debris'); T.debris = rand(15, 22); }
+      if (T.frigates <= 0) { this.spawnFeature('frigates'); T.frigates = rand(30, 40); }
+      if (T.birds <= 0) { this.spawnFeature('birds'); T.birds = rand(34, 46); }
+      if (T.debris <= 0) { this.spawnFeature('debris'); T.debris = rand(17, 24); }
       if (T.buoy <= 0) { this.spawnFeature('buoy'); T.buoy = rand(2.4, 4.2); }
-      if (T.blind <= 0) { this.blindStrike(); T.blind = rand(22, 34); }
+      if (T.blind <= 0) { this.blindStrike(); T.blind = rand(28, 42); }
       if (this.edgeAt.length && this.timeLeft < this.edgeAt[0]) { this.edgeAt.shift(); this.spawnFeature('edge'); }
     }
     this.updateFeatures(dt, v, bx);
@@ -611,8 +612,13 @@ class TrollScene extends SessionBase {
           if (fi.vx * fi.vx + fi.vy * fi.vy > 64) fi.hd += angleDiff(fi.hd, Math.atan2(fi.vy, fi.vx)) * Math.min(1, 3 * dt);
         }
         if (!fi.cool && !fi.down && !fi.wary && !this.strike && fi.x < W + 20) {
-          const reach = B.notice * (fi.school && f && f.up ? 1.25 : 1);
-          for (const L of this.lures) if (!L.fouled && dist(fi.x, fi.y, L.x, L.y) < reach && chance(dt * B.eager * bite)) { this.startChase(fi, L, rand(1.6, 2.6)); break; }
+          const reach = B.notice * (fi.school && f && f.up ? 1.15 : 1);
+          for (const L of this.lures) {
+            if (L.fouled) continue;
+            const d = dist(fi.x, fi.y, L.x, L.y); if (d >= reach) continue;
+            const q = 1 - d / reach;
+            if (chance(dt * B.eager * bite * q * q)) { this.startChase(fi, L, rand(1.6, 2.6)); break; }
+          }
         }
         // bait getting nervous around a predator on the rip
         if (fi.nervous && !fi.down && fi.x > 0 && fi.x < W && chance(dt * 0.4)) this.wsplash(fi.x + rand(-18, 18), fi.y + rand(-14, 14), 5, { min: 40, max: 110, life: 0.35, sMin: 0.9, sMax: 1.5, color: '#cfe0ea' });
