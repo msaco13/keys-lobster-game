@@ -9,8 +9,10 @@ soundtrack is played live by a small synthesizer inside the game (Music on/off i
 
 ## Play it
 
+**https://msaco13.github.io/keys-lobster-game/** (rebuilt and published automatically on every push to `main`)
+
 - **Easiest:** open `dist/keys-crew.html` in any browser (phone or laptop). It's one self-contained file. Offline, it still plays; the headline fonts just fall back to system fonts.
-- **From the repo:** open `index.html`, or turn on GitHub Pages (Settings → Pages → deploy from `main`, root) and play at the Pages URL.
+- **From the repo:** open `index.html`. The Pages site is deployed by `.github/workflows/pages.yml` (Settings → Pages → Source: GitHub Actions).
 - Phones play best **sideways**.
 
 ## The crew
