@@ -27,16 +27,19 @@ Change names, colors, perks or looks in `js/data.js` (`CHARS`).
 
 ## Out on the water
 
-The trip starts at the dock behind the house in Tavernier. The boat is yours to drive, top-down, anywhere
+The trip starts at the dock behind the house in Tavernier. The boat is yours to drive anywhere
 from Long Key to Key Largo: Florida Bay and the Everglades shoreline up top, Hawk Channel, the patch reefs,
 the reef line, and the Gulf Stream out past the drop-off. The far spots are 15 to 20 nautical miles out.
 
-- **Steer** by holding and dragging where you want to go (or ← →). **Throttle** is the lever: STOP, IDLE, SLOW, CRUISE, FULL (or ↑ ↓).
+- **The view** rides behind the boat, looking out at the horizon: islands, lighthouses, bridges and other boats stand up
+  as you run at them. **Top-down view** (under the minimap, or V) switches to the old overhead map view, and it's remembered.
+- **Steer** by holding left or right of the boat (or ← →); the farther out you hold, the harder it turns. In the top-down
+  view, hold where you want to go. **Throttle** is the lever: STOP, IDLE, SLOW, CRUISE, FULL (or ↑ ↓).
 - **The chart** (Chart button or M) shows every spot you know about. Pick one and **Set course**: the autopilot drives the
   channels for you, and you can grab the wheel any time. **Skip the ride** if you just want to fish.
 - **Read the water.** The depth sounder is top-center. Light water is shallow: run it fast and you go aground.
   Florida Bay is a maze of mud banks; follow the marked channels.
-- **No-wake zones** (the harbor, under the bridges, Flamingo) mean SLOW, or FWC pulls you over.
+- **No-wake zones** (the harbor, under the bridges, Flamingo) mean SLOW. FWC warns you once, then pulls you over.
 - Dodge trap floats and channel markers, thread the bridge spans, catch air off other boats' wakes,
   let dolphins ride the bow, and slow down for manatees. It all adds up to captain's points.
 - **Only four spots are on the chart.** The other five you have to find. The chart shows a ? and a rumor
@@ -110,6 +113,7 @@ js/bottom.js      bottom fishing (The Ledge, Eagle Wreck)
 js/troll.js       trolling (The Weedline, The Hump)
 js/flats.js       the backcountry (Florida Bay, Channel Five, Flamingo)
 js/world.js       the Upper Keys map: islands, depths, channels, reefs, bridges, route finding
+js/chase.js       the behind-the-boat camera: perspective water, standing scenery, 3D boats
 js/sea.js         driving the boat around the map, the chart, discovering spots
 js/screens.js     title, crew pick, hand-offs, results, end of day, logbook, how-to
 js/main.js        boot

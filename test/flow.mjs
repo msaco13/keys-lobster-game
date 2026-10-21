@@ -20,7 +20,8 @@ const expect = async (want, label) => { const got = await scene(); if (got !== w
 await shot('title');
 await click('crew'); await shot('crew');
 await click('card1'); await click('half'); await click('len90'); await shot('crew-2');   // drop Jorge, half day, 90s
-await click('go'); await page.waitForTimeout(800); await expect('SeaScene', 'after cast off'); await shot('sea-dock');
+await click('go'); await page.waitForTimeout(900); await expect('BriefingScene', 'the briefing'); await shot('briefing');
+await click('castoff'); await page.waitForTimeout(800); await expect('SeaScene', 'after cast off'); await shot('sea-dock');
 for (const sp of ['bughunt', 'flats']) {
   await click('chart'); await shot('chart-' + sp);
   await click('chartpin-' + sp); await shot('chart-sel-' + sp);

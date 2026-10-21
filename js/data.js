@@ -184,8 +184,9 @@ const Trip = {
     this.cur = {
       id: Date.now(), mode: o.mode, crew: o.crew.slice(), plan: o.plan,
       spotsNeeded: o.plan === 'full' ? 4 : o.plan === 'half' ? 2 : 0,
-      sessionLen: o.sessionLen, weather: rollWeather(), date: new Date().toISOString(),
-      done: [], spot: null, turn: 0, scores, catches: [], turns: [], legs: 0, boat: null, found: []
+      sessionLen: o.sessionLen, weather: o.weather || rollWeather(), date: new Date().toISOString(),
+      done: [], spot: null, turn: 0, scores, catches: [], turns: [], legs: 0, boat: null, found: [],
+      bounties: o.bounties || Bounties.roll()   // the day's three goals (the briefing screen rolls them first so it can show them)
     };
     this.save();
   },
@@ -195,10 +196,12 @@ const Trip = {
   clear() { Store.del('trip'); },
   get player() { return this.cur.crew[this.cur.turn]; },
   record(ch, spot, res) {
-    const c = this.cur; c.scores[ch] = (c.scores[ch] || 0) + res.total;
+    const c = this.cur;
+    Records.add(res.catches);          // first: marks personal bests (k.pb) and first-ever catches (k.isNew)
+    Bounties.apply(ch, spot, res);     // then any bounty this turn finishes adds its line and bonus to the turn
+    c.scores[ch] = (c.scores[ch] || 0) + res.total;
     for (const k of res.catches) c.catches.push(k);
     c.turns.push({ ch, spot, total: res.total, n: res.catches.length });
-    Records.add(res.catches);
     this.save();
   },
   leader() {
@@ -215,6 +218,7 @@ const Records = {
     for (const k of catches) {
       if (!k || !k.weight || k.fine) continue;
       const r = rec[k.key];
+      if (!r) k.isNew = true;   // never logged before: a new species for the logbook
       if (!r || k.weight > r.w) { rec[k.key] = { w: k.weight, ch: k.ch, date: new Date().toISOString() }; changed = true; k.pb = true; }
     }
     if (changed) Store.set('records', rec);
@@ -222,4 +226,106 @@ const Records = {
   isRecord(key, w) { const r = this.all()[key]; return !r || w > r.w; },
   trips() { return Store.get('trips', []); },
   addTrip(t) { const list = this.trips(); list.unshift(t); Store.set('trips', list.slice(0, 12)); }
+};
+
+/* ---------- daily bounties ----------
+   Three goals rolled when a trip starts. Whoever finishes one first takes the bonus (a crew trip races for them).
+   group spreads the three across the Keys: bugs (bug hunts), reef (ledge + wreck), offshore (trolling),
+   flats (backcountry + bridges) and any (anywhere). test(turn, day, res): turn is this turn's catches,
+   day is everything this angler has landed today including this turn. */
+const bountyBowed = (k) => !!(k.lines && k.lines.some((l) => /^Bowed/.test(l.label)));
+const bountyLanded = (keys, min = 0) => (turn) => turn.some((k) => keys.includes(k.key) && k.weight >= min);
+const BOUNTY_DEFS = {
+  bugs3: { group: 'bugs', text: 'Bag 3 legal lobsters in one dive', short: '3 legal bugs', bonus: 200, icon: 'lobster', sp: ['lobster'], test: (turn) => turn.filter((k) => k.key === 'lobster').length >= 3 },
+  bigbug: { group: 'bugs', text: 'Gauge a lobster 4 inches or bigger', short: 'A 4-inch bug', bonus: 250, icon: 'lobster', sp: ['lobster'], test: (turn) => turn.some((k) => k.key === 'lobster' && k.cl >= 4) },
+  grouper: { group: 'reef', text: 'Land a grouper', short: 'A grouper', bonus: 150, icon: 'redgrouper', sp: ['redgrouper', 'blackgrouper', 'goliath'], test: bountyLanded(['redgrouper', 'blackgrouper', 'goliath']) },
+  hogfish: { group: 'reef', text: 'Land a hogfish', short: 'A hogfish', bonus: 150, icon: 'hogfish', sp: ['hogfish'], test: bountyLanded(['hogfish']) },
+  snapper3: { group: 'reef', text: 'One angler lands 3 kinds of snapper', short: '3 kinds of snapper', bonus: 250, icon: 'mutton', sp: ['lane', 'yellowtail', 'mangrove', 'mutton', 'cubera'], test: (turn, day) => new Set(day.filter((k) => ['lane', 'yellowtail', 'mangrove', 'mutton', 'cubera'].includes(k.key)).map((k) => k.key)).size >= 3 },
+  aj30: { group: 'reef', text: 'Land an amberjack over 30 lb', short: 'Amberjack over 30 lb', bonus: 250, icon: 'amberjack', sp: ['amberjack'], test: bountyLanded(['amberjack'], 30) },
+  cobia: { group: 'reef', text: 'Land a cobia', short: 'A cobia', bonus: 250, icon: 'cobia', sp: ['cobia'], w: 0.6, test: bountyLanded(['cobia']) },
+  mahi20: { group: 'offshore', text: 'Land a mahi over 20 lb', short: 'Mahi over 20 lb', bonus: 250, icon: 'mahi', sp: ['mahi'], test: bountyLanded(['mahi'], 20) },
+  tuna: { group: 'offshore', text: 'Land a tuna', short: 'A tuna', bonus: 200, icon: 'blackfin', sp: ['blackfin', 'yellowfin'], test: bountyLanded(['blackfin', 'yellowfin']) },
+  wahoo: { group: 'offshore', text: 'Land a wahoo', short: 'A wahoo', bonus: 250, icon: 'wahoo', sp: ['wahoo'], test: bountyLanded(['wahoo']) },
+  billfish: { group: 'offshore', text: 'Release a sailfish or a marlin', short: 'A billfish', bonus: 400, icon: 'sailfish', sp: ['sailfish', 'bluemarlin'], w: 0.5, test: bountyLanded(['sailfish', 'bluemarlin']) },
+  bonefish: { group: 'flats', text: 'Land a bonefish', short: 'A bonefish', bonus: 200, icon: 'bonefish', sp: ['bonefish'], test: bountyLanded(['bonefish']) },
+  tarpon: { group: 'flats', text: 'Land a tarpon', short: 'A tarpon', bonus: 250, icon: 'tarpon', sp: ['tarpon'], test: bountyLanded(['tarpon']) },
+  snook: { group: 'flats', text: 'Land a snook', short: 'A snook', bonus: 150, icon: 'snook', sp: ['snook'], test: bountyLanded(['snook']) },
+  redfish: { group: 'flats', text: 'Land a redfish', short: 'A redfish', bonus: 150, icon: 'redfish', sp: ['redfish'], test: bountyLanded(['redfish']) },
+  permit: { group: 'flats', text: 'Land a permit', short: 'A permit', bonus: 350, icon: 'permit', sp: ['permit'], w: 0.6, test: bountyLanded(['permit']) },
+  slam: { group: 'flats', text: 'Grand Slam: one angler lands a tarpon, a bonefish and a permit', short: 'Grand Slam', bonus: 400, icon: 'permit', sp: ['tarpon', 'bonefish', 'permit'], w: 0.4, test: (turn, day) => ['tarpon', 'bonefish', 'permit'].every((s) => day.some((k) => k.key === s)) },
+  bow: { group: 'any', text: 'Bow to a jumping fish and land it', short: 'Bow to a jumper', bonus: 150, icon: 'jump', test: (turn) => turn.some(bountyBowed) },
+  trophy: { group: 'any', text: 'Land a trophy-size fish', short: 'A trophy fish', bonus: 200, icon: 'trophy', test: (turn) => turn.some((k) => k.trophy && k.key !== 'lobster') },
+  newsp: { group: 'any', text: 'Catch a species you’ve never logged', short: 'A new species', bonus: 200, icon: 'new', need: (known, rec) => SPECIES_ORDER.some((k) => !rec[k]), test: (turn) => turn.some((k) => k.isNew) },
+  newspot: { group: 'any', text: 'Find a new spot', short: 'Find a new spot', bonus: 200, icon: 'chart', sea: true, need: (known) => known.size < SPOT_ORDER.length },
+  five: { group: 'any', text: 'Land 5 fish in one turn', short: '5 fish in a turn', bonus: 150, icon: 'five', test: (turn) => turn.filter((k) => k.key !== 'lobster').length >= 5 },
+  big50: { group: 'any', text: 'Land a fish over 50 lb', short: 'A 50-pounder', bonus: 250, icon: 'big', test: (turn) => turn.some((k) => k.key !== 'lobster' && k.weight >= 50) }
+};
+const BOUNTY_GROUPS = ['bugs', 'reef', 'offshore', 'flats'];
+
+const Bounties = {
+  DEFS: BOUNTY_DEFS,
+  // where a bounty can be done: the spots whose water holds its species ([] means anywhere)
+  spotsFor(id) { const d = BOUNTY_DEFS[id]; return d && d.sp ? SPOT_ORDER.filter((s) => SPOTS[s].species.some((k) => d.sp.includes(k))) : []; },
+  make(id) { const d = BOUNTY_DEFS[id]; return { id, text: d.text, short: d.short, bonus: d.bonus, icon: d.icon, group: d.group, where: this.spotsFor(id), done: false, by: null, spot: null }; },
+  // three for the day, from different parts of the Keys: usually two places plus one you can do anywhere
+  roll(n = 3) {
+    const known = Charts.known(), rec = Records.all();
+    const ok = (id) => { const d = BOUNTY_DEFS[id]; return !d.need || d.need(known, rec); };
+    const groups = BOUNTY_GROUPS.slice().sort(() => Math.random() - 0.5).slice(0, chance(0.7) ? n - 1 : n);
+    if (groups.length < n) groups.push('any');
+    return groups.map((g) => {
+      const ids = Object.keys(BOUNTY_DEFS).filter((id) => BOUNTY_DEFS[id].group === g && ok(id));
+      // weighted; a goal that only lives at spots nobody has found yet comes up less
+      const wt = (id) => (BOUNTY_DEFS[id].w || 1) * (this.spotsFor(id).length && !this.spotsFor(id).some((s) => known.has(s)) ? 0.4 : 1);
+      let r = Math.random() * ids.reduce((a, id) => a + wt(id), 0);
+      for (const id of ids) { r -= wt(id); if (r <= 0) return this.make(id); }
+      return this.make(ids[ids.length - 1]);
+    });
+  },
+  list(c = Trip.cur) { return (c && c.bounties) || []; },
+  open(c = Trip.cur) { return this.list(c).filter((b) => !b.done); },
+  // can this bounty still be finished at this spot?
+  here(b, spot) { if (b.done) return false; const d = BOUNTY_DEFS[b.id]; if (d && d.sea) return false; return !b.where || !b.where.length || b.where.includes(spot); },
+  // a finished turn: returns the bounties it completes and marks them done for ch. Touches no scores.
+  check(ch, spot, res, c = Trip.cur) {
+    if (!c || !c.bounties || !res) return [];
+    const turn = (res.catches || []).filter(Boolean);
+    const day = (c.catches || []).filter((k) => k && k.ch === ch).concat(turn);
+    const got = [];
+    for (const b of c.bounties) {
+      const d = BOUNTY_DEFS[b.id]; if (b.done || !d || !d.test) continue;
+      let ok = false; try { ok = !!d.test(turn, day, res); } catch (e) { ok = false; }
+      if (ok) { b.done = true; b.by = ch; b.spot = spot; got.push(b); }
+    }
+    return got;
+  },
+  // check a turn and pay it: a celebration line and the bonus go onto the turn (Trip.record calls this)
+  apply(ch, spot, res) {
+    const got = this.check(ch, spot, res);
+    if (!got.length) return got;
+    if (!res.lines) res.lines = [];
+    for (const b of got) { res.lines.push({ label: 'Bounty · ' + b.text, pts: b.bonus, bounty: b.id }); res.total = (res.total || 0) + b.bonus; }
+    res.bounties = got;
+    return got;
+  },
+  // the boat scene calls this when a spot gets discovered: pays "Find a new spot" straight to that captain's score.
+  // Returns the bounties it completed (empty when there was nothing to pay) so the scene can celebrate.
+  found(spotId, ch) {
+    const c = Trip.cur; if (!c || !c.bounties) return [];
+    if (!ch) ch = c.mode === 'crew' ? c.crew[(c.legs || 0) % c.crew.length] : c.crew[0];
+    const got = [];
+    for (const b of c.bounties) {
+      if (b.done || b.id !== 'newspot') continue;
+      b.done = true; b.by = ch; b.spot = spotId; got.push(b);
+      c.scores[ch] = (c.scores[ch] || 0) + b.bonus; c.turns.push({ ch, spot: 'bounty:' + b.id, total: b.bonus, n: 0 });
+    }
+    if (got.length) Trip.save();
+    return got;
+  },
+  // safety net for found(): a spot this trip discovered (Trip.cur.found) pays the captain of the leg that just ended
+  sync() {
+    const c = Trip.cur; if (!c || !c.found || !c.found.length || !this.open(c).some((b) => b.id === 'newspot')) return [];
+    const ch = c.mode === 'crew' ? c.crew[Math.max(0, (c.legs || 0) - 1) % c.crew.length] : c.crew[0];
+    return this.found(c.found[c.found.length - 1], ch);
+  }
 };

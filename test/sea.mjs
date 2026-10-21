@@ -22,6 +22,8 @@ await place('flamingo', 4320, -4500, -Math.PI / 2, 40, 1);
 await place('offshore', 9440, 4500, 0, 320, 4);
 await place('hump', 6560, 6000, 0, 200, 3);
 await place('channel5', 2200, 500, -Math.PI / 2, 40, 1);
+// the same spot from the top-down view, then back behind the boat
+await page.evaluate(() => { Game.scene.toggleView(); }); await place('channel5-top', 2200, 500, -Math.PI / 2, 40, 1); await page.evaluate(() => { Game.scene.toggleView(); });
 // chart overlay
 await page.evaluate(() => { Game.scene.openChart(); }); await page.waitForTimeout(400); await shot('chart');
 await page.evaluate(() => { Game.scene.sel = 'bughunt'; }); await page.waitForTimeout(300); await shot('chart-sel');

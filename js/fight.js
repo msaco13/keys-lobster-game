@@ -48,7 +48,7 @@ class FightScene {
   pointerDown() { this.tap(); }
   keyDown(c) { if (['Space', 'ArrowDown', 'KeyS', 'Enter'].includes(c)) this.tap(); }
   tap() {
-    if (this.phase === 'turn') { this.rockBar += 0.05 * this.perks.reel; this.crankFx = 0.15; SFX.play('tick'); }
+    if (this.phase === 'turn') { this.rockBar += 0.05 * this.perks.reel; this.crankFx = 0.15; SFX.play('reel'); }
     else if (this.phase === 'over' && this.overT > 0.9) this.finish();
   }
   finish() { if (this.finished) return; this.finished = true; SFX.setDrag(0); this.o.onDone({ ok: this.won, catch: this.catch, reason: this.reason }); }
