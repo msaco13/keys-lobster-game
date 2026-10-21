@@ -49,6 +49,35 @@ for (const spot of ['bottom', 'wreck']) {
   }
   await page.evaluate(() => { Game.scene.togglePause(); }); await page.waitForTimeout(200); await shot(spot + '-pause');
   await page.evaluate(() => { Game.scene.togglePause(); });
+  // live play: a bot reads the finder and moves until there are fish under the boat, then fishes them
+  for (const [label, want] of [['live-marks', 'marks'], ['live-nibble', 'nibble']]) {
+    const ok = await page.evaluate(({ spot, want, fresh }) => {
+      if (fresh) Game.go(new BottomScene({ ch: 'jemel', spot, len: 120, weather: Trip.cur.weather, onEnd: () => {} }), true);
+      const s = Game.scene, dt = 1 / 30; let quiet = 0, dir = s.bx > BOT.STRIP / 2 ? -1 : 1;
+      for (let i = 0; i < 90 / dt; i++) {
+        if (s.child) { s.child.toOver(); s.child.finish(); Game.toasts = []; }
+        if (!s.baitOn && !s.reeling && s.rebaitT <= 0 && !s.move) s.rebait();
+        const f = s.activeFish(), marks = s.sonarMarks(15);
+        if (want === 'marks' && s.t > 14 && marks.length >= 2 && !s.move && s.settled) return true;
+        if (want === 'nibble' && f && (f.state === 'nibble' || f.state === 'approach') && dist(f.x, f.y, s.baitX(), s.yOf(s.baitDepth)) < 60) return true;
+        if (f && f.state === 'bite') s.hookset();
+        if (!s.move && !f) { if (marks.length) { quiet = 0; if (i % 45 === 0) s.targetDepth = clamp(marks[0].ft, 4, s.maxDepth()); s.baitType = marks[0].s > 0.4 ? 'pinfish' : 'squid'; } else if ((quiet += dt) > 4) { quiet = 0; if ((dir < 0 && s.bx < BOT.XMIN + 5) || (dir > 0 && s.bx > BOT.XMAX - 5)) dir = -dir; s.startMove(dir); } }
+        if (s.move && s.move.phase === 'go' && !s.sonarMarks(3).length && s.move.want - s.move.done < 60) s.startMove(s.move.dir);
+        s.update(dt);
+      }
+      return false;
+    }, { spot, want, fresh: want === 'marks' });
+    await page.evaluate(() => { Game.toasts = []; Game.fade = 0; Game.fadeDir = 0; });
+    await page.waitForTimeout(60); await shot(spot + '-' + label + (ok ? '' : '-timeout'));
+  }
+}
+// both ends of the strip, in a breeze
+for (const spot of ['bottom', 'wreck']) for (const end of ['XMIN', 'XMAX']) {
+  await page.evaluate(([spot, end]) => {
+    Game.go(new BottomScene({ ch: 'jorge', spot, len: 120, weather: { id: 'breezy', name: 'Breezy', vis: 0.8, drift: 1, aim: 1.35 }, onEnd: () => {} }), true);
+    const s = Game.scene; s.bx = BOT[end]; s.cam = s.bx - s.baitSX(); s.t = 20;
+  }, [spot, end]);
+  await page.waitForTimeout(900); await shot(spot + '-end-' + end);
 }
 console.log(errs.length ? errs.join('\n') : 'no errors');
 await browser.close();

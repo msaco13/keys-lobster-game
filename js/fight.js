@@ -8,6 +8,8 @@ const LOSS_TEXT = {
   jump: ['Threw the hook!', 'Let go when it jumps. Bow to the fish.'],
   rock: ['Rocked up!', 'It made the reef and cut you off. Tap faster to turn it.'],
   mangrove: ['In the mangroves!', 'It wrapped you in the roots. Tap faster to turn it.'],
+  piling: ['Cut off on the pilings!', 'It wrapped you around the bridge. Tap faster to turn it.'],
+  wreck: ['Cut off in the wreck!', 'It dove into the wreckage. Tap faster to turn it.'],
   tax: ['Taxed!', 'A shark ate your fish. Only the head came back.'],
   spool: ['Spooled!', 'It took every inch of line.']
 };
@@ -19,6 +21,9 @@ class FightScene {
     this.pw = clamp(this.sp.pow * (0.62 + 0.48 * this.wn), 0.2, 1.05);
     this.staminaSec = this.sp.stam * (0.7 + 0.8 * this.wn);
     this.kind = o.ctxType || 'offshore';
+    this.variant = (SPOTS[o.spot] && SPOTS[o.spot].variant) || null;
+    // what the fish runs for: roots, pilings, wreckage or the reef
+    this.cover = this.kind === 'flats' ? (this.variant === 'bridge' ? 'piling' : 'mangrove') : this.variant === 'wreck' ? 'wreck' : 'rock';
     this.d0 = this.kind === 'reef' ? (o.depth || 90) : this.kind === 'flats' ? rand(35, 50) + 25 * this.wn : rand(50, 70) + 30 * this.wn;
     this.dist = this.d0; this.maxDist = this.d0 + 130; this.unit = this.kind === 'reef' ? 'ft' : 'yds';
     this.S = 1; this.T = 0.45; this.t = 0; this.fightT = 0;
@@ -36,7 +41,7 @@ class FightScene {
     Game.toasts = []; Music.play('fight');
     SFX.play('hookset'); Game.vibrate(60);
     Game.toast('FISH ON!', { color: PAL.sun, size: 48, dur: 1.3, y: 120 });
-    if (this.phase === 'turn') Game.toast(this.kind === 'flats' ? 'Heading for the roots!' : 'Diving for the reef!', { size: 26, color: '#fff', dur: 1.6, y: 175 });
+    if (this.phase === 'turn') Game.toast({ mangrove: 'Heading for the roots!', piling: 'Heading for the pilings!', wreck: 'Diving for the wreck!', rock: 'Diving for the reef!' }[this.cover], { size: 26, color: '#fff', dur: 1.6, y: 175 });
   }
   exit() { SFX.setDrag(0); }
   holding() { return Input.held('Space', 'ArrowDown', 'KeyS', 'Enter') || !!Input.anyGameplayPointer(); }
@@ -60,8 +65,8 @@ class FightScene {
       if (hold) this.rockBar += dt * 0.2 * this.perks.reel;
       this.T = approach(this.T, hold ? 0.8 : 0.55, 6, dt);
       SFX.setDrag(0.5, 0.7);
-      if (this.rockBar >= 1) { this.phase = 'fight'; this.T = 0.5; this.restT = 1.2; Game.toast(this.kind === 'flats' ? 'Out of the roots!' : 'Off the bottom!', { color: PAL.good, size: 32, y: 130 }); SFX.play('coin'); }
-      else if (this.rockBar <= 0) return this.lose(this.kind === 'flats' ? 'mangrove' : 'rock');
+      if (this.rockBar >= 1) { this.phase = 'fight'; this.T = 0.5; this.restT = 1.2; Game.toast({ mangrove: 'Out of the roots!', piling: 'Off the pilings!', wreck: 'Out of the wreck!', rock: 'Off the bottom!' }[this.cover], { color: PAL.good, size: 32, y: 130 }); SFX.play('coin'); }
+      else if (this.rockBar <= 0) return this.lose(this.cover);
       this.fightAnim(dt, hold);
       return;
     }
@@ -177,9 +182,19 @@ class FightScene {
     if (this.kind === 'flats') {
       drawSky(ctx, W, wy, 'day');
       drawCloud(ctx, W * 0.25, 70, 0.9); drawCloud(ctx, W * 0.75, 110, 0.7);
-      ctx.fillStyle = '#1f4a2c'; for (let x = -20; x < W + 40; x += 34) { ell(ctx, x, wy - 10 - (x % 70 ? 6 : 14), 30, 18); ctx.fill(); }
-      ctx.fillStyle = '#2b5f37'; for (let x = 0; x < W + 40; x += 46) { ell(ctx, x, wy - 4, 26, 10); ctx.fill(); }
-      const g = ctx.createLinearGradient(0, wy, 0, H); g.addColorStop(0, '#6cc9c2'); g.addColorStop(0.5, '#8ad8c8'); g.addColorStop(1, '#d9cf9e');
+      const g = ctx.createLinearGradient(0, wy, 0, H);
+      if (this.variant === 'bridge') {
+        // the bridge across the horizon, pilings in the current
+        ctx.fillStyle = '#b9b4a8'; ctx.fillRect(0, wy - 64, W, 16); ctx.fillStyle = '#8d877a'; ctx.fillRect(0, wy - 48, W, 6);
+        for (let x = 30; x < W + 40; x += 120) { ctx.fillStyle = '#9d978a'; ctx.fillRect(x, wy - 48, 14, 52); ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fillRect(x - 6, wy + 2, 26, 3); }
+        ctx.fillStyle = '#e84a3a'; rr(ctx, (t * 40) % (W + 80) - 40, wy - 76, 26, 12, 4); ctx.fill(); ctx.fillStyle = '#f4f4f4'; rr(ctx, W - (t * 55) % (W + 80), wy - 76, 26, 12, 4); ctx.fill();
+        g.addColorStop(0, '#3d9c94'); g.addColorStop(0.6, '#2b7d7a'); g.addColorStop(1, '#1d5c5a');
+      } else {
+        ctx.fillStyle = '#1f4a2c'; for (let x = -20; x < W + 40; x += 34) { ell(ctx, x, wy - 10 - (x % 70 ? 6 : 14), 30, 18); ctx.fill(); }
+        ctx.fillStyle = '#2b5f37'; for (let x = 0; x < W + 40; x += 46) { ell(ctx, x, wy - 4, 26, 10); ctx.fill(); }
+        if (this.variant === 'glades') { g.addColorStop(0, '#6f7a52'); g.addColorStop(0.5, '#5e6a46'); g.addColorStop(1, '#8a7a52'); }
+        else { g.addColorStop(0, '#6cc9c2'); g.addColorStop(0.5, '#8ad8c8'); g.addColorStop(1, '#d9cf9e'); }
+      }
       ctx.fillStyle = g; ctx.fillRect(0, wy, W, H - wy);
       ctx.fillStyle = 'rgba(70,120,80,0.25)'; for (let i = 0; i < 9; i++) { ell(ctx, (i * 173) % W, wy + 120 + (i * 61) % 110, 70, 14); ctx.fill(); }
     } else {
@@ -192,7 +207,13 @@ class FightScene {
       ctx.fillStyle = g; ctx.fillRect(0, wy, W, H - wy);
       if (this.kind === 'reef') {
         ctx.fillStyle = 'rgba(255,255,255,0.05)'; for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.moveTo(i * W / 5, wy); ctx.lineTo(i * W / 5 + 60, wy); ctx.lineTo(i * W / 5 - 80 + Math.sin(t + i) * 10, H); ctx.lineTo(i * W / 5 - 140, H); ctx.fill(); }
-        ctx.fillStyle = '#3e3a30'; ctx.beginPath(); ctx.moveTo(0, H); for (let x = 0; x <= W; x += 40) ctx.lineTo(x, H - 26 - Math.sin(x * 0.02) * 12 - (x > W * 0.45 && x < W * 0.8 ? 40 : 0)); ctx.lineTo(W, H); ctx.fill();
+        ctx.fillStyle = '#3e3a30'; ctx.beginPath(); ctx.moveTo(0, H); for (let x = 0; x <= W; x += 40) ctx.lineTo(x, H - 26 - Math.sin(x * 0.02) * 12 - (x > W * 0.45 && x < W * 0.8 && this.variant !== 'wreck' ? 40 : 0)); ctx.lineTo(W, H); ctx.fill();
+        if (this.variant === 'wreck') {
+          // the freighter's hull on the bottom
+          ctx.fillStyle = '#2c2f30'; ctx.beginPath(); ctx.moveTo(W * 0.38, H - 30); ctx.lineTo(W * 0.42, H - 92); ctx.lineTo(W * 0.86, H - 100); ctx.lineTo(W * 0.92, H - 40); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#3a3e3f'; ctx.fillRect(W * 0.62, H - 140, 60, 44); ctx.strokeStyle = 'rgba(160,110,70,0.5)'; ctx.lineWidth = 3;
+          for (let x = W * 0.45; x < W * 0.86; x += 26) { ctx.beginPath(); ctx.moveTo(x, H - 94); ctx.lineTo(x + 4, H - 36); ctx.stroke(); }
+        }
       }
     }
     drawWaterline(ctx, W, wy, t, 'rgba(255,255,255,0.6)', 3);
@@ -281,7 +302,7 @@ class FightScene {
     if (this.phase === 'turn') {
       const bw = Math.min(420, W - 200), bx = W / 2 - bw / 2, by = H - 128;
       panel(ctx, bx - 14, by - 34, bw + 28, 74, { r: 16 });
-      text(ctx, this.kind === 'flats' ? 'KEEP IT OUT OF THE MANGROVES' : 'PULL IT OFF THE BOTTOM', W / 2, by - 12, { size: 16, align: 'center', color: '#cfe3ea', weight: 800 });
+      text(ctx, { mangrove: 'KEEP IT OUT OF THE MANGROVES', piling: 'KEEP IT OFF THE PILINGS', wreck: 'PULL IT OUT OF THE WRECK', rock: 'PULL IT OFF THE BOTTOM' }[this.cover], W / 2, by - 12, { size: 16, align: 'center', color: '#cfe3ea', weight: 800 });
       ctx.fillStyle = 'rgba(255,255,255,0.12)'; rr(ctx, bx, by, bw, 20, 10); ctx.fill();
       ctx.fillStyle = this.rockBar < 0.25 ? PAL.bad : PAL.good; rr(ctx, bx, by, bw * clamp(this.rockBar, 0, 1), 20, 10); ctx.fill();
       if (this.crankFx > 0) { ctx.strokeStyle = PAL.sun; ctx.lineWidth = 3; rr(ctx, bx - 3, by - 3, bw + 6, 26, 12); ctx.stroke(); }

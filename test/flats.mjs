@@ -1,5 +1,8 @@
-// Flats mode check: screenshots of each spot at two widths, error check, and a catch-rate bot.
-// usage: node test/flats.mjs <repoRoot> <outDir> [shots|sim|all] [runs]
+// Flats mode check: screenshots of each spot (720/960/1280 wide, both ends of each flat, glass and breezy),
+// a phone-sized touch run (pole, cast, strip, hook, pause, end of turn, frame cost), and a catch-rate bot
+// that only throws at fish it can see or the poler calls, poles toward his calls, and plays the fights.
+// usage: node test/flats.mjs <repoRoot> <outDir> [shots|sim|e2e|all] [runs]
+//        PROFILE=sharp|decent|casual picks the bot (default decent); VERBOSE=1 prints every catch.
 import { chromium } from 'playwright';
 import fs from 'fs';
 const root = process.argv[2] || process.cwd();
@@ -51,6 +54,17 @@ if (what === 'shots' || what === 'all') {
         await page.screenshot({ path: `${out}/${spot}-${w}-reveal.png` });
         await page.evaluate(() => { delete Game.scene.vis; });
       }
+    }
+    await page.close();
+  }
+  // both ends of each flat: what you find when you pole down it
+  {
+    const page = await open(960, 540);
+    for (const spot of SPOTS) for (const end of ['left', 'right']) {
+      await startSpot(page, spot, 'light'); await page.waitForTimeout(200);
+      await page.evaluate((end) => { const s = Game.scene; s.bx = end === 'left' ? 0 : 1e9; s.clampCam(); for (let i = 0; i < 60 * 12; i++) s.update(1 / 60); s.vis = () => 1; Game.toasts = []; }, end);
+      await page.waitForTimeout(200);
+      await page.screenshot({ path: `${out}/${spot}-end-${end}.png` });
     }
     await page.close();
   }
@@ -117,15 +131,15 @@ if (what === 'sim' || what === 'all') {
             const cand = s.fishList.filter((f) => f.state === 'cruise' && !f.leaving && f.x - cam > 30 && f.x - cam < Game.W - 30 && f.y < Game.H - 150 && (f.called || s.signal(f) > (CASUAL ? 0.5 : 0.32)));
             huntT += dt; if (cand.length) { visT += dt; if (firstSeen < 0) firstSeen = s.t; }
             for (const f of cand) if (!seenAt.has(f)) seenAt.set(f, s.t);
-            const tg = cand.filter((f) => s.t - seenAt.get(f) > 0.8).sort((a, b) => dist(a.x, a.y, s.bx, 470) - dist(b.x, b.y, s.bx, 470))[0];
+            const tg = cand.filter((f) => s.t - seenAt.get(f) > (CASUAL ? 1.6 : 0.8)).sort((a, b) => dist(a.x, a.y, s.bx, 470) - dist(b.x, b.y, s.bx, 470))[0];
             if (tg) {
               castWait += dt;
               if (castWait > 0.25) {
                 castWait = 0;
                 const still = tg.brain === 'hold' || tg.brain === 'tail';
-                const lead = tg.len * 0.4 + tg.sp.spook + (still ? 26 : 34 + tg.speed * 0.9);
+                const lead = CASUAL ? tg.len * 0.4 + 55 : tg.len * 0.4 + tg.sp.spook + (still ? 26 : 34 + tg.speed * 0.9);
                 let tx = tg.x + Math.cos(tg.hd) * lead, ty = tg.y + Math.sin(tg.hd) * lead;
-                const c = s.current(tx, ty); tx -= c.x * 1.6; ty -= c.y * 1.6;   // cast up-current of it
+                const c = s.current(tx, ty); if (!CASUAL) { tx -= c.x * 1.6; ty -= c.y * 1.6; }   // cast up-current of it
                 const e = SK ? 10 : CASUAL ? 60 : 30; tx += (Math.random() - 0.5) * e; ty += (Math.random() - 0.5) * e;
                 if (s.lure) s.pickUp(); casts++; s.doCast({ x: tx, y: ty, t: SK ? 1.1 : CASUAL ? 0.45 : 0.7 }); idleT = 0;
               }
@@ -160,6 +174,62 @@ if (what === 'sim' || what === 'all') {
   const ge = await page.evaluate(() => (Game.error ? String(Game.error.stack || Game.error) : null));
   if (ge) errs.push('Game.error: ' + ge);
   await page.close();
+}
+if (what === 'e2e' || what === 'all') {
+  // a phone in landscape: touch, 2x pixels, real taps on the scene and on the pole buttons
+  const ctxB = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  const page = await ctxB.newPage();
+  page.on('pageerror', (e) => errs.push(e.message));
+  await page.goto('file://' + root + '/index.html'); await page.waitForTimeout(900);
+  const toScreen = (x, y) => page.evaluate(([x, y]) => ({ x: Game.ox + x * Game.scale, y: Game.oy + y * Game.scale }), [x, y]);
+  const tapBtn = async (id) => { const r = await page.evaluate((id) => { const r = UI.byId(id); return r && !r.disabled ? { x: Game.ox + (r.x + r.w / 2) * Game.scale, y: Game.oy + (r.y + r.h / 2) * Game.scale } : null; }, id); if (!r) { errs.push('no button ' + id); return; } await page.touchscreen.tap(r.x, r.y); await page.waitForTimeout(200); };
+  const check = (label, ok, extra = '') => { console.log((ok ? 'ok   ' : 'FAIL ') + label, extra); if (!ok) errs.push('e2e: ' + label + ' ' + extra); };
+  for (const spot of ['flats', 'bridge', 'flamingo']) {
+    await startSpot(page, spot, 'light'); await page.waitForTimeout(500);
+    const W = await page.evaluate(() => Game.W);
+    const bx0 = await page.evaluate(() => Game.scene.bx);
+    await tapBtn('poleR'); await page.waitForTimeout(1200);
+    const st1 = await page.evaluate(() => ({ dir: Game.scene.poleDir, bx: Game.scene.bx }));
+    check(spot + ' pole right moves the skiff', st1.dir === 1 && st1.bx > bx0 + 20, JSON.stringify(st1));
+    await tapBtn('poleR'); await page.waitForTimeout(600);
+    check(spot + ' tapping again stops', await page.evaluate(() => Game.scene.poleDir === 0));
+    // press and hold out in the water, then release: a cast
+    const p = await toScreen(W * 0.55, 250);
+    const cdp = await ctxB.newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: p.x, y: p.y }] });
+    await page.waitForTimeout(700);
+    const aiming = await page.evaluate(() => !!Game.scene.aim);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(1300);
+    const lure = await page.evaluate(() => Game.scene.lure && { x: Game.scene.lure.x, y: Game.scene.lure.y });
+    check(spot + ' hold aims, release casts', aiming && !!lure, JSON.stringify(lure));
+    if (lure) {
+      await page.touchscreen.tap(p.x, p.y + 30); await page.waitForTimeout(150);
+      const l2 = await page.evaluate(() => Game.scene.lure && { x: Game.scene.lure.x, y: Game.scene.lure.y, hop: Game.scene.lure.hop });
+      check(spot + ' tap strips', !!l2 && (l2.hop > 0 || Math.abs(l2.y - lure.y) > 5), JSON.stringify(l2));
+    }
+    // an eat, then a tap sets the hook and starts the fight
+    await page.evaluate(() => { const s = Game.scene; const f = s.spawnFish(true); f.alpha = 1; s.lure = s.lure || { x: f.x + 20, y: f.y, t: 0, hop: 0 }; f.state = 'eat'; s.eat = { f, t: 5, t0: 5 }; });
+    await page.touchscreen.tap(p.x, p.y); await page.waitForTimeout(400);
+    check(spot + ' tap sets the hook', await page.evaluate(() => !!Game.scene.child && Game.scene.child.constructor.name === 'FightScene'));
+    await page.screenshot({ path: `${out}/e2e-${spot}-fight.png` });
+    await page.evaluate(() => { const fs = Game.scene.child; fs.toOver(); fs.finish(); });
+    await page.waitForTimeout(300);
+    await tapBtn('pause'); check(spot + ' pause', await page.evaluate(() => Game.scene.paused));
+    await page.screenshot({ path: `${out}/e2e-${spot}-pause.png` });
+    await tapBtn('resume'); check(spot + ' resume', await page.evaluate(() => !Game.scene.paused));
+    await page.evaluate(() => { Game.scene.timeLeft = 0.2; });
+    await page.waitForTimeout(2600);
+    const r = await page.evaluate(() => window.__res && { n: window.__res.catches.length, total: window.__res.total });
+    check(spot + ' turn ends with a result', !!r && r.n === 1, JSON.stringify(r));
+    // frame cost on this phone-sized canvas (software rendering here, so read it as relative)
+    await startSpot(page, spot, 'breezy'); await page.waitForTimeout(300);
+    const ms = await page.evaluate(() => { const s = Game.scene; for (let i = 0; i < 600; i++) s.update(1 / 60); Game.toasts = []; const t0 = performance.now(); for (let i = 0; i < 120; i++) { s.update(1 / 60); Game.draw(1 / 60); } return (performance.now() - t0) / 120; });
+    console.log(`     ${spot}: update+draw ${ms.toFixed(2)} ms/frame at ${await page.evaluate(() => Game.canvas.width + 'x' + Game.canvas.height)}`);
+    const ge = await page.evaluate(() => (Game.error ? String(Game.error.stack || Game.error) : null));
+    if (ge) errs.push('Game.error: ' + ge);
+  }
+  await ctxB.close();
 }
 console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'no errors');
 await browser.close();

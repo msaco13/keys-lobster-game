@@ -30,21 +30,21 @@ const TROLL_FISH = {
   sailfish: { notice: 52, eager: 3.6, speed: 280, vis: 1, size: 1.25 },
   bluemarlin: { notice: 58, eager: 3.2, speed: 280, vis: 1, size: 1.6 }
 };
-// Top-down looks: dim is the dark shape you see cruising deep, lit is the fish lit up on a lure
+// Top-down looks. dim: the dark shape you see cruising deep. back/edge: dark back and lighter flanks once it
+// lights up on a lure. w: body width / length, ped: tail-stock width, head and tail shapes.
 const TROLL_LOOK = {
-  mahi: { dim: '#123f3a', lit: { back: '#12a874', edge: '#b4f25c', tail: '#f2dc3c', fins: '#2f7fe6', wide: 0.25 } },
-  tripletail: { dim: '#3b3422', lit: { back: '#5c4b27', edge: '#cdb474', tail: '#4a3c20', fins: '#4a3c20', wide: 0.38 } },
-  bonita: { dim: '#0e2a4c', lit: { back: '#20507f', edge: '#cad9e4', tail: '#203f66', wide: 0.24 } },
-  blackfin: { dim: '#0b2246', lit: { back: '#172a56', edge: '#cdd7e4', tail: '#1a2a52', fins: '#c9b56a', wide: 0.26 } },
-  yellowfin: { dim: '#0b2248', lit: { back: '#13234a', edge: '#f2c21a', tail: '#f0bf18', fins: '#f0bf18', wide: 0.26 } },
-  wahoo: { dim: '#0c2a4e', lit: { back: '#1b5590', edge: '#b3d2ea', tail: '#1b3f66', wide: 0.13 } },
-  kingfish: { dim: '#122f4a', lit: { back: '#4a6880', edge: '#dde7ee', tail: '#4e6577', wide: 0.15 } },
-  barracuda: { dim: '#183246', lit: { back: '#58686e', edge: '#e6ecee', tail: '#5a676c', wide: 0.14, line: true } },
-  amberjack: { dim: '#24302f', lit: { back: '#7c7050', edge: '#e6c87c', tail: '#857957', wide: 0.24, line: true } },
-  sailfish: { dim: '#0c2556', lit: { back: '#2a40aa', edge: '#93b8ff', tail: '#22408a', fins: '#3a2f9a', wide: 0.17 } },
-  bluemarlin: { dim: '#0a2152', lit: { back: '#1c3392', edge: '#8aa9ff', tail: '#1a3270', fins: '#2a3a9a', wide: 0.2 } }
+  mahi: { w: 0.22, ped: 0.14, head: 'blunt', tail: 'fork', dim: '#123f3a', back: '#0d8a66', edge: '#a4ec58', fin: '#2f7fe6', tailC: '#f2d43a' },
+  tripletail: { w: 0.4, ped: 0.26, head: 'point', tail: 'round', dim: '#3b3422', back: '#4f4022', edge: '#b9a062', fin: '#4a3c20', tailC: '#5a4a28' },
+  bonita: { w: 0.25, ped: 0.1, head: 'point', tail: 'lunate', dim: '#0e2a4c', back: '#1d4472', edge: '#c9d8e4', fin: '#2a4a70', tailC: '#203f66' },
+  blackfin: { w: 0.27, ped: 0.1, head: 'point', tail: 'lunate', dim: '#0b2246', back: '#14244c', edge: '#bcc8d8', fin: '#2a3550', tailC: '#1a2a52', finlet: '#c9b56a' },
+  yellowfin: { w: 0.27, ped: 0.1, head: 'point', tail: 'lunate', dim: '#0b2248', back: '#122148', edge: '#c6d2de', fin: '#f0bf18', tailC: '#1d2c56', finlet: '#f2d23a', stripe: '#f2c21a' },
+  wahoo: { w: 0.12, ped: 0.16, head: 'point', tail: 'lunate', dim: '#0c2a4e', back: '#1a4f8a', edge: '#b9d4e8', fin: '#1b3f66', tailC: '#1b3f66' },
+  kingfish: { w: 0.14, ped: 0.14, head: 'point', tail: 'lunate', dim: '#122f4a', back: '#3f5d76', edge: '#dde7ee', fin: '#4e6577', tailC: '#4e6577' },
+  barracuda: { w: 0.13, ped: 0.2, head: 'point', tail: 'fork', dim: '#183246', back: '#4e5d63', edge: '#e6ecee', fin: '#5a676c', tailC: '#4e5d63' },
+  amberjack: { w: 0.21, ped: 0.12, head: 'point', tail: 'fork', dim: '#24302f', back: '#6d6448', edge: '#e4d6aa', fin: '#857957', tailC: '#857957', stripe: '#d9a640' },
+  sailfish: { w: 0.15, ped: 0.12, head: 'point', tail: 'lunate', dim: '#0c2556', back: '#1f3592', edge: '#a2beff', fin: '#3a2f9a', tailC: '#22408a' },
+  bluemarlin: { w: 0.19, ped: 0.1, head: 'point', tail: 'lunate', dim: '#0a2152', back: '#18307e', edge: '#97b2ff', fin: '#2a3a9a', tailC: '#1a3270' }
 };
-for (const k of Object.keys(TROLL_LOOK)) { const L = TROLL_LOOK[k]; L.shade = { back: L.dim, tail: L.dim, wide: L.lit.wide }; }
 
 // first time each sign shows up in a turn, a small label teaches what it means
 const TROLL_HINTS = {
@@ -102,6 +102,10 @@ function trollWaterTile(variant) {
     g.fillStyle = light ? 'rgba(130,195,245,0.035)' : 'rgba(0,18,58,0.055)';
     for (const ox of [-TW, 0, TW]) { ell(g, x + ox, y, l, h, rot); g.fill(); }
   }
+  // deeper toward the bottom of the screen, a little haze toward the top (the tile never scrolls vertically)
+  const vg = g.createLinearGradient(0, 0, 0, H);
+  vg.addColorStop(0, 'rgba(150,200,240,0.07)'); vg.addColorStop(0.35, 'rgba(0,10,40,0)'); vg.addColorStop(0.75, 'rgba(0,10,40,0.08)'); vg.addColorStop(1, 'rgba(0,8,34,0.26)');
+  g.fillStyle = vg; g.fillRect(0, 0, TW + 4, H);
   g.fillStyle = 'rgba(255,255,255,0.035)';
   for (let i = 0; i < 700; i++) { const x = rng() * TW, y = rng() * H, l = 2 + rng() * 5; g.fillRect(x, y, l, 1); if (x < 8) g.fillRect(x + TW, y, l, 1); }
   return (TROLL_CACHE[variant] = cv);
@@ -144,6 +148,54 @@ function trollTern(ctx, x, y, s, ang, open) {
   ctx.restore();
 }
 
+// body outline of an offshore fish seen from above, nose at +x; k narrows it (the dark back down the middle)
+function trollBody(ctx, L, W, lk, k) {
+  const w = W * k, hx = lk.head === 'blunt' ? 0.3 : 0.26, ped = W * lk.ped;
+  ctx.beginPath(); ctx.moveTo(L * 0.5, 0);
+  if (lk.head === 'blunt') ctx.bezierCurveTo(L * 0.5, -w * 0.42, L * 0.43, -w * 0.6, L * hx, -w * 0.6); else ctx.quadraticCurveTo(L * 0.44, -w * 0.42, L * hx, -w * 0.58);
+  ctx.bezierCurveTo(L * 0.04, -w * 0.66, -L * 0.2, -w * 0.42, -L * 0.37, -ped * k);
+  ctx.lineTo(-L * 0.37, ped * k);
+  ctx.bezierCurveTo(-L * 0.2, w * 0.42, L * 0.04, w * 0.66, L * hx, w * (lk.head === 'blunt' ? 0.6 : 0.58));
+  if (lk.head === 'blunt') ctx.bezierCurveTo(L * 0.43, w * 0.6, L * 0.5, w * 0.42, L * 0.5, 0); else ctx.quadraticCurveTo(L * 0.44, w * 0.42, L * 0.5, 0);
+  ctx.closePath();
+}
+// an offshore fish from above, facing +x. lit: show its colors (else a dark shape down deep)
+function trollFishTop(ctx, key, L, lk, t, o = {}) {
+  const W = L * lk.w, sw = Math.sin(t * (o.speed || 8)) * 0.32, lit = !!o.lit;
+  ctx.save(); ctx.translate(-L * 0.36, 0); ctx.rotate(sw);
+  ctx.fillStyle = lit ? lk.tailC : lk.dim; ctx.beginPath();
+  if (lk.tail === 'lunate') { ctx.moveTo(L * 0.03, -W * 0.08); ctx.quadraticCurveTo(-L * 0.05, -W * 0.5, -L * 0.15, -W * 1.2); ctx.quadraticCurveTo(-L * 0.08, -W * 0.4, -L * 0.06, 0); ctx.quadraticCurveTo(-L * 0.08, W * 0.4, -L * 0.15, W * 1.2); ctx.quadraticCurveTo(-L * 0.05, W * 0.5, L * 0.03, W * 0.08); }
+  else if (lk.tail === 'fork') { ctx.moveTo(L * 0.03, -W * 0.1); ctx.lineTo(-L * 0.15, -W * 0.95); ctx.lineTo(-L * 0.08, 0); ctx.lineTo(-L * 0.15, W * 0.95); ctx.lineTo(L * 0.03, W * 0.1); }
+  else ctx.ellipse(-L * 0.05, 0, L * 0.09, W * 0.55, 0, 0, TAU);
+  ctx.closePath(); ctx.fill(); ctx.restore();
+  if (!lit) { ctx.fillStyle = lk.dim; trollBody(ctx, L, W, lk, 1); ctx.fill(); return; }
+  // pectoral fins
+  const pl = L * (key === 'yellowfin' || key === 'blackfin' ? 0.2 : key === 'bluemarlin' ? 0.17 : 0.12);
+  ctx.fillStyle = lk.fin; ctx.beginPath();
+  for (const s of [-1, 1]) { ctx.moveTo(L * 0.22, s * W * 0.42); ctx.quadraticCurveTo(L * 0.12, s * (W * 0.5 + pl * 0.5), L * 0.22 - pl, s * (W * 0.42 + pl * 0.55)); ctx.lineTo(L * 0.13, s * W * 0.36); }
+  ctx.fill();
+  ctx.fillStyle = lk.edge; trollBody(ctx, L, W, lk, 1); ctx.fill();
+  ctx.fillStyle = lk.back; trollBody(ctx, L, W, lk, 0.56); ctx.fill();
+  if (lk.stripe) { ctx.strokeStyle = lk.stripe; ctx.lineWidth = Math.max(1, L * 0.014); ctx.beginPath(); for (const s of [-1, 1]) { ctx.moveTo(L * 0.3, s * W * 0.34); ctx.quadraticCurveTo(0, s * W * 0.4, -L * 0.24, s * W * 0.2); } ctx.stroke(); }
+  if (lk.finlet) { ctx.fillStyle = lk.finlet; for (let i = 0; i < 5; i++) { ell(ctx, -L * (0.1 + i * 0.055), 0, Math.max(1, L * 0.012), Math.max(1, L * 0.012)); ctx.fill(); } }
+  if (key === 'mahi') { // the long blue dorsal down the back and the blue spots
+    ctx.fillStyle = 'rgba(28,96,200,0.75)'; ell(ctx, L * 0.02, 0, L * 0.34, W * 0.1); ctx.fill();
+    ctx.fillStyle = 'rgba(40,130,240,0.9)'; for (let i = 0; i < 6; i++) { ell(ctx, L * (0.26 - i * 0.1), (i % 2 ? 1 : -1) * W * 0.3, Math.max(1, L * 0.012), Math.max(1, L * 0.012)); ctx.fill(); }
+  } else if (key === 'wahoo') {
+    ctx.strokeStyle = 'rgba(12,28,66,0.75)'; ctx.lineWidth = Math.max(1, L * 0.016); ctx.beginPath();
+    for (let i = 0; i < 8; i++) { const x = L * (0.3 - i * 0.075); ctx.moveTo(x, -W * 0.42); ctx.lineTo(x - L * 0.02, W * 0.42); }
+    ctx.stroke();
+  } else if (key === 'bonita') {
+    ctx.strokeStyle = 'rgba(10,26,56,0.7)'; ctx.lineWidth = 1.1; ctx.beginPath();
+    for (let i = 0; i < 4; i++) { const x = L * (0.05 - i * 0.07); ctx.moveTo(x, -W * 0.2); ctx.quadraticCurveTo(x - L * 0.03, 0, x, W * 0.2); }
+    ctx.stroke();
+  } else if (key === 'tripletail') {
+    ctx.fillStyle = 'rgba(40,30,12,0.45)'; for (let i = 0; i < 6; i++) { ell(ctx, L * (0.25 - i * 0.09), (i % 2 ? 1 : -1) * W * 0.2, L * 0.04, W * 0.12); ctx.fill(); }
+  }
+  if (key === 'sailfish' || key === 'bluemarlin') { ctx.strokeStyle = lk.back; ctx.lineWidth = Math.max(1.5, L * 0.022); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(L * 0.48, 0); ctx.lineTo(L * 0.78, 0); ctx.stroke(); }
+  ctx.fillStyle = 'rgba(255,255,255,0.8)'; for (const s of [-1, 1]) { ell(ctx, L * 0.4, s * W * 0.3, Math.max(0.8, L * 0.012), Math.max(0.8, L * 0.012)); ctx.fill(); }
+}
+
 class TrollScene extends SessionBase {
   constructor(o) {
     super(o);
@@ -178,7 +230,7 @@ class TrollScene extends SessionBase {
     Game.toast(this.spotName, { color: PAL.coral, size: 46, y: 200, sub: this.variant === 'hump' ? 'Find the bait and the birds. Drag to steer.' : 'Read the signs: weed, birds, debris. Drag to steer.' });
   }
   exit() { SFX.setAmbient(0); }
-  boatX() { return Game.W * 0.42; }
+  boatX() { return Math.max(Game.W * 0.42, 352); } // far enough right that the shotgun stays on screen at 720 wide
   pointerDown(p) { if (this.basePointerDown(p)) return; this.dragId = p.id; this.ty = clamp(p.y, 120, Game.H - 50); }
   pointerMove(p) { if (this.dragId === p.id) this.ty = clamp(p.y, 120, Game.H - 50); }
   pointerUp(p) { if (this.dragId === p.id) this.dragId = null; }
@@ -243,6 +295,7 @@ class TrollScene extends SessionBase {
       ox: feat ? x - feat.x : 0, oy: feat ? y - feat.y : 0, wr: rand(6, 16), wf: rand(0.35, 0.7), vx: 0, vy: 0, hd: feat && feat.fishHd != null ? feat.fishHd + rand(-0.5, 0.5) : rand(0, TAU),
       cool: 0, tries: 0, alpha: 0, lit: 0, down: false, school: !!o.school, free: !feat
     };
+    if (key === 'tripletail') { fi.wr = rand(2, 5); fi.wf = rand(0.15, 0.3); } // lying on its side, barely moving
     this.fish.push(fi); return fi;
   }
   weedSpot(f, under, off) { // a point along the weed, just off its edge unless under it
@@ -255,7 +308,7 @@ class TrollScene extends SessionBase {
     const H = Game.H, hump = this.variant === 'hump';
     kind = kind || (hump ? 'scatter' : trollPickW([['scatter', 4], ['line', 4.5], ['mat', 1.5]]));
     const len = kind === 'mat' ? rand(170, 250) : kind === 'line' ? rand(480, 820) : rand(240, 420);
-    const f = { type: 'weed', kind, x, y: this.freeY(150, H - 70), len, ang: kind === 'mat' ? rand(-0.4, 0.4) : rand(-0.22, 0.22), t: 0, ext: len + 40, clumps: [], fishHd: rand(0, TAU), sign: kind === 'scatter' ? null : 'weed' };
+    const f = { type: 'weed', kind, x, y: this.freeY(145, H - 60), len, ang: kind === 'mat' ? rand(-0.4, 0.4) : rand(-0.22, 0.22), t: 0, ext: len + 40, clumps: [], fishHd: rand(0, TAU), sign: kind === 'scatter' ? null : 'weed' };
     f.halfW = kind === 'line' ? 14 : kind === 'mat' ? 30 : 8;
     const ph = rand(0, TAU);
     if (kind === 'line') { for (let s = 0; s < len; s += rand(8, 18)) f.clumps.push({ x: s, y: Math.sin(s * 0.018 + ph) * 12 + rand(-5, 5), r: rand(4, 11) * (0.55 + 0.45 * Math.sin(Math.PI * s / len)) + 2.5 }); }
@@ -275,24 +328,41 @@ class TrollScene extends SessionBase {
     if (kind === 'line' && chance(0.06)) { const p = this.weedSpot(f, false, 60); this.spawnFish('wahoo', p.x, p.y, f); }
     return f;
   }
-  // render a weedline once into its own little canvas: shadow, golden clumps, highlights, bladders
+  // render a weedline once into its own little canvas: a slick, shadow, lobed golden clumps on stems, bladders
   weedSprite(f) {
-    const k = 1.5, pad = 26; let minY = 0, maxY = 0;
-    for (const c of f.clumps) { minY = Math.min(minY, c.y - c.r); maxY = Math.max(maxY, c.y + c.r); }
+    const k = 1.5, pad = 26, rng = mulberry(Math.floor(f.len * 7 + f.clumps.length * 13));
+    let minY = 0, maxY = 0;
+    for (const c of f.clumps) {
+      minY = Math.min(minY, c.y - c.r * 1.2); maxY = Math.max(maxY, c.y + c.r * 1.2);
+      c.lobes = [{ dx: 0, dy: 0, r: c.r * 0.62 }];
+      for (let i = 2 + Math.floor(rng() * 4); i > 0; i--) { const a = rng() * TAU, q = c.r * (0.35 + rng() * 0.4); c.lobes.push({ dx: Math.cos(a) * q, dy: Math.sin(a) * q * 0.75, r: c.r * (0.32 + rng() * 0.3), a }); }
+    }
     const w = f.len + pad * 2, h = maxY - minY + pad * 2;
     const cv = document.createElement('canvas'); cv.width = Math.ceil(w * k); cv.height = Math.ceil(h * k);
     const g = cv.getContext('2d'); g.scale(k, k); g.translate(pad, pad - minY);
-    const blobs = (fill, grow, dx, dy, sq = 0.72) => { g.fillStyle = fill; g.beginPath(); for (const c of f.clumps) { const r = c.r * grow; g.moveTo(c.x + dx + r, c.y + dy); g.ellipse(c.x + dx, c.y + dy, r, r * sq, 0, 0, TAU); } g.fill(); };
-    blobs('rgba(150,205,235,0.09)', 2.2, 0, 0, 0.8);          // the calm slick the weed collects on
-    blobs('rgba(4,24,44,0.35)', 1.05, 2.5, 3.5);              // shadow on the water
-    blobs('#a8741f', 1, 0, 0);
-    blobs('#cf9632', 0.78, -0.8, -0.8);
-    blobs('#e9bd52', 0.42, -1.6, -1.6, 0.6);
-    const rng = mulberry(Math.floor(f.len * 7 + f.clumps.length));
-    g.fillStyle = '#7a5214';
-    for (const c of f.clumps) for (let i = 0; i < 3; i++) { const a = rng() * TAU, q = rng() * c.r * 0.8; g.fillRect(c.x + Math.cos(a) * q, c.y + Math.sin(a) * q * 0.7, 1.4, 1.4); }
-    g.strokeStyle = 'rgba(210,160,60,0.85)'; g.lineWidth = 1.2; g.lineCap = 'round'; g.beginPath();
-    for (const c of f.clumps) if (rng() < 0.5) { const a = rng() * TAU; g.moveTo(c.x + Math.cos(a) * c.r * 0.8, c.y + Math.sin(a) * c.r * 0.55); g.lineTo(c.x + Math.cos(a) * (c.r + 4), c.y + Math.sin(a) * (c.r * 0.6 + 4)); }
+    const lobes = (fill, grow, dx, dy, whole) => {
+      g.fillStyle = fill; g.beginPath();
+      for (const c of f.clumps) {
+        if (whole) { const r = c.r * grow; g.moveTo(c.x + dx + r, c.y + dy); g.ellipse(c.x + dx, c.y + dy, r, r * 0.75, 0, 0, TAU); continue; }
+        for (const l of c.lobes) { const r = l.r * grow, x = c.x + l.dx + dx, y = c.y + l.dy + dy; g.moveTo(x + r, y); g.ellipse(x, y, r, r * 0.8, l.a || 0, 0, TAU); }
+      }
+      g.fill();
+    };
+    lobes('rgba(150,205,235,0.09)', 2.3, 0, 0, true);       // the calm slick the weed collects on
+    // stems tying the clumps together
+    g.strokeStyle = 'rgba(120,82,22,0.75)'; g.lineWidth = 1.4; g.lineCap = 'round'; g.beginPath();
+    const cl = f.clumps.slice().sort((p, q) => p.x - q.x);
+    for (let i = 1; i < cl.length; i++) { const p = cl[i - 1], q = cl[i]; if (q.x - p.x > 40 || Math.abs(q.y - p.y) > 26) continue; g.moveTo(p.x, p.y); g.quadraticCurveTo((p.x + q.x) / 2, (p.y + q.y) / 2 + (rng() - 0.5) * 8, q.x, q.y); }
+    g.stroke();
+    lobes('rgba(4,24,44,0.32)', 1.08, 2.5, 3.5);             // shadow on the water
+    lobes('#9c6a1c', 1, 0, 0);
+    lobes('#c98f2e', 0.8, -0.7, -0.8);
+    lobes('#e6b84e', 0.45, -1.4, -1.5);
+    // air bladders and frilly leaf tips
+    g.fillStyle = '#f2d27c';
+    for (const c of f.clumps) for (let i = 0; i < 3; i++) { const a = rng() * TAU, q = rng() * c.r * 0.85; g.beginPath(); g.arc(c.x + Math.cos(a) * q, c.y + Math.sin(a) * q * 0.7, 1 + rng() * 0.7, 0, TAU); g.fill(); }
+    g.strokeStyle = 'rgba(214,160,58,0.9)'; g.lineWidth = 1.1; g.beginPath();
+    for (const c of f.clumps) for (let i = 0; i < 2; i++) { if (rng() < 0.4) continue; const a = rng() * TAU, r0 = c.r * 0.8, r1 = c.r + 3 + rng() * 3; g.moveTo(c.x + Math.cos(a) * r0, c.y + Math.sin(a) * r0 * 0.7); g.quadraticCurveTo(c.x + Math.cos(a + 0.3) * r1, c.y + Math.sin(a + 0.3) * r1 * 0.7, c.x + Math.cos(a + 0.12) * (r1 + 2), c.y + Math.sin(a + 0.12) * (r1 + 2) * 0.7); }
     g.stroke();
     return { cv, ox: -pad, oy: minY - pad, w, h };
   }
@@ -304,15 +374,15 @@ class TrollScene extends SessionBase {
   spawnFrigatesOver(x, y, host) { const f = this.birdFeature('frigates', x, y, randi(1, 3)); f.host = host; return f; }
   // a school of mahi roaming open water with frigates riding along above them
   spawnFrigates(x) {
-    const f = this.birdFeature('frigates', x, this.freeY(160, Game.H - 80), randi(1, 3));
-    f.spd = 30; f.vx = rand(-30, 30); f.vy = rand(-20, 20); f.turnT = rand(2, 4); f.holds = true;
+    const f = this.birdFeature('frigates', x, this.freeY(150, Game.H - 70), randi(1, 3));
+    f.spd = 18; f.vx = rand(-18, 18); f.vy = rand(-12, 12); f.turnT = rand(2, 4); f.holds = true;
     const n = randi(2, 3); for (let i = 0; i < n; i++) this.spawnFish('mahi', f.x + rand(-40, 40), f.y + rand(-22, 22), f, i ? { maxW: 22 } : {});
     return f;
   }
   // tuna (or bonita) blitzing bait with terns diving on it; the school comes up and goes back down
   spawnBirds(x) {
     const hump = this.variant === 'hump';
-    const f = this.birdFeature('birds', x, this.freeY(160, Game.H - 80), hump ? randi(1, 2) : 0);
+    const f = this.birdFeature('birds', x, this.freeY(150, Game.H - 70), hump ? randi(1, 2) : 0);
     Object.assign(f, { kind: hump ? 'pile' : 'terns', sign: hump ? 'pile' : 'terns', spd: hump ? 38 : 34, vx: rand(-40, 40), vy: rand(-30, 30), turnT: rand(1.5, 3), up: true, cycle: rand(6, 9), bustT: 0.3, school: true, terns: [], holds: true });
     this.addTerns(f, hump ? randi(7, 10) : randi(4, 6));
     let key = 'blackfin', n = randi(2, 3), big = false;
@@ -328,7 +398,7 @@ class TrollScene extends SessionBase {
   spawnDebris(x, kind) {
     const hump = this.variant === 'hump';
     kind = kind || trollPickW([['log', 4], ['pallet', 3], ['plank', 1.5], ['cooler', 1.5]]);
-    const f = { type: 'debris', kind, x, y: this.freeY(150, Game.H - 70), rot: rand(-0.8, 0.8), t: rand(0, 5), ext: 70, fishHd: rand(0, TAU), sign: 'debris' };
+    const f = { type: 'debris', kind, x, y: this.freeY(145, Game.H - 60), rot: rand(-0.8, 0.8), t: rand(0, 5), ext: 70, fishHd: rand(0, TAU), sign: 'debris' };
     if (kind === 'log') { f.L = rand(76, 112); f.r = rand(7, 10); }
     this.features.push(f);
     // a lone object out here is worth a look: a bull mahi, a tripletail, sometimes a wahoo, often nothing
@@ -337,7 +407,7 @@ class TrollScene extends SessionBase {
       this.spawnFish('mahi', f.x + rand(-40, 40), f.y + rand(-34, 34), f, { big: true }); f.holds = true;
       if (chance(0.3)) this.spawnFish('mahi', f.x + rand(-40, 40), f.y + rand(-34, 34), f, { maxW: 20 });
       if (!hump && chance(0.35)) this.spawnFrigatesOver(f.x, f.y, f);
-    } else if (r < 0.6) { if (this.spawnFish('tripletail', f.x + rand(-12, 12), f.y + rand(-10, 10), f)) f.holds = true; }
+    } else if (r < 0.6) { const a = rand(0, TAU); if (this.spawnFish('tripletail', f.x + Math.cos(a) * rand(26, 34), f.y + Math.sin(a) * rand(18, 26), f)) f.holds = true; }
     else if (r < 0.68) { if (this.spawnFish('wahoo', f.x + rand(-60, 60), f.y + rand(-50, 50), f)) f.holds = true; }
     return f;
   }
@@ -351,7 +421,7 @@ class TrollScene extends SessionBase {
     return f;
   }
   spawnBait(x) {
-    const f = { type: 'bait', x, y: this.freeY(160, Game.H - 80), t: 0, ext: 90, spd: 22, vx: rand(-20, 20), vy: rand(-14, 14), turnT: rand(2, 4), r: rand(24, 36), dots: [], birds: [], up: false, sign: 'bait' };
+    const f = { type: 'bait', x, y: this.freeY(150, Game.H - 70), t: 0, ext: 90, spd: 22, vx: rand(-20, 20), vy: rand(-14, 14), turnT: rand(2, 4), r: rand(24, 36), dots: [], birds: [], up: false, sign: 'bait' };
     for (let i = 0; i < 46; i++) f.dots.push({ a: rand(0, TAU), q: Math.sqrt(Math.random()), sp: rand(0.4, 1.1) * (chance(0.5) ? 1 : -1), ph: rand(0, TAU) });
     this.features.push(f);
     if (chance(0.55)) { // tuna underneath: they push it up and the terns find it
@@ -392,7 +462,7 @@ class TrollScene extends SessionBase {
   // out of nowhere: a fish comes up on a lure in open water
   blindStrike() {
     const hump = this.variant === 'hump';
-    if (this.strike || !chance(hump ? 0.35 : 0.4)) return;
+    if (this.strike || !chance(0.24)) return;
     const open = this.lures.filter((l) => !l.fouled); if (!open.length) return;
     const table = (hump ? [['wahoo', 5], ['blackfin', 3], ['amberjack', 2]] : [['bonita', 3], ['kingfish', 3], ['barracuda', 2.5], ['wahoo', 1.5]]).filter((r) => !this.allowed.size || this.allowed.has(r[0]));
     const key = trollPickW(table); if (!key) return;
@@ -557,7 +627,10 @@ class TrollScene extends SessionBase {
             if (chance(0.25)) { L.fouled = 2; this.fl.add(L.x, L.y - 20, 'weed on it', '#e8d27a', 16); }
           }
         }
-        if (f.holds && onScreen && chance(dt * 0.3)) { const p = this.weedSpot(f, false); this.spawnFlyers(p.x, p.y, randi(1, 3)); }
+        if (f.holds && onScreen && chance(dt * 0.3)) {
+          const p = this.weedSpot(f, false); this.spawnFlyers(p.x, p.y, randi(1, 3));
+          if (!this.taught.has('flyers') && p.x > 60 && p.x < W - 60) { this.taught.add('flyers'); this.fl.add(p.x, p.y - 26, 'Flying fish: mahi feeding', '#bff46a', 17); }
+        }
       } else if (f.type === 'frigates' && f.spd && onScreen && chance(dt * 0.25)) this.spawnFlyers(f.x + rand(-30, 30), f.y + rand(-20, 20), randi(1, 2));
     }
   }
@@ -621,7 +694,10 @@ class TrollScene extends SessionBase {
           }
         }
         // bait getting nervous around a predator on the rip
-        if (fi.nervous && !fi.down && fi.x > 0 && fi.x < W && chance(dt * 0.4)) this.wsplash(fi.x + rand(-18, 18), fi.y + rand(-14, 14), 5, { min: 40, max: 110, life: 0.35, sMin: 0.9, sMax: 1.5, color: '#cfe0ea' });
+        if (fi.nervous && !fi.down && fi.x > 0 && fi.x < W && chance(dt * 0.4)) {
+          this.wsplash(fi.x + rand(-18, 18), fi.y + rand(-14, 14), 5, { min: 40, max: 110, life: 0.35, sMin: 0.9, sMax: 1.5, color: '#cfe0ea' });
+          if (!this.taught.has('nervous') && fi.x > 80 && fi.x < W - 80 && this.t > 4) { this.taught.add('nervous'); this.fl.add(fi.x, fi.y - 26, 'Bait spraying: something under it', '#cfe8ff', 17); }
+        }
       }
       fi.y = clamp(fi.y, 100, Game.H - 24);
       const tgt = this.fishVis(fi, bx);
@@ -663,16 +739,14 @@ class TrollScene extends SessionBase {
     this.drawHud(ctx, W, H);
     if (this.paused) this.drawPause(ctx);
   }
+  // the sun's sheen on the water, fixed on screen (upper right), only as big as it needs to be
   overlay(W, H) {
     if (this.ov && this.ovW === W) return this.ov;
-    const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
-    const sx = W * 0.8, sy = H * 0.26;
-    let gr = g.createRadialGradient(sx, sy, 10, sx, sy, W * 0.45);
+    const w = Math.round(W * 0.62), h = Math.round(H * 0.8), cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const g = cv.getContext('2d'), sx = W * 0.8 - (W - w), sy = H * 0.26, r = Math.min(W * 0.45, w);
+    const gr = g.createRadialGradient(sx, sy, 10, sx, sy, r);
     gr.addColorStop(0, `rgba(255,244,214,${this.glass ? 0.2 : 0.12})`); gr.addColorStop(0.45, 'rgba(255,244,214,0.04)'); gr.addColorStop(1, 'rgba(255,244,214,0)');
-    g.fillStyle = gr; g.fillRect(0, 0, W, H);
-    gr = g.createRadialGradient(W * 0.46, H * 0.56, H * 0.3, W * 0.46, H * 0.56, W * 0.78);
-    gr.addColorStop(0, 'rgba(0,8,34,0)'); gr.addColorStop(1, 'rgba(0,8,34,0.34)');
-    g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
     this.ov = cv; this.ovW = W; return cv;
   }
   drawSea(ctx, W, H, t) {
@@ -683,7 +757,7 @@ class TrollScene extends SessionBase {
     ctx.globalAlpha = this.glass ? 0.55 : 0.85;
     for (const c of this.clouds) ctx.drawImage(cs, c.x, c.y - 130 * c.s, 440 * c.s, 260 * c.s);
     ctx.globalAlpha = 1;
-    ctx.drawImage(this.overlay(W, H), 0, 0);
+    const ov = this.overlay(W, H); ctx.drawImage(ov, W - ov.width, 0);
   }
   drawCrests(ctx) {
     const base = this.glass ? 0.11 : this.breezy ? 0.3 : 0.22;
@@ -789,20 +863,18 @@ class TrollScene extends SessionBase {
     const a = fi.alpha; if (a < 0.02 || fi.x < -120 || fi.x > Game.W + 120) return;
     const lk = TROLL_LOOK[fi.key] || TROLL_LOOK.mahi, L = fi.len, spd = fi.state === 'chase' ? 20 : 7;
     ctx.save(); ctx.translate(fi.x, fi.y); ctx.rotate(fi.hd);
-    if (fi.lit < 0.98) { ctx.globalAlpha = a * (1 - fi.lit); drawFishTop(ctx, L, lk.shade, fi.t, { speed: spd, flat: true }); }
+    if (fi.lit < 0.98) { ctx.globalAlpha = a * (1 - fi.lit); trollFishTop(ctx, fi.key, L, lk, fi.t, { speed: spd }); }
     if (fi.lit > 0.02) {
-      const k = a * fi.lit;
-      // pushing water as it lights up and charges
-      if (fi.state === 'chase') { ctx.globalAlpha = k * 0.5; ctx.strokeStyle = '#e8f8ff'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(L * 0.55, 0); ctx.quadraticCurveTo(L * 0.2, -L * 0.2, -L * 0.25, -L * 0.34); ctx.moveTo(L * 0.55, 0); ctx.quadraticCurveTo(L * 0.2, L * 0.2, -L * 0.25, L * 0.34); ctx.stroke(); }
+      const k = a * fi.lit, W = L * lk.w;
+      // lit up: a glow in the water around it and the push of water off its head
+      ctx.globalAlpha = k * 0.22; ctx.fillStyle = fi.key === 'mahi' ? '#8ff0c8' : '#9fdcff'; ell(ctx, 0, 0, L * 0.62, W * 1.5 + 6); ctx.fill();
+      if (fi.state === 'chase') { ctx.globalAlpha = k * 0.5; ctx.strokeStyle = '#e8f8ff'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(L * 0.55, 0); ctx.quadraticCurveTo(L * 0.2, -W * 0.9, -L * 0.25, -W * 1.5 - 4); ctx.moveTo(L * 0.55, 0); ctx.quadraticCurveTo(L * 0.2, W * 0.9, -L * 0.25, W * 1.5 + 4); ctx.stroke(); }
       ctx.globalAlpha = k;
-      if (fi.key === 'sailfish') { // sail flopped open, lit up purple
-        ctx.fillStyle = 'rgba(74,62,200,0.7)'; ctx.beginPath(); ctx.moveTo(L * 0.32, -L * 0.03); ctx.quadraticCurveTo(L * 0.05, -L * 0.36, -L * 0.22, -L * 0.05); ctx.closePath(); ctx.fill();
+      if (fi.key === 'sailfish') { // sail flopped open
+        ctx.fillStyle = 'rgba(74,62,200,0.7)'; ctx.beginPath(); ctx.moveTo(L * 0.32, -W * 0.15); ctx.quadraticCurveTo(L * 0.05, -L * 0.36, -L * 0.22, -W * 0.25); ctx.closePath(); ctx.fill();
         ctx.fillStyle = 'rgba(140,200,255,0.8)'; for (let i = 0; i < 4; i++) { ell(ctx, L * (0.2 - i * 0.1), -L * (0.12 + 0.03 * Math.sin(i)), 1.6, 1.6); ctx.fill(); }
       }
-      drawFishTop(ctx, L, lk.lit, fi.t, { speed: spd });
-      if (fi.key === 'sailfish' || fi.key === 'bluemarlin') { ctx.strokeStyle = lk.lit.back; ctx.lineWidth = Math.max(1.5, L * 0.025); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(L * 0.48, 0); ctx.lineTo(L * 0.78, 0); ctx.stroke(); }
-      if (fi.key === 'wahoo') { ctx.strokeStyle = 'rgba(14,30,70,0.7)'; ctx.lineWidth = Math.max(1, L * 0.018); ctx.beginPath(); for (let i = 0; i < 7; i++) { const x = L * (0.3 - i * 0.085); ctx.moveTo(x, -L * 0.05); ctx.lineTo(x - L * 0.02, L * 0.05); } ctx.stroke(); }
-      if (fi.key === 'mahi') { ctx.fillStyle = 'rgba(30,120,230,0.85)'; for (let i = 0; i < 5; i++) { ell(ctx, L * (0.25 - i * 0.12), (i % 2 ? 1 : -1) * L * 0.04, 1.4, 1.4); ctx.fill(); } }
+      trollFishTop(ctx, fi.key, L, lk, fi.t, { speed: spd, lit: true });
     }
     ctx.restore();
   }

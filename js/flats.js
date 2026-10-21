@@ -20,11 +20,11 @@ const FLATS_WEIGHT = {
 };
 // per-spot water: how clear it is, how much of a shadow a fish throws, the light net on the bottom
 const FLATS_KIND = {
-  bay: { clarity: 1, shadow: 1, caustic: 0.09, mud: '#d8d0ae', shadeCol: '#1b4842', critters: ['ray', 'shark', 'cuda'],
+  bay: { clarity: 1, shadow: 1, caustic: 0.09, mud: '#dfe2d4', shadeCol: '#1b4842', critters: ['ray', 'shark', 'cuda'],
     hint: 'Look for tails and nervous water. I’ll call ’em by the clock.' },
-  bridge: { clarity: 0.6, shadow: 0.3, caustic: 0.045, mud: '#cfd2b4', shadeCol: '#0b2a2a', critters: ['ray', 'cuda', 'turtle'],
+  bridge: { clarity: 0.6, shadow: 0.3, caustic: 0, mud: '#cfd2b4', shadeCol: '#0b2a2a', critters: ['ray', 'cuda', 'turtle'],
     hint: 'Tide’s ripping. Cast up-current of them and let it swing.' },
-  glades: { clarity: 0.55, shadow: 0.35, caustic: 0, mud: '#8c7650', shadeCol: '#191d12', critters: ['ray', 'manatee', 'ray'],
+  glades: { clarity: 0.55, shadow: 0.35, caustic: 0, mud: '#b9a97e', shadeCol: '#191d12', critters: ['ray', 'manatee', 'ray'],
     hint: 'Snook sit tight to the roots. Reds and drum tail on the mud.' }
 };
 const FL_C = {
@@ -83,7 +83,12 @@ class FlatsScene extends SessionBase {
     SFX.setAmbient(0.6, false); Music.play('boat');
     Game.toast(this.spotName, { color: PAL.coral, size: 46, y: 200, sub: 'Press and hold to aim. Release to cast.' });
   }
-  exit() { SFX.setAmbient(0); }
+  exit() {
+    SFX.setAmbient(0);
+    // the flat is a big bitmap: hand its memory back now (mobile Safari caps total canvas memory)
+    for (const c of [this.terrain, this.over]) if (c) { c.width = 1; c.height = 1; }
+    this.causticPat = null;
+  }
   resize() { this.clampCam(); }
   clampCam() { const W = Game.W; this.bx = clamp(this.bx, W / 2, this.WW - W / 2); this.camX = this.bx - W / 2; }
   skiff() { return { x: this.bx, y: Game.H - 70 }; }
@@ -123,8 +128,9 @@ class FlatsScene extends SessionBase {
       for (let i = 0; i < n; i++) { const x = i * 4; so[i] = 410 + (flFbm(x * 0.003, 2.2, seed) - 0.5) * 190 + Math.sin(x * 0.004 + seed) * 18; }
       return;
     }
-    const glades = V === 'glades', base = glades ? 100 : 66, amp = glades ? 120 : 70;
-    for (let i = 0; i < n; i++) { const x = i * 4; sh[i] = clamp(base + (flFbm(x * 0.0032, 0.7, seed) - 0.5) * amp + Math.sin(x * 0.0019 + seed) * (glades ? 16 : 9), glades ? 42 : 34, glades ? 165 : 112); }
+    // the bank stays low enough on screen that the root line shows under the HUD
+    const glades = V === 'glades', base = glades ? 102 : 80, amp = glades ? 120 : 70;
+    for (let i = 0; i < n; i++) { const x = i * 4; sh[i] = clamp(base + (flFbm(x * 0.0032, 0.7, seed) - 0.5) * amp + Math.sin(x * 0.0019 + seed) * (glades ? 16 : 9), glades ? 56 : 54, glades ? 165 : 122); }
     if (glades) {
       // a creek mouth breaks the mangrove shoreline; a mangrove island sits out on the other side
       const cx = Math.round(WW * (rng() < 0.5 ? 0.3 + rng() * 0.1 : 0.6 + rng() * 0.1)), cw = 44;
@@ -154,11 +160,14 @@ class FlatsScene extends SessionBase {
     const V = this.variant, top = this.shoreAt(x), n1 = flFbm(x * 0.006, y * 0.008, seed);
     let d, kind = 0, c;
     if (V === 'bridge') {
-      d = 0.32 + 0.62 * (1 - flStep(110, 470, y)) + (n1 - 0.5) * 0.24;
+      d = 0.32 + 0.62 * (1 - flStep(110, 470, y)) + (n1 - 0.5) * 0.34;
+      const i = Math.round((x - 70) / 150), sx = x - (70 + i * 150), sy = y - 175;   // scour holes the tide digs below each bent
+      d += 0.16 * Math.exp(-(sx * sx) / 2200 - (sy * sy) / 5200);
       const sh = flStep(-40, 50, y - this.arrAt(this.shoal, x)); d = clamp(d - 0.32 * sh, 0, 1);
       c = d > 0.5 ? flMix(FL_C.bMid, FL_C.bDeep, (d - 0.5) / 0.5) : flMix(FL_C.bShallow, FL_C.bMid, d / 0.5);
-      kind = sh * flStep(0.42, 0.62, flFbm(x * 0.012, y * 0.02, seed + 9));
-      c = flMix(c, FL_C.bSand, kind * 0.55);
+      // sand waves laid crosswise to the tide on the shoal, grass in the troughs
+      kind = sh * flStep(0.38, 0.62, flNoise(x * 0.012, y * 0.05, seed + 9) * 0.7 + flNoise(x * 0.04, y * 0.08, seed + 2) * 0.3);
+      c = flMix(c, FL_C.bSand, kind * 0.6);
       const st = 0.93 + 0.14 * flNoise(x * 0.05, y * 0.0055, seed + 5);   // long streaks laid down by the tide
       c = [c[0] * st, c[1] * st, c[2] * st];
     } else if (V === 'glades') {
@@ -257,10 +266,9 @@ class FlatsScene extends SessionBase {
       for (let i = 0; i < 90; i++) { const a = r() * TAU, q = Math.sqrt(r()), x = b.x + Math.cos(a) * q * b.rx * 0.9, y = b.y + Math.sin(a) * q * b.ry * 0.8; g.moveTo(x, y); g.quadraticCurveTo(x + 5, y - 2.5, x + 11, y); }
       g.stroke();
     }
-    for (const p of this.holes) {   // potholes: bright sand bowls in the grass
-      const rg = g.createRadialGradient(p.x - p.r * 0.15, p.y - p.r * 0.15, 1, p.x, p.y, p.r * 1.3);
-      rg.addColorStop(0, 'rgba(236,248,232,0.5)'); rg.addColorStop(0.6, 'rgba(222,242,228,0.2)'); rg.addColorStop(0.82, 'rgba(30,84,58,0.16)'); rg.addColorStop(1, 'rgba(30,84,58,0)');
-      g.fillStyle = rg; ell(g, p.x, p.y, p.r * 1.3, p.r * 1.08); g.fill();
+    for (const p of this.holes) {   // potholes: sand bowls in the grass, a little shell hash on the bottom
+      g.fillStyle = 'rgba(30,80,56,0.12)'; ell(g, p.x + 2, p.y - p.r * 0.35, p.r * 0.9, p.r * 0.32); g.fill();
+      for (let i = 0; i < 7; i++) { const a = r() * TAU, q = Math.sqrt(r()) * p.r * 0.7; g.fillStyle = r() < 0.5 ? 'rgba(255,255,250,0.5)' : 'rgba(120,110,80,0.3)'; ell(g, p.x + Math.cos(a) * q, p.y + Math.sin(a) * q * 0.8, 1.2, 0.9); g.fill(); }
     }
     g.lineCap = 'round'; g.lineWidth = 1.1;   // turtle grass blades
     for (const col of ['rgba(36,96,64,0.34)', 'rgba(58,122,82,0.3)', 'rgba(28,82,58,0.28)']) {
@@ -275,7 +283,7 @@ class FlatsScene extends SessionBase {
     for (let i = 0; i < 900; i++) { const x = r() * WW, y = r() * H; if (y < this.shoreAt(x) + 16 || this.kindAt(x, y) > 0.25 || this.depthAt(x, y) > 0.42) continue; g.moveTo(x, y); g.quadraticCurveTo(x + 6, y - 2.5, x + 12, y); }
     g.stroke();
     // the channel's drop-off: a soft dark lip with a pale shoulder on both edges
-    for (const side of [-1, 1]) for (const [w, col, k] of [[6, 'rgba(18,70,92,0.16)', 0.95], [2, 'rgba(255,255,255,0.14)', 1.22]]) {
+    for (const side of [-1, 1]) for (const [w, col, k] of [[6, 'rgba(18,70,92,0.14)', 0.95], [2, 'rgba(255,255,255,0.09)', 1.22]]) {
       g.strokeStyle = col; g.lineWidth = w; g.beginPath();
       for (let x = -10; x <= WW + 10; x += 8) { const y = this.arrAt(this.chan, x) + side * this.arrAt(this.chanWd, x) * k; x < 0 ? g.moveTo(x, y) : g.lineTo(x, y); }
       g.stroke();
@@ -359,7 +367,7 @@ class FlatsScene extends SessionBase {
   paintBridge(g, rng) {
     const WW = this.WW, H = Game.H, r = () => rng();
     g.strokeStyle = 'rgba(232,242,222,0.16)'; g.lineWidth = 1.6; g.lineCap = 'round'; g.beginPath();   // sand waves across the tide
-    for (let i = 0; i < 800; i++) { const x = r() * WW, y = r() * H; if (y < this.arrAt(this.shoal, x) - 10) continue; const l = 10 + r() * 18; g.moveTo(x, y); g.quadraticCurveTo(x + l / 2, y + 2.5, x + l, y); }
+    for (let i = 0; i < 800; i++) { const x = r() * WW, y = r() * H; if (y < this.arrAt(this.shoal, x) - 10 || this.kindAt(x, y) < 0.35) continue; const l = 10 + r() * 18; g.moveTo(x, y); g.quadraticCurveTo(x + l / 2, y + 2.5, x + l, y); }
     g.stroke();
     g.strokeStyle = 'rgba(40,96,66,0.34)'; g.lineWidth = 1.1; g.beginPath();   // grass clumps on the shoal
     for (let i = 0; i < 1600; i++) { const x = r() * WW, y = r() * H; if (y < this.arrAt(this.shoal, x) + 20 || this.kindAt(x, y) > 0.4) continue; for (let b = 0; b < 3; b++) { const a = Math.PI / 2 + (r() - 0.5) * 1.2, l = 2 + r() * 4; g.moveTo(x + b * 1.5, y); g.lineTo(x + b * 1.5 + Math.cos(a) * l, y + Math.sin(a) * l); } }
@@ -466,7 +474,8 @@ class FlatsScene extends SessionBase {
   // where a fresh fish shows up and what it is doing, by species and by spot
   plan(key, near) {
     const V = this.variant, W = Game.W, H = Game.H, WW = this.WW, s = this.skiff();
-    let x = clamp(near || chance(0.7) ? rand(this.camX - 240, this.camX + W + 240) : rand(60, WW - 60), 60, WW - 60);
+    // the first fish of a turn shows up in view; later ones mostly near the skiff, some further down the flat
+    let x = clamp(near ? rand(this.camX + 70, this.camX + W - 70) : chance(0.7) ? rand(this.camX - 240, this.camX + W + 240) : rand(60, WW - 60), 60, WW - 60);
     if (Math.abs(x - s.x) < 220) x = s.x + (x < s.x ? -1 : 1) * rand(220, 320);
     if (this.creek && Math.abs(x - this.creek.x) < 110) x = this.creek.x + (x < this.creek.x ? -1 : 1) * rand(120, 200);   // not up the creek
     x = clamp(x, 60, WW - 60);
@@ -835,12 +844,12 @@ class FlatsScene extends SessionBase {
     if (this.aim) this.aim.t += dt;
     this.snagT = Math.max(0, this.snagT - dt);
     if (!this.introSaid && this.t > 1.6) { this.introSaid = true; this.say(this.K.hint, 4.2); }
-    // scarce fish: one to three about at a time, a new one every five to ten seconds
+    // scarce fish: one to three about at a time, a new one every six to ten seconds
     this.spawnT -= dt;
     if (this.spawnT <= 0) {
       const live = this.liveUnits();
-      if (live < (this.t < 20 ? 2 : 3)) { this.spawnFish(this.spawns < 1); this.spawns++; }
-      this.spawnT = live === 0 ? rand(3, 5) : rand(5.5, 9.5);
+      if (live < (this.t < 25 ? 2 : 3)) { this.spawnFish(this.spawns < 1); this.spawns++; }
+      this.spawnT = live === 0 ? rand(3, 5) : rand(6.5, 10.5);
     }
     this.critT -= dt;
     if (this.critT <= 0) { if (this.critters.length < 1) this.spawnCritter(); this.critT = rand(14, 24); }
@@ -857,7 +866,7 @@ class FlatsScene extends SessionBase {
       c.t += dt; c.life -= dt; c.alpha = c.life < 0 ? c.alpha - dt * 0.4 : Math.min(1, c.alpha + dt * 0.4);
       if (c.kind === 'cuda') c.hd += Math.sin(c.t * 0.4) * 0.002; else if (Math.abs(Math.sin(c.hd)) > 0.3 || chance(dt * 0.3)) c.hd += rand(-0.15, 0.15) * dt * 4;
       const cu = this.current(c.x, c.y);
-      c.x += (Math.cos(c.hd) * c.speed + cu.x * 0.3) * dt; c.y += (Math.sin(c.hd) * c.speed + cu.y * 0.2) * dt;
+      c.x += (Math.cos(c.hd) * c.speed + cu.x * 0.3) * dt; c.y = clamp(c.y + (Math.sin(c.hd) * c.speed + cu.y * 0.2) * dt, Math.max(this.topY(clamp(c.x, 0, this.WW)) + 50, 120), Game.H - 170);
       if (c.kind === 'manatee' && chance(dt * 0.7)) this.parts.add({ kind: 'ring', x: c.x - Math.cos(c.hd) * c.len * 0.5, y: c.y - Math.sin(c.hd) * c.len * 0.5, size: 8, grow: 16, life: 2.2, color: 'rgba(255,255,255,0.22)', flat: 0.6, lw: 3 });
     }
     this.critters = this.critters.filter((c) => (c.life > 0 || c.alpha > 0) && c.x > this.camX - 400 && c.x < this.camX + W + 400);
@@ -902,7 +911,7 @@ class FlatsScene extends SessionBase {
     if (best && this.callCool <= 0 && (!this.callout || this.callout.t < 0.8) && !busy) this.callFish(best, bestFar);
     else if (this.quietT > 14 && this.poleDir === 0 && this.callCool <= 0 && !this.callout) {
       this.quietT = 0;
-      const dir = this.bx < this.WW / 2 ? 'right' : 'left';
+      const dir = this.pointTo ? (this.pointTo.f.x < this.bx ? 'left' : 'right') : this.bx < this.WW / 2 ? 'right' : 'left';
       this.say(pick([`Nothing moving here. Let’s pole ${dir} down the flat.`, `Quiet spot. Push us ${dir} with the arrows.`, `Water’s dead here. Try ${dir}.`]), 3.6);
     }
   }
@@ -944,8 +953,8 @@ class FlatsScene extends SessionBase {
     if (this.variant === 'bridge') this.drawFlow(ctx, cam, t); else if (this.variant === 'glades') this.drawDrift(ctx, cam, t);
     this.drawRipples(ctx, cam, t);
     this.drawPuffs(ctx);
-    for (const c of this.critters) this.drawCritter(ctx, c, t);
-    for (const f of this.fishList) this.drawFlatsFish(ctx, f, t);
+    for (const c of this.critters) if (c.x > cam - 120 && c.x < cam + W + 120) this.drawCritter(ctx, c, t);
+    for (const f of this.fishList) if (f.x > cam - 100 && f.x < cam + W + 100) this.drawFlatsFish(ctx, f, t);
     this.parts.draw(ctx);
     ctx.restore();
     this.drawGlare(ctx, t);
@@ -980,7 +989,7 @@ class FlatsScene extends SessionBase {
   drawCaustics(ctx, cam, t) {
     if (!this.causticImg) return;
     if (!this.causticPat) this.causticPat = ctx.createPattern(this.causticImg, 'repeat');
-    const W = Game.W, H = Game.H, P = 128, wid = this.weather.id, A = this.K.caustic * (wid === 'glass' ? 1.35 : wid === 'breezy' ? 0.6 : 1);
+    const W = Game.W, H = Game.H, P = 128, wid = this.weather.id, A = this.K.caustic * (wid === 'glass' ? 0.7 : wid === 'breezy' ? 0.75 : 1);
     for (const [sc, vx, vy, a] of [[1.45, 7, 4, 1], [1.95, -5, 7, 0.8]]) {
       ctx.save(); ctx.globalAlpha = A * a; ctx.scale(sc, sc);
       const ox = ((-cam / sc + t * vx) % P) - P, oy = ((t * vy) % P) - P;
@@ -1007,15 +1016,17 @@ class FlatsScene extends SessionBase {
   drawFlow(ctx, cam, t) {
     // long seams of tide running down-current; the dashes slide along them with the water
     const W = Game.W, H = Game.H, TW = 300;
-    ctx.lineCap = 'round'; ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(225,248,238,0.15)';
+    ctx.lineCap = 'round';
     for (let grp = 0; grp < 2; grp++) {
-      ctx.setLineDash(grp ? [10, 26] : [16, 22]); ctx.lineDashOffset = -t * FL_TIDE * (grp ? 1.2 : 1.6); ctx.beginPath();
-      for (let ti = Math.floor(cam / TW); ti * TW < cam + W; ti++) for (let i = grp; i < 4; i += 2) {
-        let x = ti * TW + (i + flHash(i, 41, ti)) * TW / 4, y = 108 + flHash(i, 42, ti) * 40;
+      ctx.lineWidth = grp ? 1.4 : 2.2; ctx.strokeStyle = grp ? 'rgba(225,248,238,0.13)' : 'rgba(225,248,238,0.1)';
+      ctx.setLineDash(grp ? [26, 46] : [54, 70]); ctx.lineDashOffset = -t * FL_TIDE * (grp ? 1.25 : 1.6); ctx.beginPath();
+      for (let ti = Math.floor(cam / TW); ti * TW < cam + W; ti++) for (let i = grp; i < 3; i += 2) {
+        let x = ti * TW + (i + flHash(i, 41, ti)) * TW / 3, y = 108 + flHash(i, 42, ti) * 60;
+        const ph = flHash(i, 44, ti) * TAU, amp = 6 + flHash(i, 45, ti) * 8;
         ctx.moveTo(x, y);
         while (y < H) {
-          const c = this.current(x, y), ny = y + 40, nx = x + c.x * 1.6 + Math.sin(y * 0.021 + ti * 3 + i) * 6;
-          ctx.quadraticCurveTo(x + Math.sin(y * 0.03 + i) * 4, y + 20, nx, ny); x = nx; y = ny;
+          const c = this.current(x, y), ny = y + 36, nx = x + c.x * 1.5 + Math.sin(y * 0.026 + ph) * amp * 0.5;
+          ctx.quadraticCurveTo(x + Math.sin(y * 0.026 + ph + 0.8) * amp, y + 18, nx, ny); x = nx; y = ny;
         }
       }
       ctx.stroke();

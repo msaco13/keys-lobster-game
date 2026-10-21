@@ -12,7 +12,8 @@ const BOT = {
   SURF: 146,          // screen y of the surface
   STRIP: 3400,        // world width of the bottom you can fish (px)
   XMIN: 300, XMAX: 3120,  // how far the boat can go along it
-  PING: 1 / 15, COLS: 150,  // fish finder: pings per second, columns of history on screen
+  FLOOR: 468,        // screen y of the sand at the spot's base depth
+  PING: 1 / 10, COLS: 160,  // fish finder: seconds per ping, columns of history on screen
   NOTICE: 130,        // how far sideways (px) a fish will come for a bait
   LEG: 240, SPEED: 190  // one tap of Move idles the boat this far, at up to this speed
 };
@@ -42,7 +43,7 @@ const BOT_SP = {
    (re: seconds between arrivals). Everything in between is quiet water. */
 const BOT_LAYOUT = {
   ledge: {
-    base: 96, range: 110, amb: 48, track: [68, 100], fog: [0.18, 0.46, 0.62],
+    base: 96, range: 110, amb: 48, track: [68, 100], fog: [0.14, 0.36, 0.5], bite: 1,
     spots: [
       { name: 'Reef terrace', x: 540, r: 170, cap: 3, re: [22, 34], sp: { whitegrunt: 4, lane: 3, yellowtail: 2.6, hogfish: 1.4, trigger: 1.2, mangrove: 1 } },
       { name: 'Ledge pockets', x: 1090, r: 125, cap: 3, re: [24, 38], sp: { redgrouper: 2.4, blackgrouper: 1, mutton: 1.4, mangrove: 1.8, goliath: 0.28, amberjack: 0.6 } },
@@ -54,12 +55,12 @@ const BOT_LAYOUT = {
     schools: [{ x: 520, ft: 58, w: 80, h: 8, n: 30 }, { x: 1975, ft: 72, w: 60, h: 6, n: 22 }, { x: 1530, ft: 60, w: 70, h: 7, n: 24 }]
   },
   wreck: {
-    base: 110, range: 125, amb: 44, track: [56, 114], fog: [0.24, 0.56, 0.72],
+    base: 110, range: 125, amb: 44, track: [56, 114], fog: [0.2, 0.46, 0.62], bite: 1.3,   // wreck fish are fewer but hungrier
     spots: [
-      { name: 'Debris field', x: 930, r: 190, cap: 2, re: [26, 40], sp: { mutton: 2, blackgrouper: 1, cubera: 0.45, barracuda: 0.5 } },
+      { name: 'Debris field', x: 930, r: 190, cap: 2, re: [26, 40], sp: { mutton: 2, blackgrouper: 1, cubera: 0.25, barracuda: 0.5 } },
       { name: 'The bow', x: 1480, r: 140, cap: 3, re: [22, 34], sp: { amberjack: 3, cobia: 1.1, barracuda: 0.9, pompano: 0.7 } },
-      { name: 'Midships break', x: 1905, r: 110, cap: 2, re: [30, 46], sp: { goliath: 0.8, blackgrouper: 1.4, cubera: 0.7, mutton: 0.9 } },
-      { name: 'The stern', x: 2260, r: 150, cap: 3, re: [22, 34], sp: { amberjack: 2.4, pompano: 1.4, cubera: 0.5, blackgrouper: 0.9, cobia: 0.7 } },
+      { name: 'Midships break', x: 1905, r: 110, cap: 2, re: [30, 46], sp: { goliath: 0.8, blackgrouper: 1.4, cubera: 0.4, mutton: 0.9 } },
+      { name: 'The stern', x: 2260, r: 150, cap: 3, re: [22, 34], sp: { amberjack: 2.4, pompano: 1.4, cubera: 0.25, blackgrouper: 0.9, cobia: 0.7 } },
       { name: 'Sand edge', x: 2930, r: 150, cap: 1, re: [30, 50], sp: { cobia: 1, mutton: 1.4, barracuda: 0.8 } }
     ],
     roam: { amberjack: 1, cobia: 0.8, barracuda: 1 },
@@ -151,13 +152,13 @@ class BottomScene extends SessionBase {
     const spot = SPOTS[this.spot] || SPOTS.bottom;
     this.variant = spot.variant === 'wreck' ? 'wreck' : 'ledge';
     this.L = BOT_LAYOUT[this.variant];
-    this.ppf = (540 - 42 - BOT.SURF) / this.L.base;   // the logical canvas is always 540 tall
+    this.ppf = (BOT.FLOOR - BOT.SURF) / this.L.base;   // the logical canvas is always 540 tall
     const list = (spot.species || []).filter((k) => BOT_SP[k] && SPECIES[k]);
     this.species = list.length ? list : Object.keys(BOT_SP).filter((k) => SPECIES[k]);
     this.baitType = this.variant === 'wreck' ? 'pinfish' : 'squid';
     this.baitOn = true; this.baitDepth = 0; this.targetDepth = this.variant === 'wreck' ? 78 : 62; this.rebaitT = 0; this.reeling = false; this.settled = false;
     this.fish = []; this.chumT = 0; this.chumCd = 0; this.slickQ = []; this.slickT = 0; this.chum = new Particles(); this.wake = new Particles();
-    this.drag = null; this.twitch = 0; this.slam = 0; this.move = null; this.moveV = 0; this.engOn = false;
+    this.drag = null; this.twitch = 0; this.slam = 0; this.move = null; this.moveV = 0; this.engOn = false; this.swingK = 1;
     this.alarmT = 0; this.beepT = 0; this.quietT = 0; this.sonar = []; this.pingT = 0; this.sonarRect = null;
     this.track = new Array(Math.ceil(BOT.STRIP / 25) + 2).fill(null); this.wps = []; this.hookX = 0;
     this.others = (Trip.cur && Trip.cur.crew ? Trip.cur.crew : CHAR_ORDER).filter((c) => c !== this.ch).slice(0, 2);
@@ -174,11 +175,10 @@ class BottomScene extends SessionBase {
     for (const k of this.species) if (!held.has(k) && !this.roamTable.some(([r]) => r === k)) this.roamTable.push([k, 0.5]);
     this.roamT = rand(14, 26);
     this.schools = this.L.schools.map((s) => Object.assign({}, s, { ph: rand(0, 10), pts: Array.from({ length: s.n }, () => [rand(-1, 1), rand(-1, 1), rand(0.5, 1.4), rand(0, TAU)]) }));
-    // anchor up in quiet water near some structure: find the fish yourself
-    const starts = this.hot.filter((h) => h.cap > 1 && h.x > BOT.XMIN + 150 && h.x < BOT.XMAX - 150);
-    const h0 = starts.length ? pick(starts) : { x: 1600, r: 140 };
-    const side = h0.x > BOT.STRIP / 2 ? -1 : 1;
-    this.bx = clamp(h0.x + side * rand(h0.r + 30, h0.r + 110), BOT.XMIN, BOT.XMAX);
+    // anchor up in quiet water, a move or two from some structure: finding the fish is up to you
+    const gap = (x) => this.hot.reduce((a, h) => Math.min(a, Math.abs(x - h.x) - h.r), 1e9);
+    const quiet = []; for (let x = BOT.XMIN; x <= BOT.XMAX; x += 10) { const g = gap(x); if (g >= 110 && g <= 280) quiet.push(x); }
+    this.bx = quiet.length ? pick(quiet) : 1600;
     this.cam = this.bx - this.baitSX();
     this.initSnow();
     for (const h of this.hot) { const n = randi(h.cap > 1 ? 1 : 0, h.cap); for (let i = 0; i < n; i++) this.spawnFish(h, false); }
@@ -199,7 +199,9 @@ class BottomScene extends SessionBase {
   yOf(ft) { return BOT.SURF + ft * this.ppf; }
   ftOf(y) { return (y - BOT.SURF) / this.ppf; }
   pxPerFt() { return this.ppf; }
-  baitX() { return this.bx + Math.sin(this.t * 0.4) * 5 + this.weather.drift * 10; }
+  // the boat swings slowly on its anchor line, which sweeps the fish finder's cone back and forth
+  swing() { return Math.sin(this.t * 0.42) * (14 + 16 * this.weather.drift) * this.swingK; }
+  baitX() { return this.bx + this.swing() + Math.sin(this.t * 0.9) * 3 + this.weather.drift * 8; }
   maxDepth() { return this.bottomFt(this.baitX()) - 0.8; }
   ambient(ft) { return clamp((1.25 - ft / this.L.amb) * (this.weather.vis || 1), 0, 1); }
 
@@ -208,9 +210,9 @@ class BottomScene extends SessionBase {
   rockFt(x) {
     const sand = this.sandFt(x);
     if (this.variant === 'wreck') return sand;
-    if (x < 1112) { const ter = 78.5 + Math.sin(x * 0.011) * 2.2 + Math.sin(x * 0.029 + 1) * 1.2; return lerp(ter, sand, btSmooth(1058, 1104, x)); }
+    if (x < 1112) { const ter = 78.5 + Math.sin(x * 0.011) * 2.2 + Math.sin(x * 0.029 + 1) * 1.2; return lerp(ter, sand, btSmooth(1074, 1102, x)); }
     if (x > 1800 && x < 2100) { const u = (x - 1950) / 140; return sand - 9 * Math.pow(Math.max(0, 1 - u * u), 0.75); }
-    if (x > 2675 && x < 3210) { const top = 88.6 + Math.sin(x * 0.02) * 1.1; return lerp(sand, top, btSmooth(2684, 2708, x) * (1 - btSmooth(3070, 3205, x))); }
+    if (x > 2675 && x < 3210) { const top = 88.6 + Math.sin(x * 0.02) * 1.1; return lerp(sand, top, btSmooth(2686, 2704, x) * (1 - btSmooth(3070, 3205, x))); }
     return sand;
   }
   bottomFt(x) {
@@ -340,7 +342,7 @@ class BottomScene extends SessionBase {
           if (dft < sp.nt) {
             const pref = this.baitType === 'squid' ? sp.squid : sp.pin;
             const acc = 1 - 0.65 * (dft / sp.nt) * (dft / sp.nt);
-            const k = pref * acc * 0.5 * this.perks.bite * (this.settled ? 1 : 0.4) * (this.chumT > 0 ? 1.35 : 1);
+            const k = pref * acc * 0.5 * this.L.bite * this.perks.bite * (this.settled ? 1 : 0.4) * (this.chumT > 0 ? 1.35 : 1);
             if (chance(k * dt)) { f.state = 'approach'; taken = true; }
           }
         }
@@ -349,6 +351,8 @@ class BottomScene extends SessionBase {
         f.x += Math.cos(ang) * v * dt; f.y += Math.sin(ang) * v * dt; if (Math.abs(Math.cos(ang)) > 0.2) f.face = Math.cos(ang) >= 0 ? 1 : -1;
         if (!this.baitOn || this.move || this.reeling) this.spook(f);
         else if (dist(f.x, f.y, bx, by) < 14) { f.state = 'nibble'; f.nib = SPECIES[f.key].crafty ? randi(2, 4) : randi(0, 2); f.timer = rand(0.45, 1.0) / this.perks.bite; }
+      } else if ((f.state === 'nibble' || f.state === 'bite') && (!this.baitOn || this.move || this.reeling)) {
+        this.spook(f);   // nothing left on the hook, or it's on its way up
       } else if (f.state === 'nibble') {
         f.x = approach(f.x, bx - f.face * f.len * 0.42, 6, dt); f.y = approach(f.y, by, 6, dt);
         f.timer -= dt;
@@ -376,21 +380,21 @@ class BottomScene extends SessionBase {
   schoolX(s) { return s.x + Math.sin(this.t * 0.11 + s.ph) * 36; }
   speck(s, p) { const t = this.t, cx = this.schoolX(s); return [cx + p[0] * s.w * 0.55 + Math.sin(t * p[2] + p[3]) * s.w * 0.4, s.ft + p[1] * s.h * 0.5 + Math.cos(t * p[2] * 0.7 + p[3]) * s.h * 0.35]; }
   ping() {
-    const cx = this.bx;
-    const bot = Math.min(this.bottomFt(cx - 26), this.bottomFt(cx), this.bottomFt(cx + 26));
+    const cx = this.bx + this.swing();
+    const bot = Math.min(this.bottomFt(cx - 8), this.bottomFt(cx), this.bottomFt(cx + 8));
     const col = { bot, hard: this.hardAt(cx), fish: [], cloud: [], noise: [], bait: -1, surf: [rand(0.5, 3.5), rand(0.5, 5)] };
     let alarm = false;
     for (const f of this.fish) {
       if (f.alpha < 0.2) { f.inCone = false; continue; }
       const ft = this.ftOf(f.y), cone = 26 + ft, u = (f.x - cx) / cone;
       if (Math.abs(u) > 1) { f.inCone = false; continue; }
-      const e = u * u;   // off to the side of the cone the echo comes back from further away: the classic arch
-      col.fish.push([ft + e * 3.4, (0.9 + f.len / 30) * (1 - e * 0.45), clamp((f.len - 22) / 92, 0.08, 1) * (1 - e * 0.35)]);
+      const e = u * u, str = clamp((f.len - 22) / 92, 0.08, 1);   // off to the side of the cone the echo comes back from further away: the classic arch
+      if (!(str < 0.3 && chance(0.22 + e * 0.3))) col.fish.push([ft + e * 4.5 + rand(-0.3, 0.3), (0.9 + f.len / 30) * (1 - e * 0.5) * rand(0.8, 1.1), str * (1 - e * 0.35)]);
       if (!f.inCone) { f.inCone = true; alarm = true; }
     }
     for (const s of this.schools) {
       if (Math.abs(this.schoolX(s) - cx) > s.w + 140) continue;
-      for (const p of s.pts) { const [px, pft] = this.speck(s, p), cone = 26 + pft, u = (px - cx) / cone; if (Math.abs(u) < 1 && col.cloud.length < 18) col.cloud.push(pft + u * u * 2); }
+      for (const p of s.pts) { const [px, pft] = this.speck(s, p), cone = 26 + pft, u = (px - cx) / cone; if (Math.abs(u) < 1 && col.cloud.length < 18 && chance(0.6)) col.cloud.push(pft + u * u * 2 + rand(-1.4, 1.4)); }
     }
     if (chance(0.35)) col.noise.push(rand(6, bot - 4));
     if (this.baitDepth > 1.5) col.bait = this.baitDepth;
@@ -429,7 +433,7 @@ class BottomScene extends SessionBase {
     if (!f || !this.baitOn) { if (fromKey) this.twitch = 0.2; return false; }
     if (f.state === 'bite') {
       this.fish = this.fish.filter((x) => x !== f);
-      this.baitOn = false; this.slam = 0; this.hookX = this.bx; this.drag = null;
+      this.baitOn = false; this.slam = 0; this.drag = null;
       this.startFight({ sp: f.key, weight: f.w, ctxType: 'reef', depth: Math.max(25, this.baitDepth) });
       return true;
     }
@@ -458,7 +462,9 @@ class BottomScene extends SessionBase {
     else { const up = ['amberjack', 'barracuda'].filter((k) => sp.includes(k)); if (up.length && chance(0.55)) this.slickQ.push({ key: pick(up), t: rand(4, 8) }); }
     Game.toast('Chum’s in the water', { size: 26, y: 140, color: '#fff', sub: sp.includes('yellowtail') ? 'Yellowtail come up into the slick' : 'Something big might come up for it' });
   }
+  startFight(opts) { this.hookX = this.bx; this.engine(0); super.startFight(opts); }
   onFightDone(r) {
+    for (const f of this.fish) if (f.state === 'approach' || f.state === 'nibble' || f.state === 'bite') this.spook(f);
     if (r && r.ok && r.catch) this.wps.push({ x: this.hookX, key: r.catch.key, big: sizeNorm(r.catch.key, r.catch.weight) > 0.5 || SPECIES[r.catch.key].rare });
     this.baitDepth = 0; this.reeling = false; this.rebaitT = 0.9; this.baitOn = false;
   }
@@ -468,27 +474,26 @@ class BottomScene extends SessionBase {
     if (this.child || this.paused || this.ended) return;
     const m = this.move;
     if (m) {
-      if (m.hold) { m.hold = false; return; }   // letting go of the button that started this leg
+      if (m.hold) { m.hold = false; return; }   // letting go of a held Move button: the hold already did the moving
       if (m.dir === dir) { if (m.phase !== 'down') m.want = Math.min(m.want + BOT.LEG, 2000); }
       else if (m.phase === 'go') m.want = Math.min(m.want, m.done + 30);
       return;
     }
     if ((dir < 0 && this.bx <= BOT.XMIN + 2) || (dir > 0 && this.bx >= BOT.XMAX - 2)) return;
     const f = this.activeFish(); if (f) this.spook(f);
-    this.move = { dir, phase: 'up', t: 0, done: 0, want: BOT.LEG, hold: !!fromHold };
+    this.move = { dir, phase: 'up', t: 0, done: 0, want: BOT.LEG, hold: !!fromHold, holdT: 0 };
     this.quietT = 0;
   }
-  moveHeld(dir) {
-    const a = UI.active, id = dir < 0 ? 'moveL' : 'moveR';
-    return Input.held(dir < 0 ? 'KeyA' : 'KeyD', dir < 0 ? 'ArrowLeft' : 'ArrowRight') || !!(a && a.inside && a.id === id && Input.pointers.has(a.pointer));
-  }
+  // a finger (or mouse button) held down on a Move button, or the key held down
+  ptrHeld(dir) { const a = UI.active; return !!(a && a.inside && a.id === (dir < 0 ? 'moveL' : 'moveR') && Input.pointers.has(a.pointer)); }
+  keyHeld(dir) { return Input.held(dir < 0 ? 'KeyA' : 'KeyD', dir < 0 ? 'ArrowLeft' : 'ArrowRight'); }
   engine(on, rpm = 0) { if (on) { SFX.setEngine(1, rpm); this.engOn = true; } else if (this.engOn) { SFX.setEngine(0); this.engOn = false; } }
   updateMove(dt) {
     const m = this.move;
     if (!m) {
       this.moveV = approach(this.moveV, 0, 6, dt); this.engine(0);
-      if (this.moveHeld(-1) && !Input.held('KeyA', 'ArrowLeft')) this.startMove(-1, true);   // a finger held down on Move
-      else if (this.moveHeld(1) && !Input.held('KeyD', 'ArrowRight')) this.startMove(1, true);
+      if (this.ptrHeld(-1)) this.startMove(-1, true);   // start on press, so holding Move feels immediate
+      else if (this.ptrHeld(1)) this.startMove(1, true);
       return;
     }
     m.t += dt;
@@ -496,14 +501,16 @@ class BottomScene extends SessionBase {
       this.engine(1, 0.12);
       if (m.t > 0.7 && this.baitDepth <= 0.5) { m.phase = 'go'; m.t = 0; }
     } else if (m.phase === 'go') {
-      if (this.moveHeld(m.dir)) m.want = Math.max(m.want, m.done + 50);
+      const ptr = this.ptrHeld(m.dir);
+      if (ptr) { m.holdT += dt; if (m.holdT > 0.25) m.hold = true; }   // a long press steers; a quick tap adds another leg
+      if (ptr || this.keyHeld(m.dir)) m.want = Math.max(m.want, m.done + 50);
       const left = m.want - m.done;
       this.moveV = approach(this.moveV, Math.min(BOT.SPEED, left * 3.2 + 30), 4, dt);
       const nx = clamp(this.bx + m.dir * Math.min(left, this.moveV * dt), BOT.XMIN, BOT.XMAX);
       const step = Math.abs(nx - this.bx); m.done += step; this.bx = nx;
       if (step < 1e-4 && left > 1) m.want = m.done;   // end of the strip
       this.engine(1, 0.22 + 0.4 * this.moveV / BOT.SPEED);
-      if (chance(dt * 30)) this.wake.add({ kind: 'bubble', x: this.bx - 168 - m.dir * 80 + rand(-8, 8), y: BOT.SURF + rand(8, 22), vx: -m.dir * rand(10, 40), vy: -rand(8, 26), life: rand(0.5, 1.1), size: rand(1.2, 3) });
+      if (chance(dt * 30)) this.wake.add({ kind: 'bubble', x: this.bx - 168 + 88 + rand(-8, 8), y: BOT.SURF + rand(8, 22), vx: -m.dir * rand(10, 40), vy: -rand(8, 26), life: rand(0.5, 1.1), size: rand(1.2, 3) });
       if (m.done >= m.want - 0.5) { m.phase = 'down'; m.t = 0; SFX.play('splash'); }
     } else if (m.t > 0.6) { this.move = null; this.engine(0); }
     else { this.moveV = approach(this.moveV, 0, 8, dt); this.engine(1, 0.08); }
@@ -524,6 +531,7 @@ class BottomScene extends SessionBase {
     if (Input.held('ArrowUp', 'KeyW')) this.targetDepth = clamp(this.targetDepth - 40 * dt, 4, maxD);
     if (Input.held('ArrowDown', 'KeyS')) this.targetDepth = clamp(this.targetDepth + 40 * dt, 4, maxD);
     this.updateMove(dt);
+    this.swingK = approach(this.swingK, this.move ? 0 : 1, 0.8, dt);
     // the bait: up while the boat moves, otherwise down to the depth you set (it rests on the bottom if you ask for more)
     const tgt = Math.min(this.targetDepth, maxD);
     if (this.move) this.baitDepth = Math.max(0, this.baitDepth - 140 * dt);
@@ -630,13 +638,14 @@ class BottomScene extends SessionBase {
       if (hsh < 0.45) btFan(ctx, x, y, 16 + hsh * 30, col, t); else if (hsh < 0.8) btWhip(ctx, x, y, 18 + hsh * 16, col, t);
     }
   }
-  drawSchools(ctx, cam, W, bxw, by) {
+  drawSchools(ctx, cam, W, bxw, by) {   // bait schools: tiny silver fish
+    const t = this.t;
     for (const s of this.schools) {
       const c = this.schoolX(s); if (c < cam - 220 || c > cam + W + 220) continue;
       for (const p of s.pts) {
         const [x, ft] = this.speck(s, p), y = this.yOf(ft), r = dist(x, y, bxw, by);
-        const vis = Math.max(this.ambient(ft), clamp((220 - r) / 130, 0, 1)), a = 0.07 + vis * 0.75;
-        ctx.fillStyle = `rgba(215,232,240,${a.toFixed(3)})`; ctx.fillRect(x - 2.2, y - 0.7, 4.4, 1.4);
+        const vis = Math.max(this.ambient(ft), clamp((220 - r) / 130, 0, 1)), a = 0.06 + vis * 0.8, d = Math.cos(t * p[2] + p[3]) >= 0 ? 1 : -1;
+        ctx.fillStyle = `rgba(214,232,240,${a.toFixed(3)})`; ctx.beginPath(); ctx.ellipse(x, y, 3, 1.2, 0, 0, TAU); ctx.moveTo(x - d * 2.4, y); ctx.lineTo(x - d * 5, y - 1.6); ctx.lineTo(x - d * 5, y + 1.6); ctx.closePath(); ctx.fill();
       }
     }
   }
@@ -644,7 +653,7 @@ class BottomScene extends SessionBase {
     const x0 = cam - 40, x1 = cam + W + 40, wreck = this.variant === 'wreck';
     // sand
     const sg = ctx.createLinearGradient(0, this.yOf(this.L.base - 4), 0, H);
-    if (wreck) { sg.addColorStop(0, '#62736f'); sg.addColorStop(1, '#1d2e33'); } else { sg.addColorStop(0, '#7f8d7a'); sg.addColorStop(1, '#2f4547'); }
+    if (wreck) { sg.addColorStop(0, '#6b7c74'); sg.addColorStop(1, '#22343a'); } else { sg.addColorStop(0, '#93977c'); sg.addColorStop(1, '#3a4c4a'); }
     ctx.fillStyle = sg; ctx.beginPath(); ctx.moveTo(x0, H);
     for (let x = x0; x <= x1; x += 8) ctx.lineTo(x, this.yOf(this.sandFt(x)));
     ctx.lineTo(x1, H); ctx.closePath(); ctx.fill();
@@ -670,7 +679,7 @@ class BottomScene extends SessionBase {
         for (let x = xb; x >= xa - 6; x -= 12) { const xx = Math.max(x, xa), k = deep * btSmooth(a, a + 160, xx) * (1 - btSmooth(b - 160, b, xx)); ctx.lineTo(xx, Math.min(H + 4, this.yOf(this.sandFt(xx)) + 8 + k * 140)); }
         ctx.closePath();
       };
-      const g = ctx.createLinearGradient(0, this.yOf(76), 0, H); g.addColorStop(0, '#5f604c'); g.addColorStop(0.45, '#45493e'); g.addColorStop(1, '#232c2c');
+      const g = ctx.createLinearGradient(0, this.yOf(76), 0, H); g.addColorStop(0, '#6e6a52'); g.addColorStop(0.4, '#535443'); g.addColorStop(1, '#283230');
       path(); ctx.fillStyle = g; ctx.fill();
       ctx.save(); path(); ctx.clip();
       for (const bl of this.blobs) { if (bl.x < xa - 20 || bl.x > xb + 20) continue; ctx.fillStyle = bl.c; ell(ctx, bl.x, this.yOf(this.rockFt(bl.x)) + bl.d, bl.rx, bl.ry); ctx.fill(); }
@@ -682,6 +691,17 @@ class BottomScene extends SessionBase {
       ctx.strokeStyle = 'rgba(220,230,200,0.12)'; ctx.lineWidth = 2; ctx.beginPath();
       for (let x = xa; x <= xb; x += 6) { const y = this.yOf(this.rockFt(x)) + 1; x === xa ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
       ctx.stroke();
+    }
+    // overhanging lips on the two ledges, with the shadow under them
+    for (const [wx, dir] of [[1076, 1], [2690, -1]]) {
+      if (wx < x0 - 60 || wx > x1 + 60) continue;
+      const top = this.yOf(this.rockFt(wx - dir * 6)), lx = wx + dir * 24;
+      const sh = ctx.createLinearGradient(0, top, 0, top + 46); sh.addColorStop(0, 'rgba(3,10,12,0.6)'); sh.addColorStop(1, 'rgba(3,10,12,0)');
+      ctx.fillStyle = sh; ctx.beginPath(); ctx.moveTo(wx - dir * 4, top + 6); ctx.lineTo(lx, top + 8); ctx.lineTo(wx + dir * 12, top + 48); ctx.lineTo(wx - dir * 2, top + 48); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#5c5b47'; ctx.beginPath(); ctx.moveTo(wx - dir * 10, top - 1); ctx.quadraticCurveTo(wx + dir * 10, top - 4, lx, top + 2);
+      ctx.quadraticCurveTo(lx + dir * 2, top + 8, lx - dir * 6, top + 9); ctx.quadraticCurveTo(wx + dir * 6, top + 12, wx - dir * 4, top + 14); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(220,230,200,0.14)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(wx - dir * 10, top); ctx.quadraticCurveTo(wx + dir * 10, top - 3, lx, top + 2); ctx.stroke();
+      for (let i = 0; i < 4; i++) { ctx.fillStyle = ['rgba(200,90,60,0.55)', 'rgba(150,80,150,0.5)', 'rgba(200,160,60,0.5)', 'rgba(90,150,120,0.5)'][i]; ell(ctx, wx + dir * (i * 7 - 4), top + 10 + (i % 2) * 2, 4, 2.4); ctx.fill(); }
     }
     // undercut pockets at the foot of each ledge: grouper hide in these
     for (const [px, pft, rx, ry] of [[1078, 93.4, 18, 8], [1093, 88.6, 11, 6], [1058, 95.6, 14, 5], [2700, 93.6, 16, 7], [2712, 90.4, 10, 5]]) {
@@ -821,7 +841,7 @@ class BottomScene extends SessionBase {
     g.fillStyle = lg; g.fillRect(0, 0, fw, fh);
     // the deep-drop light on the line pushes the dark back
     g.globalCompositeOperation = 'destination-out';
-    const x = lx * k, y = (ly - 22 - S) * k, R = 180 * k, rg = g.createRadialGradient(x, y, 0, x, y, R);
+    const x = lx * k, y = (ly - 22 - S) * k, R = 205 * k, rg = g.createRadialGradient(x, y, 0, x, y, R);
     rg.addColorStop(0, 'rgba(0,0,0,1)'); rg.addColorStop(0.35, 'rgba(0,0,0,0.85)'); rg.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = rg; g.fillRect(x - R, y - R, R * 2, R * 2);
     g.globalCompositeOperation = 'source-over';
@@ -835,7 +855,7 @@ class BottomScene extends SessionBase {
   }
   drawRig(ctx, t, cam, bsx, by) {
     const S = BOT.SURF, m = this.move;
-    const boatX = this.bx - cam - 168, bob = Math.sin(t * 1.4) * (1 + this.weather.drift) * 1.2, rot = Math.sin(t * 1.1) * 0.012 * (0.5 + this.weather.drift) + (m && m.phase === 'go' ? -m.dir * 0.02 * this.moveV / BOT.SPEED : 0);
+    const boatX = this.bx + this.swing() - cam - 168, bob = Math.sin(t * 1.4) * (1 + this.weather.drift) * 1.2, rot = Math.sin(t * 1.1) * 0.012 * (0.5 + this.weather.drift) + (m && m.phase === 'go' ? -m.dir * 0.02 * this.moveV / BOT.SPEED : 0);
     // the anchor line off the bow, down into the dark
     let ak = 1; if (m) ak = m.phase === 'up' ? Math.max(0, 1 - m.t / 0.7) : m.phase === 'go' ? 0 : Math.min(1, m.t / 0.6);
     if (ak > 0.02) {
@@ -888,16 +908,18 @@ class BottomScene extends SessionBase {
     const mw = Math.min(124, sw * 0.27), my = H - 60, m = this.move;
     UI.button(ctx, 'moveL', 14, my, mw, 46, '◀  Move', () => this.startMove(-1), { style: m && m.dir < 0 ? 'secondary' : 'dark', size: 18, key: 'KeyA|ArrowLeft', disabled: !m && this.bx <= BOT.XMIN + 2 });
     UI.button(ctx, 'moveR', sw - 14 - mw, my, mw, 46, 'Move  ▶', () => this.startMove(1), { style: m && m.dir > 0 ? 'secondary' : 'dark', size: 18, key: 'KeyD|ArrowRight', disabled: !m && this.bx >= BOT.XMAX - 2 });
-    const msg = (s, y = H - 96) => text(ctx, s, mid, y, { size: 21, align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.5)', sw: 5, maxW: sw - 2 * mw - 40 > 220 ? sw - 40 : sw - 40 });
+    // messages sit in open water, clear of the bottom and the buttons
+    const my0 = BOT.SURF + 104, maxW = sw - 30;
+    const msg = (s) => text(ctx, s, mid, my0, { size: 21, align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.5)', sw: 5, maxW });
     if (m) msg(m.phase === 'up' ? 'Pulling the anchor…' : m.phase === 'go' ? 'Idling over…' : 'Dropping anchor…');
-    else if (!this.baitOn && !this.reeling && this.rebaitT <= 0) UI.button(ctx, 'rebait', mid - 100, H - 132, 200, 56, 'REBAIT', () => this.rebait(), { style: 'coral', size: 26, key: 'KeyR|Space|Enter' });
+    else if (!this.baitOn && !this.reeling && this.rebaitT <= 0) UI.button(ctx, 'rebait', mid - 100, my0 - 28, 200, 56, 'REBAIT', () => this.rebait(), { style: 'coral', size: 26, key: 'KeyR|Space|Enter' });
     else if (this.reeling || this.rebaitT > 0) msg(this.reeling ? 'Reeling up…' : 'Baiting the hook…');
-    else if (this.t < 12) {
+    else if (this.t > 1.8 && this.t < 14) {
       const l1 = Game.touch ? 'Drag up or down to set your depth · tap on the BITE' : 'Drag or ↑ ↓ to set depth · Space on the BITE';
-      const l2 = Game.touch ? 'Marks on the fish finder are fish. Nothing there? Move.' : 'Marks on the fish finder are fish. Nothing there? A / D to move.';
-      text(ctx, l1, mid, H - 100, { size: 16, align: 'center', color: '#fff', weight: 700, alpha: 0.9, stroke: 'rgba(0,0,0,0.55)', sw: 4, maxW: sw - 30 });
-      text(ctx, l2, mid, H - 78, { size: 15, align: 'center', color: '#cfe3ea', weight: 700, alpha: 0.9, stroke: 'rgba(0,0,0,0.55)', sw: 4, maxW: sw - 30 });
-    } else if (this.quietT > 9) text(ctx, 'Nothing on the finder. Try moving the boat.', mid, H - 88, { size: 16, align: 'center', color: '#cfe3ea', weight: 700, alpha: 0.6 + Math.sin(this.t * 3) * 0.25, stroke: 'rgba(0,0,0,0.55)', sw: 4, maxW: sw - 2 * mw - 30 });
+      const l2 = Game.touch ? 'Yellow and red marks on the fish finder are fish. None? Move.' : 'Yellow and red marks on the fish finder are fish. None? A / D to move.';
+      text(ctx, l1, mid, my0, { size: 17, align: 'center', color: '#fff', weight: 700, alpha: 0.92, stroke: 'rgba(0,0,0,0.55)', sw: 4, maxW });
+      text(ctx, l2, mid, my0 + 23, { size: 15, align: 'center', color: '#d8ecf2', weight: 700, alpha: 0.92, stroke: 'rgba(0,0,0,0.55)', sw: 4, maxW });
+    } else if (this.quietT > 7) text(ctx, 'Nothing on the fish finder. Try moving the boat.', mid, my0, { size: 17, align: 'center', color: '#d8ecf2', weight: 700, alpha: 0.65 + Math.sin(this.t * 3) * 0.25, stroke: 'rgba(0,0,0,0.55)', sw: 4, maxW });
   }
   drawSonar(ctx, x, y, w, h) {
     const t = this.t, range = this.L.range, cols = this.sonar, last = cols[cols.length - 1];
@@ -908,13 +930,13 @@ class BottomScene extends SessionBase {
     ctx.fillStyle = bz; rr(ctx, x, y, w, h, 16); ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,0.16)'; ctx.lineWidth = 2; ctx.stroke();
     ctx.restore();
     text(ctx, 'FISH FINDER', x + 14, y + 22, { size: 13, color: '#8fb0bd', weight: 800 });
-    const kn = this.move ? (this.moveV / BOT.SPEED) * 2.6 : 0;
-    text(ctx, kn.toFixed(1) + ' kn · 200 kHz', x + 14, y + 39, { size: 12, color: '#6f8f9b', weight: 700 });
+    if (this.move) text(ctx, ((this.moveV / BOT.SPEED) * 2.6).toFixed(1) + ' kn', x + 14, y + 39, { size: 12, color: '#6f8f9b', weight: 700 });
+    else {   // a color key: what's bait, what's a fish, what's a big one
+      let lx = x + 14;
+      for (const [c, l] of [['#50b9ff', 'bait'], ['#ffe034', 'fish'], ['#ff3b2c', 'big']]) { ctx.fillStyle = c; rr(ctx, lx, y + 31, 7, 7, 2); ctx.fill(); lx += 10; ctx.font = fnt(12, 700); text(ctx, l, lx, y + 39, { size: 12, color: '#8fb0bd', weight: 700 }); lx += ctx.measureText(l).width + 8; }
+    }
     text(ctx, (last ? last.bot : this.L.base).toFixed(1), x + w - 34, y + 36, { size: 28, align: 'right', color: '#f4f8fa', weight: 800 });
     text(ctx, 'ft', x + w - 14, y + 36, { size: 14, align: 'right', color: '#8fb0bd', weight: 800 });
-    if (this.alarmT > 0 && Math.sin(t * 18) > -0.3) {   // fish alarm
-      const ax = x + w - 104, ay = y + 26; ctx.save(); ctx.translate(ax, ay); drawFish(ctx, 'mutton', 22, { sil: PAL.sun }); ctx.restore();
-    }
     // the screen
     const sx = x + 10, sy = y + 48, sw = w - 20, sh = h - 48 - 54, scaleW = 30, hw = sw - scaleW;
     this.sonarRect = { x: sx, y: sy, w: sw, h: sh, range };
@@ -939,7 +961,7 @@ class BottomScene extends SessionBase {
     // bait clouds and fish arches: bigger fish paint bigger, redder marks
     for (let i = 0; i < cols.length; i++) {
       const c = cols[i], px = X(i);
-      ctx.fillStyle = 'rgba(110,230,160,0.8)'; for (const d of c.cloud) ctx.fillRect(px, Y(d) - 1, cw + 0.8, 2);
+      for (const d of c.cloud) { ctx.fillStyle = (d * 7) % 3 < 1 ? 'rgba(120,235,170,0.75)' : 'rgba(80,185,255,0.8)'; ctx.fillRect(px, Y(d) - 1, cw + 0.8, 2); }
       for (const [d, th, s] of c.fish) {
         const yy = Y(d), hp = Math.max(3, (th / range) * sh * 1.25);
         ctx.fillStyle = s < 0.3 ? '#46d36a' : '#ffe034'; ctx.fillRect(px, yy - hp / 2, cw + 0.7, hp);
@@ -973,6 +995,9 @@ class BottomScene extends SessionBase {
     ctx.restore();
     ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 2; rr(ctx, sx, sy, sw, sh, 8); ctx.stroke();
     if (this.move) text(ctx, 'MOVING', sx + 10, sy + 20, { size: 13, color: PAL.sun, weight: 800, stroke: 'rgba(0,0,0,0.5)', sw: 3 });
+    if (this.alarmT > 0 && Math.sin(t * 18) > -0.3) {   // fish alarm: something just swam under the boat
+      ctx.save(); ctx.translate(sx + hw - 22, sy + 16); ctx.fillStyle = 'rgba(0,10,40,0.7)'; rr(ctx, -17, -10, 34, 20, 8); ctx.fill(); drawFish(ctx, 'mutton', 22, { sil: PAL.sun }); ctx.restore();
+    }
     // the track: the bottom you've crossed so far, your catches, and where the boat sits on the strip
     const tx = x + 10, ty = y + h - 46, tw = w - 20, th = 36, [lo, hi] = this.L.track;
     ctx.fillStyle = '#0a1115'; rr(ctx, tx, ty, tw, th, 7); ctx.fill();
