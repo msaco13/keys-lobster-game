@@ -9,7 +9,9 @@ soundtrack is played live by a small synthesizer inside the game (Music on/off i
 
 ## Play it
 
-**https://msaco13.github.io/keys-lobster-game/** (rebuilt and published automatically on every push to `main`)
+**https://htmlpreview.github.io/?https://github.com/msaco13/keys-lobster-game/blob/main/dist/keys-crew.html**
+
+Once GitHub Pages is switched on (Settings → Pages → Source: GitHub Actions), the shorter link **https://msaco13.github.io/keys-lobster-game/** works too, rebuilt automatically on every push to `main`.
 
 - **Easiest:** open `dist/keys-crew.html` in any browser (phone or laptop). It's one self-contained file. Offline, it still plays; the headline fonts just fall back to system fonts.
 - **From the repo:** open `index.html`. The Pages site is deployed by `.github/workflows/pages.yml` (Settings → Pages → Source: GitHub Actions).
