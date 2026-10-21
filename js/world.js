@@ -301,7 +301,13 @@ const World = {
     for (const g of GAPS) { g.y = chainY(g.x); for (let x = g.x0 + 36; x < g.x1 - 30; x += 80) if (Math.abs(x - g.x) > 92) this.piers.push({ x, y: chainY(x), g }); }
     // channel markers: out of each harbor on the ocean side, and down the bay channels
     this.markers = [];
-    const harbor = (x, n0) => { const hw = shoreHW(x) || 0; let n = n0; for (let s = hw + 60; s < hw + 640; s += 130, n += 2) { this.markers.push({ x: x - 64, y: wy(x - 64, s), kind: 'green', n: n - 1 }); this.markers.push({ x: x + 64, y: wy(x + 64, s), kind: 'red', n }); } };
+    // each harbor channel is two rows of posts; the route finder treats each row as a fence so the autopilot enters from the end
+    this.fences = [];
+    const harbor = (x, n0) => {
+      const hw = shoreHW(x) || 0; let n = n0; const rows = { g: [], r: [] };
+      for (let s = hw + 60; s < hw + 640; s += 130, n += 2) { const g = { x: x - 64, y: wy(x - 64, s), kind: 'green', n: n - 1 }, r = { x: x + 64, y: wy(x + 64, s), kind: 'red', n }; this.markers.push(g, r); rows.g.push(g); rows.r.push(r); }
+      for (const row of [rows.g, rows.r]) for (let i = 1; i < row.length; i++) this.fences.push([row[i - 1], row[i]]);
+    };
     harbor(HOME.x, 2); harbor(GAPS[3].x, 2); harbor(GAPS[2].x, 2); harbor(GAPS[4].x, 2);
     for (const c of BAY_CHANNELS) for (let i = 1; i < c.pts.length; i++) {
       const [x0, s0] = c.pts[i - 1], [x1, s1] = c.pts[i], L = Math.hypot(x1 - x0, s1 - s0), nx = -(s1 - s0) / L, ns = (x1 - x0) / L;
@@ -361,13 +367,15 @@ const World = {
     for (let n = 0; n < pass.length; n++) pass[n] = this.grid[n] >= 3 ? 1 : 0;
     const block = (x, y, r) => { const i0 = Math.round(x / C), j0 = Math.round(y / C); for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) { const i = i0 + di, j = j0 + dj; if (i >= 0 && j >= 0 && i < gw && j < gh) pass[j * gw + i] = 0; } };
     for (const p of this.piers) block(p.x, p.y, 1);
-    for (const m of this.markers) block(m.x, m.y, 0);
+    for (const m of this.markers) block(m.x, m.y, 1);
+    for (const [a, b] of this.fences) for (let k = 0; k <= 1; k += 0.1) block(lerp(a.x, b.x, k), lerp(a.y, b.y, k), 1);
     block(this.light.x, this.light.y, 2);
     return pass;
   },
   obstacles() {
     if (this.obst) return this.obst;
     this.obst = this.piers.map((p) => ({ x: p.x, y: p.y, r: 10 })).concat(this.markers.map((m) => ({ x: m.x, y: m.y, r: 7 })), [{ x: this.light.x, y: this.light.y, r: 46 }]);
+    for (const [a, b] of this.fences) for (let k = 0.2; k < 1; k += 0.2) this.obst.push({ x: lerp(a.x, b.x, k), y: lerp(a.y, b.y, k), r: 7 });
     return this.obst;
   },
   findPath(x0, y0, x1, y1) {

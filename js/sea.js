@@ -99,11 +99,11 @@ class SeaScene {
       const p = World.findPath(outer[0], outer[1], xy[0], xy[1]);
       path = p && (this.y < Hm.mouthY ? [[Hm.x, Hm.mouthY - 10], mouth, outer] : [mouth, outer]).concat(p);
     } else path = World.findPath(this.x, this.y, xy[0], xy[1]);
-    this.route = path; this.ri = 0;
+    this.route = path; this.ri = 0; this.path = path ? [[this.x, this.y]].concat(path) : null;
     if (!path) Game.toast('No clear way through', { color: PAL.warn, size: 26, y: 170, sub: 'Steer it yourself. Follow the deeper (darker) water.' });
   }
   setAuto(on) {
-    if (on && !this.route) this.planRoute();
+    if (on) this.planRoute();
     this.auto = on && !!this.route;
     if (this.auto && this.notch < 3) this.notch = 3;
     SFX.play('click');
@@ -141,22 +141,34 @@ class SeaScene {
     if (rud) { if (this.auto) { this.auto = false; Game.toast('Autopilot off', { size: 22, y: 170, color: '#fff' }); } }
     // autopilot
     let cap = 999;
-    if (this.auto && this.route && !this.panel) {
-      let tgt = this.route[this.ri];
-      while (tgt && dist(this.x, this.y, tgt[0], tgt[1]) < 110 && this.ri < this.route.length - 1) { this.ri++; tgt = this.route[this.ri]; }
-      if (tgt) {
-        const off = angleDiff(this.h, Math.atan2(tgt[1] - this.y, tgt[0] - this.x));
-        rud = clamp(off * 2.6, -1, 1);
-        if (Math.abs(off) > 0.5) cap = NOTCH[2].v; if (Math.abs(off) > 1.2) cap = NOTCH[1].v;
-        // dodge trap floats
-        const ca = Math.cos(this.h), sa = Math.sin(this.h);
-        for (const f of World.floatsNear(this.x)) { if (f.hit) continue; const fx = f.x - this.x, fy = f.y - this.y, fwd = fx * ca + fy * sa, lat = -fx * sa + fy * ca; if (fwd > 20 && fwd < 190 && Math.abs(lat) < 30) rud = clamp(rud - Math.sign(lat || 1) * 0.9, -1, 1); }
-        const ahead = World.gridDepth(this.x + Math.cos(this.h) * 160, this.y + Math.sin(this.h) * 160);
-        if (World.inZone(this.x, this.y) || World.inZone(this.x + Math.cos(this.h) * 200, this.y + Math.sin(this.h) * 200)) cap = NOTCH[2].v;
-        if (ahead < 5) cap = Math.min(cap, 130);
-        if (this.ri === this.route.length - 1 && dist(this.x, this.y, tgt[0], tgt[1]) < 260) cap = Math.min(cap, NOTCH[2].v);
-        if (this.ri === this.route.length - 1 && dist(this.x, this.y, tgt[0], tgt[1]) < 70) { this.auto = false; this.notch = 0; Game.toast('Arrived', { size: 30, y: 160, color: PAL.good }); }
+    if (this.auto && this.path && !this.panel) {
+      // pure pursuit: find where we are along the route, aim at a point a little farther along it
+      const P = this.path, N = P.length - 1;
+      let best = 1e9, bi = this.ri, bt = 0;
+      for (let i = this.ri; i < Math.min(N, this.ri + 4); i++) {
+        const [ax, ay] = P[i], [bx, by] = P[i + 1], vx = bx - ax, vy = by - ay, l2 = vx * vx + vy * vy || 1, k = clamp(((this.x - ax) * vx + (this.y - ay) * vy) / l2, 0, 1), d = Math.hypot(this.x - ax - vx * k, this.y - ay - vy * k);
+        if (d < best) { best = d; bi = i; bt = k; }
       }
+      if (best > 420) { this.planRoute(); return; }     // knocked way off course: plot it again
+      this.ri = bi;
+      const along = (dist0) => { let L = dist0, i = bi, k = bt; for (;;) { const [ax, ay] = P[i], [bx, by] = P[i + 1], seg = Math.hypot(bx - ax, by - ay) || 1, rem = seg * (1 - k); if (L <= rem || i === N - 1) { const q = Math.min(1, k + L / seg); return [ax + (bx - ax) * q, ay + (by - ay) * q, i]; } L -= rem; i++; k = 0; } };
+      const [px, py] = along(clamp(70 + this.v * 0.35, 90, 170));
+      const off = angleDiff(this.h, Math.atan2(py - this.y, px - this.x));
+      rud = clamp(off * 2.6, -1, 1);
+      // slow down for the bends coming up, and for whatever's in the way
+      let bend = 0; { let h0 = Math.atan2(P[bi + 1][1] - P[bi][1], P[bi + 1][0] - P[bi][0]); const [, , j] = along(300); for (let i = bi + 1; i <= j && i < N; i++) { const h1 = Math.atan2(P[i + 1][1] - P[i][1], P[i + 1][0] - P[i][0]); bend = Math.max(bend, Math.abs(angleDiff(h0, h1))); h0 = h1; } }
+      if (bend > 0.5 || Math.abs(off) > 0.5) cap = NOTCH[2].v; if (bend > 1.1 || Math.abs(off) > 1.1) cap = NOTCH[1].v;
+      if (World.inZone(this.x, this.y) || World.inZone(this.x + Math.cos(this.h) * 200, this.y + Math.sin(this.h) * 200)) cap = Math.min(cap, NOTCH[2].v);
+      if (World.gridDepth(this.x + Math.cos(this.h) * 160, this.y + Math.sin(this.h) * 160) < 5) cap = Math.min(cap, 130);
+      const end = P[N], left = dist(this.x, this.y, end[0], end[1]);
+      if (left < 260) cap = Math.min(cap, NOTCH[2].v);
+      if (left < 70 || (bi === N - 1 && bt > 0.98)) { this.auto = false; this.notch = 0; Game.toast('Arrived', { size: 30, y: 160, color: PAL.good }); }
+      const ca = Math.cos(this.h), sa = Math.sin(this.h), dodge = (ox, oy, r) => { const fx = ox - this.x, fy = oy - this.y, fwd = fx * ca + fy * sa, lat = -fx * sa + fy * ca; if (fwd > 10 && fwd < 150 && Math.abs(lat) < r + 20) { rud = clamp(rud - Math.sign(lat || 1) * 0.8, -1, 1); cap = Math.min(cap, NOTCH[2].v); } };
+      for (const f of World.floatsNear(this.x)) if (!f.hit) dodge(f.x, f.y, 8);
+      for (const p of World.piers) if (Math.abs(p.x - this.x) < 180 && Math.abs(p.y - this.y) < 180) dodge(p.x, p.y, 10);
+      if (Math.abs(World.light.x - this.x) < 240 && Math.abs(World.light.y - this.y) < 240) dodge(World.light.x, World.light.y, 46);
+      // stuck against something: back off, point at the route, and plot it again
+      if (this.v < 6 && cap > 30 && NOTCH[this.notch].v > 30 && !this.stall && !this.stuck && !this.fwc) { this.stuckT = (this.stuckT || 0) + dt; if (this.stuckT > 1.2) { this.stuckT = 0; this.x -= Math.cos(this.h) * 24; this.y -= Math.sin(this.h) * 24; this.h = Math.atan2(py - this.y, px - this.x); this.planRoute(); } } else this.stuckT = 0;
     }
     this.rudder = approach(this.rudder, rud, 8, dt);
     // throttle
@@ -199,7 +211,7 @@ class SeaScene {
     // piers, markers and the lighthouse
     const hard = [];
     for (const p of World.piers) if (Math.abs(p.x - nx) < 80 && Math.abs(p.y - ny) < 80) hard.push([p.x, p.y, 9, true]);
-    for (const m of World.markers) if (Math.abs(m.x - nx) < 80 && Math.abs(m.y - ny) < 80) hard.push([m.x, m.y, 6]);
+    if (!this.auto) for (const m of World.markers) if (Math.abs(m.x - nx) < 80 && Math.abs(m.y - ny) < 80) hard.push([m.x, m.y, 6]);   // the autopilot threads the channel posts
     if (Math.abs(World.light.x - nx) < 120 && Math.abs(World.light.y - ny) < 120) hard.push([World.light.x, World.light.y, 44]);
     for (const [hx, hy, r, pier] of hard) {
       const dd = Math.min(dist(bx, by, hx, hy), dist(nx, ny, hx, hy), dist(nx - ca * 40, ny - sa * 40, hx, hy));

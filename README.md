@@ -65,17 +65,22 @@ shell sits past the end of the 3" gauge and there are no eggs under the tail. Si
 Watch your air (Alligator Reef is deeper), the jellyfish and the moray holes. Rare golden bugs score triple.
 And now and then a shark shows up, and you race it back to the boat while the crew heckles you.
 
-**Bottom fishing** (The Ledge, Eagle Wreck). Watch the fish finder, drop the bait to the marks, sit through the nibbles,
-and tap when the rod slams down. Squid for snapper, live pinfish for grouper, amberjack and cobia. Fish are scarce and
-they hold on structure, so move the boat along the bottom until the sonar lights up.
+**Bottom fishing** (The Ledge, Eagle Wreck). The fish finder is your eyes: arches are fish (red means big),
+blue speckle is bait. Fish are scarce and hold on structure (ledge pockets, coral heads, the freighter's bow and stern),
+so tap Move to idle along the bottom until the finder lights up, then drop your bait to the marks. Squid for snapper and
+hogfish, live pinfish for grouper, amberjack and cobia. Wait out the nibbles and tap when the rod slams down.
+Chum brings yellowtail up into the slick.
 
-**Trolling** (The Weedline, The Hump). Steer the boat and drag your three-lure spread past fish. The fish are out there,
-but you have to read the signs: frigate birds and weedlines for mahi, diving birds and bait balls for tuna, a lone float
-that might hide a tripletail. Trap floats wrap your prop and foul your lures.
+**Trolling** (The Weedline, The Hump). Steer the boat and drag your three-lure spread through the fish. Most weed is empty,
+so read the signs: frigate birds and flying fish for mahi, diving terns and bait sprays for tuna, a lone log or float that
+might hide a tripletail. At the Hump, troll the current rip and the bait balls where blackfin bust (and the odd big yellowfin).
+Trap floats wrap your prop and foul your lures.
 
 **The backcountry** (Florida Bay, Channel Five, Flamingo). Sight-fishing from a poling skiff. Whoever isn't fishing is on
-the pole, calling fish by the clock. Look for tails, wakes and rolling tarpon. Press and hold where you want the fly, let go to
-cast, and lead the fish. Strip in its rhythm and set the hook when it eats. Tarpon, bonefish and permit is a Grand Slam.
+the pole (◀ ▶), pushing you along the flat and calling fish by the clock. The fish are faint shadows; look for tails, wakes,
+mud puffs and rolling tarpon. Press and hold where you want the fly, let go to cast, and lead the fish. Strip in its rhythm
+and set the hook when it eats. At Channel Five the tide carries your fly past the pilings; at Flamingo, snook hug the
+mangrove roots and reds and drum tail on the mud. Tarpon, bonefish and permit is a Grand Slam.
 
 **The fight** (all fishing spots). Hold to reel and keep the drag needle in the green. Let go when the fish runs
 or jumps. Too much slack and it spits the hook. Fight too long and a shark might tax you.

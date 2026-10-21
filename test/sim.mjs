@@ -19,14 +19,15 @@ const r = await page.evaluate(() => {
     }
     out['troll' + run] = log.length + ' strikes: ' + log.join(', ');
   }
-  // bottom: squid at 60 ft first half, pinfish at 92 ft second half, auto hook-set on the bite
+  // bottom: read the fish finder, drop to the strongest mark, move the boat when it's quiet, auto hook-set on the bite
   for (let run = 0; run < 3; run++) {
-    const log = []; let ended = null, early = 0;
+    const log = []; let ended = null, quiet = 0, dir = 1;
     const s = new BottomScene({ ch: 'michael', spot: 'bottom', len: 120, weather, onEnd: (res) => { ended = res; } });
     Game.scene = s;
     for (let i = 0; i < 120 / dt + 200 && !ended; i++) {
-      if (s.t > 60 && s.baitType === 'squid') s.rebait('pinfish');
-      s.targetDepth = s.baitType === 'squid' ? 60 : 92;
+      const m = s.sonarMarks(12)[0];
+      if (m) { quiet = 0; s.targetDepth = m.ft; if (!s.move && m.s > 0.6 && s.baitType !== 'pinfish') s.rebait('pinfish'); }
+      else if (!s.move && !s.activeFish()) { quiet += dt; if (quiet > 5) { quiet = 0; if (s.bx >= BOT.XMAX - 2) dir = -1; if (s.bx <= BOT.XMIN + 2) dir = 1; s.startMove(dir); } }
       if (!s.baitOn && !s.reeling && s.rebaitT <= 0) s.rebait();
       const f = s.activeFish(); if (f && f.state === 'bite' && f.timer < 0.45) s.hookset();
       s.update(dt); finishChild(s, log);
