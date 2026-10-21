@@ -193,6 +193,7 @@ const SFX = {
       case 'chomp': this.tone(110, 0.16, { type: 'sawtooth', vol: 0.18, to: 60 }); this.noise(0.12, { f: 700, vol: 0.25 }); break;
       case 'tickle': this.tone(1700 + Math.random() * 500, 0.03, { type: 'triangle', vol: 0.035 }); break;
       case 'net': this.noise(0.28, { filter: 'bandpass', f: 700, to: 2200, vol: 0.22 }); break;
+      case 'swish': this.noise(0.22, { filter: 'bandpass', f: 500, to: 1600, vol: 0.16, q: 2 }); break;
       case 'fail': this.tone(392, 0.18, { type: 'triangle', vol: 0.12 }); this.tone(330, 0.18, { type: 'triangle', vol: 0.12, delay: 0.16 }); this.tone(247, 0.35, { type: 'triangle', vol: 0.12, delay: 0.32 }); break;
       case 'cast': this.noise(0.32, { filter: 'bandpass', f: 3200, to: 700, vol: 0.14 }); break;
       case 'strip': this.noise(0.05, { filter: 'highpass', f: 2500, vol: 0.05 }); break;
@@ -239,6 +240,7 @@ const Music = {
     this.on = v; Store.set('music', v);
     if (this.bus && this.song) this.bus.gain.setTargetAtTime(v ? this.song.vol : 0.0001, SFX.ac.currentTime, 0.15);
   },
+  muffle(on) { if (!this.lp || !this.song) return; this.lp.frequency.setTargetAtTime(on ? 820 : this.song.lp || 16000, SFX.ac.currentTime, 0.12); },
   duck(d = 1.5) {
     if (!this.duckG) return; const t = SFX.ac.currentTime, g = this.duckG.gain;
     g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0.28, t + 0.08); g.setValueAtTime(0.28, t + d * 0.6); g.linearRampToValueAtTime(1, t + d);
@@ -447,7 +449,7 @@ class Floaters {
 
 /* ---------- input ---------- */
 const Input = {
-  pointers: new Map(), keys: new Set(),
+  pointers: new Map(), keys: new Set(), hover: null,
   held(...codes) { for (const c of codes) if (this.keys.has(c)) return true; return false; },
   anyGameplayPointer() { for (const p of this.pointers.values()) if (!p.ui && p.scene === Game.scene) return p; return null; }
 };
@@ -518,6 +520,7 @@ const Game = {
       this.safe(() => this.scene && this.scene.pointerDown && this.scene.pointerDown(ptr));
     }, { passive: false });
     c.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'mouse') Input.hover = this.toLogical(e);
       const ptr = this.pointers().get(e.pointerId); if (!ptr) return;
       const p = this.toLogical(e); ptr.x = p.x; ptr.y = p.y;
       if (ptr.ui) { if (UI.active && UI.active.pointer === e.pointerId) { const r = UI.byId(ptr.ui); UI.active.inside = !!r && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h; } return; }
@@ -589,6 +592,7 @@ const Game = {
     }
   },
   drawToasts(ctx) {
+    const sc = this.scene; if (sc && (sc.paused || (sc.panel && sc.panel.kind !== 'chart'))) return;   // never on top of a pause menu
     const placed = [];
     for (const t of this.toasts) {
       const a = t.t < 0.18 ? easeBack(t.t / 0.18) : 1; const fadeOut = clamp((t.dur - t.t) / 0.3, 0, 1);

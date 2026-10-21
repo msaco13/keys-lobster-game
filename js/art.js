@@ -28,6 +28,19 @@ const LOOKS = {
   redfish: { h: 0.28, back: '#9a5a2e', mid: '#c7884e', belly: '#efd7ba', fin: '#a8683e', tail: 'square', pat: 'tailspot', head: 'round', dorsal: 'spiny' },
   snook: { h: 0.22, back: '#6a6a4e', mid: '#c8c6b2', belly: '#efeee6', fin: '#d6c45a', tail: 'fork', pat: 'lateral', head: 'pike', dorsal: 'spiny', mouth: 'big' },
   trout: { h: 0.23, back: '#5f6e66', mid: '#b9c2bd', belly: '#eef0ec', fin: '#8b958e', tail: 'square', pat: 'spots', head: 'point', dorsal: 'normal' },
+  whitegrunt: { h: 0.33, back: '#87939b', mid: '#c6ced2', belly: '#eef0ec', fin: '#c4b07a', tail: 'fork', pat: 'grunt', head: 'point', dorsal: 'spiny' },
+  lane: { h: 0.32, back: '#c47a74', mid: '#f0b4a6', belly: '#f8e9e1', fin: '#f2c94c', tail: 'fork', tailC: '#e06b62', pat: 'lane', head: 'point', dorsal: 'spiny' },
+  hogfish: { h: 0.42, back: '#9a4e5e', mid: '#e6b6ac', belly: '#f6ece6', fin: '#c97a7a', tail: 'square', tailC: '#b0606a', pat: 'hog', head: 'snout', dorsal: 'hog' },
+  trigger: { h: 0.55, back: '#646a6d', mid: '#989ea0', belly: '#c6cac6', fin: '#767c7f', tail: 'fork', pat: 'trigger', head: 'round', dorsal: 'trigger', eye: 0.06 },
+  cubera: { h: 0.35, back: '#43332f', mid: '#86655a', belly: '#c8a596', fin: '#57392f', tail: 'square', pat: 'none', head: 'point', dorsal: 'spiny', mouth: 'big' },
+  cobia: { h: 0.2, back: '#382c25', mid: '#7a6a5a', belly: '#e8e2d6', fin: '#2c241e', tail: 'lunate', pat: 'cobia', head: 'long', dorsal: 'low', mouth: 'big' },
+  pompano: { h: 0.56, back: '#8aa0ab', mid: '#d4dee3', belly: '#f2f5f6', fin: '#a4b4bc', tail: 'lunate', pat: 'none', head: 'blunt', dorsal: 'thread', eye: 0.07 },
+  bonita: { h: 0.28, back: '#1c3d63', mid: '#a6bccb', belly: '#eef2f4', fin: '#294a6f', tail: 'lunate', pat: 'bonita', head: 'point', dorsal: 'tuna', finlets: '#5c7990' },
+  tripletail: { h: 0.48, back: '#463a20', mid: '#87713f', belly: '#b6a068', fin: '#584829', tail: 'round', pat: 'mottle', head: 'round', dorsal: 'triple', eye: 0.07 },
+  yellowfin: { h: 0.3, back: '#13234a', mid: '#7e8ea8', belly: '#eef1f4', fin: '#f0bf18', tail: 'lunate', pat: 'yellowfin', head: 'point', dorsal: 'yellowfin', finlets: '#f2d23a' },
+  jack: { h: 0.36, back: '#3d575b', mid: '#b6c6b4', belly: '#eef0d6', fin: '#d6b23a', tail: 'fork', tailC: '#deb52e', pat: 'jack', head: 'blunt', dorsal: 'normal' },
+  ladyfish: { h: 0.19, back: '#5b7889', mid: '#c8d7df', belly: '#f6f8f8', fin: '#9db1bb', tail: 'fork', pat: 'none', head: 'point', dorsal: 'normal', eye: 0.1 },
+  blackdrum: { h: 0.4, back: '#2c2a28', mid: '#686460', belly: '#b7b2ab', fin: '#282624', tail: 'square', pat: 'drum', head: 'round', dorsal: 'spiny' },
   parrot: { h: 0.38, back: '#1e9c8c', mid: '#3fd0b6', belly: '#f49ac4', fin: '#f06ea8', tail: 'square', tailC: '#f2c13a', pat: 'scales', head: 'round', dorsal: 'normal' },
   angel: { h: 0.62, back: '#1f5fd1', mid: '#36a0e8', belly: '#f2d23c', fin: '#f2c12e', tail: 'round', tailC: '#f2d23c', pat: 'none', head: 'round', dorsal: 'sickle', eye: 0.06 }
 };
@@ -43,6 +56,10 @@ function fishBodyPath(ctx, L, H, head) {
     ctx.moveTo(nx, H * 0.06);
     ctx.bezierCurveTo(nx - L * 0.02, -H * 0.32, nx - L * 0.2, -H * 0.56, nx - L * 0.38, -H * 0.5);
     ctx.bezierCurveTo(nx - L * 0.56, -H * 0.44, tb + L * 0.1, -H * 0.22, tb, -th);
+  } else if (head === 'snout') {
+    ctx.moveTo(nx, H * 0.04);
+    ctx.bezierCurveTo(nx - L * 0.07, -H * 0.02, nx - L * 0.1, -H * 0.52, nx - L * 0.3, -H * 0.56);
+    ctx.bezierCurveTo(nx - L * 0.52, -H * 0.5, tb + L * 0.1, -H * 0.22, tb, -th);
   } else {
     const k = head === 'long' || head === 'pike' || head === 'bill' ? 0.2 : head === 'cone' ? 0.3 : 0.38;
     ctx.moveTo(nx, 0);
@@ -51,7 +68,7 @@ function fishBodyPath(ctx, L, H, head) {
   }
   ctx.lineTo(tb, th);
   ctx.bezierCurveTo(tb + L * 0.15, H * 0.3, nx - L * 0.45, H * 0.52, nx - L * 0.25, H * 0.45);
-  ctx.bezierCurveTo(nx - L * 0.12, H * 0.38, nx - L * 0.02, H * 0.2, nx, head === 'blunt' || head === 'round' ? H * 0.06 : 0);
+  ctx.bezierCurveTo(nx - L * 0.12, H * 0.38, nx - L * 0.02, H * 0.2, nx, head === 'blunt' || head === 'round' ? H * 0.06 : head === 'snout' ? H * 0.04 : 0);
   ctx.closePath();
 }
 function fishTailPath(ctx, L, H, type, swing) {
@@ -87,12 +104,22 @@ function fishFins(ctx, L, H, lk, sil) {
   else if (d === 'tuna') { ctx.moveTo(L * 0.16, -H * 0.45); ctx.quadraticCurveTo(L * 0.08, -H * 0.86, -L * 0.02, -H * 0.47); ctx.moveTo(-L * 0.06, -H * 0.44); ctx.quadraticCurveTo(-L * 0.1, -H * 0.98, -L * 0.15, -H * 0.36); }
   else if (d === 'sickle') { ctx.moveTo(L * 0.02, -H * 0.46); ctx.quadraticCurveTo(-L * 0.02, -H * 0.82, -L * 0.2, -H * 0.86); ctx.quadraticCurveTo(-L * 0.12, -H * 0.62, -L * 0.2, -H * 0.26); }
   else if (d === 'tarpon') { ctx.moveTo(L * 0.03, -H * 0.46); ctx.quadraticCurveTo(-L * 0.01, -H * 0.96, -L * 0.07, -H * 0.96); ctx.lineTo(-L * 0.24, -H * 1.0); ctx.lineTo(-L * 0.1, -H * 0.76); ctx.lineTo(-L * 0.12, -H * 0.4); }
+  else if (d === 'hog') { ctx.moveTo(L * 0.2, -H * 0.42); ctx.quadraticCurveTo(L * 0.0, -H * 0.7, -L * 0.24, -H * 0.36); ctx.lineTo(-L * 0.25, -H * 0.2); }
+  else if (d === 'trigger') { ctx.moveTo(L * 0.12, -H * 0.42); ctx.lineTo(L * 0.06, -H * 0.86); ctx.lineTo(L * 0.0, -H * 0.46); ctx.moveTo(-L * 0.04, -H * 0.46); ctx.quadraticCurveTo(-L * 0.12, -H * 0.82, -L * 0.24, -H * 0.3); ctx.lineTo(-L * 0.22, -H * 0.2); }
+  else if (d === 'thread') { ctx.moveTo(L * 0.06, -H * 0.46); ctx.quadraticCurveTo(-L * 0.02, -H * 0.7, -L * 0.22, -H * 0.3); ctx.lineTo(-L * 0.2, -H * 0.18); }
+  else if (d === 'triple') { ctx.moveTo(L * 0.08, -H * 0.44); ctx.quadraticCurveTo(-L * 0.06, -H * 0.62, -L * 0.18, -H * 0.86); ctx.quadraticCurveTo(-L * 0.32, -H * 0.82, -L * 0.3, -H * 0.2); }
+  else if (d === 'yellowfin') { ctx.moveTo(L * 0.16, -H * 0.45); ctx.quadraticCurveTo(L * 0.08, -H * 0.8, -L * 0.02, -H * 0.47); ctx.moveTo(-L * 0.05, -H * 0.44); ctx.quadraticCurveTo(-L * 0.12, -H * 1.5, -L * 0.2, -H * 1.62); ctx.quadraticCurveTo(-L * 0.14, -H * 0.8, -L * 0.15, -H * 0.36); }
   else { ctx.moveTo(L * 0.05, -H * 0.46); ctx.quadraticCurveTo(-L * 0.08, -H * 0.76, -L * 0.22, -H * 0.42); ctx.lineTo(-L * 0.24, -H * 0.2); }
   ctx.closePath(); ctx.fill();
+  if (d === 'hog') { ctx.strokeStyle = fc; ctx.lineWidth = Math.max(1, L * 0.012); ctx.lineCap = 'round'; for (let i = 0; i < 3; i++) { const x = L * (0.2 - i * 0.05); ctx.beginPath(); ctx.moveTo(x, -H * 0.44); ctx.quadraticCurveTo(x - L * 0.02, -H * 0.8, x - L * 0.08, -H * (1.0 - i * 0.08)); ctx.stroke(); } }
+  if (d === 'thread') { ctx.strokeStyle = fc; ctx.lineWidth = Math.max(0.8, L * 0.006); for (const s2 of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-L * 0.08, s2 * H * 0.56); ctx.quadraticCurveTo(-L * 0.24, s2 * H * 0.78, -L * 0.46, s2 * H * 0.66); ctx.stroke(); } }
   ctx.beginPath();
   if (d === 'sickle') { ctx.moveTo(0, H * 0.42); ctx.quadraticCurveTo(-L * 0.06, H * 0.8, -L * 0.2, H * 0.8); ctx.quadraticCurveTo(-L * 0.12, H * 0.58, -L * 0.2, H * 0.24); }
   else if (d === 'long') { ctx.moveTo(L * 0.02, H * 0.42); ctx.quadraticCurveTo(-L * 0.12, H * 0.62, -L * 0.27, H * 0.3); ctx.lineTo(-L * 0.25, H * 0.12); }
   else if (d === 'tuna') { ctx.moveTo(-L * 0.06, H * 0.42); ctx.quadraticCurveTo(-L * 0.1, H * 0.92, -L * 0.15, H * 0.34); }
+  else if (d === 'yellowfin') { ctx.moveTo(-L * 0.05, H * 0.42); ctx.quadraticCurveTo(-L * 0.12, H * 1.45, -L * 0.2, H * 1.55); ctx.quadraticCurveTo(-L * 0.14, H * 0.8, -L * 0.15, H * 0.34); }
+  else if (d === 'triple') { ctx.moveTo(-L * 0.02, H * 0.42); ctx.quadraticCurveTo(-L * 0.14, H * 0.6, -L * 0.18, H * 0.84); ctx.quadraticCurveTo(-L * 0.32, H * 0.8, -L * 0.3, H * 0.2); }
+  else if (d === 'trigger') { ctx.moveTo(-L * 0.04, H * 0.44); ctx.quadraticCurveTo(-L * 0.12, H * 0.78, -L * 0.24, H * 0.3); ctx.lineTo(-L * 0.22, H * 0.2); }
   else { ctx.moveTo(-L * 0.06, H * 0.4); ctx.quadraticCurveTo(-L * 0.12, H * 0.74, -L * 0.2, H * 0.5); ctx.lineTo(-L * 0.22, H * 0.2); }
   ctx.closePath(); ctx.fill();
   if (lk.finlets) {
@@ -144,6 +171,36 @@ function fishPattern(ctx, key, lk, L, H) {
     ctx.strokeStyle = 'rgba(40,50,56,0.5)'; ctx.lineWidth = H * 0.08;
     for (let i = 0; i < 14; i++) { const x = L * 0.28 - i * L * 0.042; ctx.beginPath(); ctx.moveTo(x, -H * 0.5); ctx.lineTo(x - L * 0.025, -H * 0.12); ctx.stroke(); }
     dots(8, '#1b1b1b', H * 0.05, H * 0.05, H * 0.3, -L * 0.28, -L * 0.05);
+  } else if (p === 'grunt') {
+    ctx.strokeStyle = 'rgba(70,140,220,0.75)'; ctx.lineWidth = H * 0.035;
+    for (let i = 0; i < 4; i++) { const y = -H * 0.3 + i * H * 0.1; ctx.beginPath(); ctx.moveTo(L * 0.5, y + H * 0.06); ctx.quadraticCurveTo(L * 0.4, y, L * 0.28, y + H * 0.02); ctx.stroke(); }
+    dots(40, 'rgba(196,160,90,0.55)', H * 0.03, -H * 0.4, H * 0.2, -L * 0.25, L * 0.25);
+  } else if (p === 'lane') {
+    ctx.strokeStyle = 'rgba(242,201,76,0.85)'; ctx.lineWidth = H * 0.04;
+    for (let i = 0; i < 5; i++) { const y = -H * 0.28 + i * H * 0.1; ctx.beginPath(); ctx.moveTo(L * 0.42, y); ctx.quadraticCurveTo(0, y - H * 0.05, -L * 0.3, y * 0.6); ctx.stroke(); }
+    ctx.fillStyle = '#1b1b1b'; ell(ctx, -L * 0.06, -H * 0.14, H * 0.09, H * 0.08); ctx.fill();
+  } else if (p === 'hog') {
+    ctx.fillStyle = 'rgba(90,30,40,0.55)'; ctx.beginPath(); ctx.moveTo(L * 0.52, -H * 0.1); ctx.quadraticCurveTo(L * 0.3, -H * 0.62, L * 0.12, -H * 0.5); ctx.lineTo(L * 0.2, H * 0.1); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#1b1b1b'; ell(ctx, L * 0.04, -H * 0.38, H * 0.06, H * 0.05); ctx.fill();
+  } else if (p === 'trigger') {
+    ctx.fillStyle = 'rgba(40,44,48,0.28)'; for (let i = 0; i < 3; i++) { const x = L * (0.2 - i * 0.18); ctx.fillRect(x, -H * 0.5, L * 0.08, H); }
+    ctx.strokeStyle = 'rgba(120,170,220,0.45)'; ctx.lineWidth = H * 0.02; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(L * 0.48, -H * 0.1 + i * H * 0.08); ctx.lineTo(L * 0.28, -H * 0.2 + i * H * 0.08); ctx.stroke(); }
+  } else if (p === 'cobia') {
+    ctx.fillStyle = 'rgba(20,16,12,0.75)'; ctx.beginPath(); ctx.moveTo(L * 0.46, -H * 0.06); ctx.quadraticCurveTo(0, -H * 0.16, -L * 0.32, -H * 0.04); ctx.lineTo(-L * 0.32, H * 0.06); ctx.quadraticCurveTo(0, -H * 0.02, L * 0.46, H * 0.06); ctx.fill();
+    ctx.strokeStyle = 'rgba(240,236,224,0.5)'; ctx.lineWidth = H * 0.05; ctx.beginPath(); ctx.moveTo(L * 0.42, -H * 0.2); ctx.quadraticCurveTo(0, -H * 0.28, -L * 0.3, -H * 0.16); ctx.stroke();
+  } else if (p === 'bonita') {
+    ctx.strokeStyle = 'rgba(16,34,60,0.75)'; ctx.lineWidth = H * 0.045;
+    for (let i = 0; i < 9; i++) { const x = L * 0.1 - i * L * 0.045; ctx.beginPath(); ctx.moveTo(x, -H * 0.46); ctx.quadraticCurveTo(x - L * 0.03, -H * 0.3, x + L * 0.01, -H * 0.16); ctx.stroke(); }
+    dots(5, '#1b1b1b', H * 0.04, H * 0.05, H * 0.18, L * 0.12, L * 0.24);
+  } else if (p === 'yellowfin') {
+    ctx.fillStyle = 'rgba(240,200,40,0.6)'; ctx.beginPath(); ctx.moveTo(L * 0.42, -H * 0.12); ctx.quadraticCurveTo(0, -H * 0.2, -L * 0.3, -H * 0.06); ctx.lineTo(-L * 0.3, 0); ctx.quadraticCurveTo(0, -H * 0.1, L * 0.42, -H * 0.04); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1; for (let i = 0; i < 10; i++) { const x = L * 0.2 - i * L * 0.045; ctx.beginPath(); ctx.moveTo(x, H * 0.08); ctx.lineTo(x - L * 0.01, H * 0.38); ctx.stroke(); }
+  } else if (p === 'jack') {
+    ctx.fillStyle = '#141414'; ell(ctx, L * 0.3, -H * 0.12, H * 0.07, H * 0.06); ctx.fill();
+    ctx.fillStyle = 'rgba(230,200,60,0.35)'; ctx.fillRect(-L * 0.3, H * 0.1, L * 0.6, H * 0.3);
+  } else if (p === 'drum') {
+    ctx.fillStyle = 'rgba(15,14,13,0.3)'; for (let i = 0; i < 4; i++) { const x = L * (0.22 - i * 0.14); ctx.fillRect(x, -H * 0.5, L * 0.06, H * 0.9); }
+    ctx.strokeStyle = 'rgba(40,36,32,0.8)'; ctx.lineWidth = Math.max(0.8, L * 0.006); for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(L * (0.42 + i * 0.012), H * 0.2); ctx.lineTo(L * (0.42 + i * 0.012), H * 0.32); ctx.stroke(); }
   } else if (p === 'bonelines') {
     ctx.strokeStyle = 'rgba(60,85,75,0.35)'; ctx.lineWidth = H * 0.025;
     for (let i = 0; i < 5; i++) { const y = -H * 0.38 + i * H * 0.09; ctx.beginPath(); ctx.moveTo(L * 0.3, y); ctx.lineTo(-L * 0.3, y * 0.5); ctx.stroke(); }
@@ -195,6 +252,11 @@ const TOPLOOK = {
   redfish: { back: '#9a5a2e', edge: '#e2b483', tail: '#7e4a26', wide: 0.22, spot: true },
   snook: { back: '#5e5e48', edge: '#d9d7c2', tail: '#5a5a42', wide: 0.17, line: true },
   trout: { back: '#56645c', edge: '#c9d1cc', tail: '#56645c', wide: 0.18 },
+  jack: { back: '#4a6266', edge: '#d8e2cf', tail: '#c9a83a', wide: 0.26 },
+  ladyfish: { back: '#6d8796', edge: '#e6eef2', tail: '#7b93a0', wide: 0.15 },
+  blackdrum: { back: '#33302d', edge: '#8a847c', tail: '#2c2a28', wide: 0.3 },
+  mangrove: { back: '#5a4a3c', edge: '#c9b29a', tail: '#9a5a4a', wide: 0.24 },
+  tripletail: { back: '#5a4a28', edge: '#b9a26a', tail: '#5a4a28', wide: 0.36 },
   shadow: { back: '#06263a', edge: '#0b3550', tail: '#06263a', wide: 0.22 }
 };
 function drawFishTop(ctx, len, look, t, o = {}) {
@@ -642,16 +704,16 @@ function drawDiver(ctx, ch, x, y, s, o = {}) {
     ctx.restore(); ctx.restore();
   };
   leg(3, kick, true);
-  // back arm with net
+  // back arm with net (the Bug Hunt draws its own swinging net and passes noNet)
   const sl = sleeveStyle(ctx, C, 'rash', 0, 0, 30, 10);
   limb(ctx, [[8, 4], [22, 14], [34, 15]], 6, sl);
   ctx.fillStyle = C.gloves; ell(ctx, 34, 15, 3.6, 3.2); ctx.fill();
-  ctx.save(); ctx.translate(34, 15); ctx.rotate((o.netSwing || 0) * -0.9 + 0.25);
+  if (!o.noNet) { ctx.save(); ctx.translate(34, 15); ctx.rotate((o.netSwing || 0) * -0.9 + 0.25);
   ctx.strokeStyle = '#c9cfd4'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(22, 4); ctx.stroke();
   ctx.strokeStyle = '#e8eef2'; ctx.lineWidth = 2; ell(ctx, 34, 6, 11, 13, 0.2); ctx.stroke();
   ctx.save(); ell(ctx, 34, 6, 11, 13, 0.2); ctx.clip(); ctx.strokeStyle = 'rgba(230,240,245,0.45)'; ctx.lineWidth = 0.8;
   for (let i = -14; i <= 14; i += 4) { ctx.beginPath(); ctx.moveTo(22 + i, -10); ctx.lineTo(34 + i, 22); ctx.stroke(); ctx.beginPath(); ctx.moveTo(46 + i, -10); ctx.lineTo(34 + i, 22); ctx.stroke(); }
-  ctx.restore(); ctx.restore();
+  ctx.restore(); ctx.restore(); }
   // torso
   ctx.fillStyle = C.rash.base; rr(ctx, -26, -11, 46, 22, 11); ctx.fill();
   if (C.rash.camo) { ctx.save(); rr(ctx, -26, -11, 46, 22, 11); ctx.clip(); const rng = mulberry(9); for (let i = 0; i < 12; i++) { ctx.fillStyle = C.rash.camo[i % 3]; ell(ctx, -24 + rng() * 44, -10 + rng() * 20, 4 + rng() * 5, 2 + rng() * 3, rng() * 3); ctx.fill(); } ctx.restore(); }
@@ -726,7 +788,7 @@ function drawBoatTop(ctx, x, y, s, ang = 0, o = {}) {
   ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.scale(s, s);
   if (o.rig) { ctx.strokeStyle = 'rgba(220,230,235,0.9)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-6, -24); ctx.lineTo(-58, -78); ctx.moveTo(-6, 24); ctx.lineTo(-58, 78); ctx.stroke(); }
   ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.moveTo(86, 6); ctx.quadraticCurveTo(64, -22, 4, -24); ctx.lineTo(-68, -23); ctx.lineTo(-68, 31); ctx.lineTo(4, 32); ctx.quadraticCurveTo(64, 30, 86, 6); ctx.fill();
-  ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(82, 0); ctx.quadraticCurveTo(62, -27, 0, -28); ctx.lineTo(-72, -27); ctx.lineTo(-74, 27); ctx.lineTo(0, 28); ctx.quadraticCurveTo(62, 27, 82, 0); ctx.fill();
+  ctx.fillStyle = o.hull || '#ffffff'; ctx.beginPath(); ctx.moveTo(82, 0); ctx.quadraticCurveTo(62, -27, 0, -28); ctx.lineTo(-72, -27); ctx.lineTo(-74, 27); ctx.lineTo(0, 28); ctx.quadraticCurveTo(62, 27, 82, 0); ctx.fill();
   ctx.strokeStyle = '#9fb0bb'; ctx.lineWidth = 2; ctx.stroke();
   ctx.fillStyle = '#e3e8ec'; ctx.beginPath(); ctx.moveTo(70, 0); ctx.quadraticCurveTo(54, -20, 0, -21); ctx.lineTo(-66, -20); ctx.lineTo(-66, 20); ctx.lineTo(0, 21); ctx.quadraticCurveTo(54, 20, 70, 0); ctx.fill();
   ctx.fillStyle = '#3a4148'; rr(ctx, -88, -17, 14, 13, 4); ctx.fill(); rr(ctx, -88, 4, 14, 13, 4); ctx.fill();

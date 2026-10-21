@@ -13,8 +13,8 @@ const go = async (expr, wait=700) => { await page.evaluate(`Game.go(${expr}, tru
 await shot('title');
 await go('new CrewSetupScene()'); await shot('crew');
 await page.evaluate(()=>{ Trip.start({mode:'crew', crew:['michael','jorge','jemel'], plan:'full', sessionLen:120}); Trip.cur.weather = {id:'glass',name:'Glass calm',wind:'0–5 kts',vis:1.25,drift:0,aim:0.75,tag:'#Glass'}; });
-await go('new MapScene()'); await shot('map');
-await page.evaluate(()=>{ Game.scene.sel='bughunt'; }); await page.waitForTimeout(300); await shot('map-sel');
+await go('new SeaScene()', 1500); await shot('sea');
+await page.evaluate(()=>{ Game.scene.openChart(); Game.scene.sel='bughunt'; }); await page.waitForTimeout(300); await shot('chart-sel');
 await page.evaluate(()=>{ Trip.cur.spot='bughunt'; Trip.cur.turn=0; }); await go('new TurnIntroScene()'); await shot('turn');
 // bug hunt
 await page.evaluate(()=>{ window.__res=null; Game.go(new BugHuntScene({ch:'michael', spot:'bughunt', len:120, weather:Trip.cur.weather, onEnd:(r)=>{window.__res=r;}}), true); });
@@ -22,7 +22,7 @@ await page.waitForTimeout(900); await shot('bug-start');
 await page.evaluate(()=>{ const s=Game.scene; const den=s.dens.find(d=>d.kind==='lobster'); s.diver.x = den.x - den.dir*60; s.diver.y = den.y; s.diver.facing = -den.dir; s.cam = Math.max(0, s.diver.x - Game.W*0.45); den.coax=0.6; den.twitch=0.4; });
 await page.keyboard.down('Space'); await page.waitForTimeout(250); await shot('bug-tickle'); await page.keyboard.up('Space');
 await page.evaluate(()=>{ const s=Game.scene; const den=s.dens.find(d=>d.kind==='lobster' && d.state==='in'); s.diver.x = den.x - den.dir*60; s.diver.y = den.y; s.diver.facing=-den.dir; den.lob={cl:3.05,w:0.9,eggs:false}; s.emerge(den); });
-await page.waitForTimeout(1500); await shot('bug-ring');
+await page.waitForTimeout(1500); await shot('bug-out');
 await page.evaluate(()=>{ const s=Game.scene; s.gauge={lob:{cl:2.93,w:0.8,eggs:false},t:0}; }); await page.waitForTimeout(500); await shot('bug-gauge-short');
 await page.evaluate(()=>{ const s=Game.scene; s.decide(true); s.gauge={lob:{cl:4.6,w:2.9,eggs:true},t:0}; }); await page.waitForTimeout(500); await shot('bug-gauge-eggs');
 await page.evaluate(()=>{ const s=Game.scene; s.decide(false); for(const cl of [3.4,4.8,3.1]) s.bag.push({cl,w:Math.round(0.034*Math.pow(cl,2.9)*10)/10,eggs:false}); s.breath=3; s.diver.y=400; }); await page.waitForTimeout(400); await shot('bug-lowair');
@@ -49,7 +49,7 @@ await page.mouse.move(600,250); await page.mouse.down(); await page.waitForTimeo
 await page.evaluate(()=>{ const s=Game.scene; s.startFight({sp:'tarpon', weight:110, ctxType:'flats', rock:0}); s.child.revealed=true; s.child.dist=30; }); await page.waitForTimeout(500); await shot('fight-flats');
 // results / day end / logbook / howto
 await page.evaluate(()=>{ const c1=makeCatch('mahi',29.4,'jemel','troll'); const c2=makeCatch('blackfin',17,'jorge','troll'); Trip.record('jemel','troll',{catches:[c1],total:c1.pts,lines:[]}); Trip.record('jorge','troll',{catches:[c2],total:c2.pts,lines:[]}); const l=makeCatch('lobster',3.4,'michael','bughunt'); l.cl=4.9; Trip.record('michael','bughunt',{catches:[l],total:l.pts,lines:[]}); });
-await go('new MapScene()'); await shot('map-scores');
+await go('new SeaScene()'); await page.evaluate(()=>{ Game.scene.openChart(); }); await page.waitForTimeout(300); await shot('chart-scores');
 await go('new DayEndScene()', 1500); await shot('dayend');
 await go('new LogbookScene()'); await shot('logbook');
 await go('new HowToScene()'); await shot('howto');

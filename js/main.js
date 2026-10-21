@@ -5,6 +5,7 @@
   const start = (data) => {
     if (data && data.trip && data.trip.crew) { Trip.cur = data.trip; Trip.save(); }
     Game.init(new TitleScene());
+    World.warm();   // build the map in the background while the title screen is up
   };
   const go = () => {
     try { if (hot && hot.snapshot) hot.snapshot(() => ({ trip: Trip.cur && Trip.cur.mode === 'crew' ? Trip.cur : null })); } catch (e) { /* optional */ }
