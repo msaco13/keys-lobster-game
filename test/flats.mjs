@@ -36,7 +36,7 @@ if (what === 'shots' || what === 'all') {
       await startSpot(page, spot, 'light');
       await page.waitForTimeout(400);
       // fast-forward so fish are on the water, then let it render a frame
-      await page.evaluate(() => { const s = Game.scene; for (let i = 0; i < 60 * 14; i++) s.update(1 / 60); });
+      await page.evaluate(() => { const s = Game.scene; for (let i = 0; i < 60 * 14; i++) s.update(1 / 60); Game.toasts = []; });
       await page.waitForTimeout(250);
       await page.screenshot({ path: `${out}/${spot}-${w}.png` });
       if (w === 960) {
@@ -46,10 +46,10 @@ if (what === 'shots' || what === 'all') {
         await page.mouse.up(); await page.waitForTimeout(1100);
         await page.screenshot({ path: `${out}/${spot}-${w}-cast.png` });
         // show every fish clearly for an art check
-        await page.evaluate(() => { const s = Game.scene; s.__debugReveal = true; });
+        await page.evaluate(() => { const s = Game.scene; s.vis = () => 1; Game.toasts = []; });
         await page.waitForTimeout(200);
         await page.screenshot({ path: `${out}/${spot}-${w}-reveal.png` });
-        await page.evaluate(() => { Game.scene.__debugReveal = false; });
+        await page.evaluate(() => { delete Game.scene.vis; });
       }
     }
     await page.close();
@@ -58,7 +58,7 @@ if (what === 'shots' || what === 'all') {
   const page = await open(960, 540);
   for (const wid of ['glass', 'breezy']) {
     await startSpot(page, 'flats', wid); await page.waitForTimeout(300);
-    await page.evaluate(() => { const s = Game.scene; for (let i = 0; i < 60 * 16; i++) s.update(1 / 60); });
+    await page.evaluate(() => { const s = Game.scene; for (let i = 0; i < 60 * 16; i++) s.update(1 / 60); Game.toasts = []; });
     await page.waitForTimeout(250);
     await page.screenshot({ path: `${out}/flats-960-${wid}.png` });
   }

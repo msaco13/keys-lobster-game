@@ -247,7 +247,7 @@ class BugHuntScene extends SessionBase {
 
   /* ---------- update ---------- */
   update(dt) {
-    if (this.gauge) { this.gauge.t += dt; this.t += dt; Game.toasts = []; return; }
+    if (this.gauge) { if (!this.paused && !this.child) { this.gauge.t += dt; this.t += dt; } Game.toasts = []; return; }
     if (this.baseUpdate(dt)) return;
     const d = this.diver, t = this.t;
     if (this.quip) { this.quip.t -= dt; if (this.quip.t <= 0) this.quip = null; }
@@ -898,7 +898,7 @@ class BugHuntScene extends SessionBase {
     } else if (this.t < 8 && !this.coach) {
       text(ctx, Game.touch ? 'Drag to swim · hold a hole to tickle · tap the bug to net it' : 'WASD to swim · hold on a hole to tickle · click the bug to net it', 24, H - 30, { size: 17, color: '#fff', weight: 700, alpha: 0.85, stroke: 'rgba(0,0,0,0.4)', sw: 4, maxW: W - 200 });
     }
-    if (this.coach) this.drawCoach(ctx, W, H, t);
+    if (this.coach && !this.paused) this.drawCoach(ctx, W, H, t);
     if (this.quip && !(this.coachMsg() && !Game.toasts.length)) this.drawQuip(ctx, W);
   }
   coachMsg() {

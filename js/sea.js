@@ -686,7 +686,7 @@ class SeaScene {
       text(ctx, c.mode === 'crew' ? 'Scores so far go on the board.' : 'You can run home or skip the ride.', W / 2, 206, { size: 18, align: 'center', color: '#cfe3ea', weight: 600 });
       UI.button(ctx, 'run-home', W / 2 - 230, 250, 220, 56, 'Run home', () => { this.dest = 'home'; this.homeRun = true; this.panel = null; this.planRoute(); this.setAuto(true); Music.play('sunset'); }, { style: 'primary', size: 20 });
       UI.button(ctx, 'end-now', W / 2 + 10, 250, 220, 56, 'End it here', () => { this.panel = null; Game.go(new DayEndScene()); }, { style: 'coral', size: 20 });
-      UI.button(ctx, 'keep', W / 2 - 110, 324, 220, 50, 'Keep fishing', () => (this.panel = null), { style: 'ghost', size: 18, key: 'Escape' });
+      UI.button(ctx, 'keep', W / 2 - 110, 324, 220, 50, 'Keep going', () => (this.panel = null), { style: 'ghost', size: 18, key: 'Escape' });
       return;
     }
     text(ctx, 'Paused', W / 2, 140, { display: true, size: 54, align: 'center', color: '#fff' });

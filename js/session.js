@@ -86,7 +86,7 @@ class SessionBase {
   drawPause(ctx) {
     const W = Game.W, H = Game.H, cx = W / 2, crew = Trip.cur && Trip.cur.mode === 'crew';
     for (const r of UI.regions) r.disabled = true;   // nothing under the menu answers clicks or hotkeys while paused
-    ctx.fillStyle = 'rgba(3,22,32,0.8)'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(3,22,32,0.86)'; ctx.fillRect(0, 0, W, H);
     if (this.quitAsk) return this.drawQuitAsk(ctx, crew);
     text(ctx, 'Paused', cx, 130, { display: true, size: 54, align: 'center', color: '#fff' });
     text(ctx, SPOTS[this.spot].name + ' · ' + fmtTime(this.timeLeft) + ' left', cx, 168, { size: 20, align: 'center', color: '#cfe3ea', weight: 600 });

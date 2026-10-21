@@ -592,6 +592,7 @@ const Game = {
     }
   },
   drawToasts(ctx) {
+    const sc = this.scene; if (sc && (sc.paused || (sc.panel && sc.panel.kind !== 'chart'))) return;   // never on top of a pause menu
     const placed = [];
     for (const t of this.toasts) {
       const a = t.t < 0.18 ? easeBack(t.t / 0.18) : 1; const fadeOut = clamp((t.dur - t.t) / 0.3, 0, 1);

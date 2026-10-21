@@ -90,6 +90,12 @@ for (const run of RUNS) {
     await page.waitForTimeout(300); await expectScene('SeaScene', 'cast off');
     const saved = await page.evaluate(() => !!Trip.load()); if (!saved) throw new Error('crew trip not saved after cast off');
   });
+  // the boat's own pause panel lives in sea.js; this only checks the way out and back in
+  await path_('sea: pause -> quit to title -> resume -> SeaScene', async () => {
+    await fresh(); await startCrew(); await jump('new SeaScene()', 600); await expectScene('SeaScene', 'jump');
+    await click('pause'); await click('totitle'); await expectScene('TitleScene', 'quit from the boat');
+    await click('resume'); await page.waitForTimeout(300); await expectScene('SeaScene', 'resume to the boat');
+  });
   await path_('turn intro -> ready -> fish -> pause -> quit to title -> confirm -> resume -> turn intro', async () => {
     await fresh(); await startCrew(); await toTurn('bughunt', 0);
     await expectScene('TurnIntroScene', 'jump'); await shot('turnintro-first');
