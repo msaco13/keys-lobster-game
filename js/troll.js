@@ -519,12 +519,13 @@ class TrollScene extends SessionBase {
   }
 
   update(dt) {
-    if (this.baseUpdate(dt)) return;
+    if (this.baseUpdate(dt)) { SFX.setEngine(this.paused ? 0 : 1, 0.05); SFX.setHull(0); return; }
     const W = Game.W, H = Game.H;
     if (Input.held('ArrowUp', 'KeyW')) this.ty = clamp(this.ty - 230 * dt, 120, H - 50);
     if (Input.held('ArrowDown', 'KeyS')) this.ty = clamp(this.ty + 230 * dt, 120, H - 50);
     if (this.stall > 0) { this.stall -= dt; this.speed = approach(this.speed, 0, 6, dt); } else this.speed = approach(this.speed, 150, 2, dt);
     const v = this.speed;
+    SFX.setEngine(1, 0.12 + v / 1200); SFX.setHull(0.22 * v / 150);   // outboards at trolling speed, water past the hull
     const dy = clamp(this.ty - this.by, -220 * dt, 220 * dt); this.bvy = dy / Math.max(dt, 1e-4); this.by += dy;
     this.trav += v * dt;
     const last = this.hist[this.hist.length - 1];

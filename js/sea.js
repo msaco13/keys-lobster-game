@@ -195,6 +195,9 @@ class SeaScene {
     this.cam.z = approach(this.cam.z, zt, 1.2, dt);
     // sound
     SFX.setEngine(1, this.v / 320); SFX.setAmbient(0.35 + this.v / 600, false);
+    // the hull slapping through the chop when we're running
+    this.slapT = (this.slapT || 0) - dt;
+    if (this.v > 120 && this.wind.chop > 0.3 && !this.air && this.slapT <= 0) { this.slapT = rand(0.5, 1.5) / (0.6 + this.wind.chop); SFX.play('slap', clamp(this.v / 320 * this.wind.chop * 1.4, 0.3, 1)); }
     this.updateWorld(dt);
     this.updateFoam(dt);
     Chase.update(this, dt);
@@ -251,11 +254,11 @@ class SeaScene {
       this.air = { t: 0, dur: 0.75 }; this.flags.airs++;
       if (this.flags.airs <= 4) this.lines.push({ label: 'Airtime off a wake', pts: 25 });
       const [fx, fy] = this.boatScreen(); this.fl.add(fx, fy - 70, 'AIRTIME! +25', PAL.sun, 26); SFX.play('woo'); this.say('air', 0.8);
-    } else { Game.shake(3); SFX.play('splash'); }
+    } else { Game.shake(3); SFX.play('slap', 1.6); }
   }
   bump(msg) {
     if (this.bumpCd > this.t) return; this.bumpCd = this.t + 1;
-    this.flags.bumps++; Game.shake(6); SFX.play('chomp'); Game.toast(msg, { color: PAL.warn, size: 28, y: 170 }); this.say('bump', 0.6);
+    this.flags.bumps++; Game.shake(6); SFX.play('bump'); Game.toast(msg, { color: PAL.warn, size: 28, y: 170 }); this.say('bump', 0.6);
   }
   runAground() {
     this.stuck = 2.6; this.v = 0; this.flags.aground++;
@@ -292,7 +295,8 @@ class SeaScene {
         Charts.add(id); if (!c.found.includes(id)) c.found.push(id);
         this.lines.push({ label: 'Found ' + SPOTS[id].name, pts: 75 });
         Game.toast('NEW SPOT: ' + SPOTS[id].name, { color: PAL.sun, size: 40, y: 140, dur: 2.6, sub: SPOTS[id].kind + ' · it’s on the chart now (+75)' });
-        SFX.play('trophy'); this.say('found'); Trip.save();
+        SFX.play('found'); this.say('found'); Trip.save();
+        bountyToast(Bounties.found(id, this.driver));   // "find a new spot" pays the captain straight away
       }
     }
     // which spot (or the dock) are we sitting on?
@@ -305,7 +309,7 @@ class SeaScene {
     const deep = World.gridDepth(this.x, this.y) > 12;
     if (!this.flags.dolphins && !this.dolphins && deep && this.v >= 150 && this.t > 8 && chance(dt * 0.07)) {
       this.dolphins = { t: 0, dur: 6, pod: [0, 1, 2].map((i) => ({ ox: rand(50, 110), oy: (i - 1) * 46 + rand(-8, 8), ph: rand(0, TAU) })) };
-      this.flags.dolphins = true; this.lines.push({ label: 'Dolphins rode the bow wake', pts: 25 }); this.fl.add(this.boatScreen()[0], this.boatScreen()[1] - 80, 'Dolphins! +25', '#bff0ff', 22); this.say('dolphins'); SFX.play('coin');
+      this.flags.dolphins = true; this.lines.push({ label: 'Dolphins rode the bow wake', pts: 25 }); this.fl.add(this.boatScreen()[0], this.boatScreen()[1] - 80, 'Dolphins! +25', '#bff0ff', 22); this.say('dolphins'); SFX.play('dolphin');
     }
     if (this.dolphins) { this.dolphins.t += dt; if (this.dolphins.t > this.dolphins.dur) this.dolphins = null; }
     // manatees in the canals and the shallows near shore
@@ -695,6 +699,7 @@ class SeaScene {
         let y = cy + 130;
         text(ctx, this.c.mode === 'crew' ? 'TODAY · ' + this.c.done.length + '/' + this.c.spotsNeeded + ' SPOTS' : 'SOLO DAY', sx + 16, y, { size: 13, color: '#9fb8c2', weight: 800 }); y += 24;
         for (const ch2 of this.c.crew.slice().sort((a, b) => this.c.scores[b] - this.c.scores[a])) { crewAvatar(ctx, ch2, sx + 30, y, 14); text(ctx, CHARS[ch2].name, sx + 52, y + 5, { size: 15, color: '#fff', weight: 800 }); text(ctx, this.c.scores[ch2].toLocaleString(), sx + sw - 16, y + 5, { size: 15, align: 'right', color: PAL.sun, weight: 800 }); y += 34; }
+        if (!this.homeRun && y + 110 < cy + ch) drawBountyList(ctx, sx + 16, y + 10, sw - 32, { bounties: Bounties.list(this.c), size: 14 });
       } else if (sel === 'home') {
         text(ctx, 'Home dock', sx + 16, cy + 36, { display: true, size: 22, color: '#fff', maxW: sw - 30 });
         text(ctx, 'Tavernier · ' + (dist(this.x, this.y, World.home.x, World.home.dockY) / UNITS_PER_NM).toFixed(1) + ' nm', sx + 16, cy + 60, { size: 14, color: PAL.coral, weight: 800 });
@@ -714,6 +719,8 @@ class SeaScene {
           text(ctx, S.kind.toUpperCase() + ' · ' + S.depth + ' · ' + nm.toFixed(1) + ' nm', sx + 16, cy + 60, { size: 13, color: PAL.coral, weight: 800, maxW: sw - 30 });
           const used = para(ctx, S.blurb, sx + 16, cy + 84, sw - 32, { size: 14, color: '#dcebf0', weight: 500, lh: 18 });
           const iy = cy + 96 + used, per = Math.max(1, Math.floor((sw - 24) / 44));
+          const nIc = Math.min(S.species.length, per * 2), here = this.homeRun ? [] : Bounties.list(this.c).filter((b) => Bounties.here(b, sel)), by = iy + Math.ceil(nIc / per) * 30 + 6;
+          if (here.length && by + 20 + here.length * 28 < cy + ch - 132) drawBountyList(ctx, sx + 16, by, sw - 32, { bounties: Bounties.list(this.c), spot: sel, only: 'here', title: 'BOUNTIES HERE', size: 14, rowH: 28 });
           S.species.slice(0, per * 2).forEach((k, i) => { ctx.save(); ctx.translate(sx + 34 + (i % per) * 44, iy + 10 + Math.floor(i / per) * 30); if (k === 'lobster') drawLobsterSide(ctx, 22, {}); else drawFish(ctx, k, 38, { wig: 0, sil: Records.all()[k] ? null : 'rgba(255,255,255,0.35)' }); ctx.restore(); });
           if (this.homeRun) text(ctx, 'The day’s done. Head home.', sx + 16, cy + ch - 30, { size: 14, color: '#9fb8c2', weight: 700 });
           else if (spotAllowed(sel, this.c)) {

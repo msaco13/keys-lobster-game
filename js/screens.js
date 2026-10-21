@@ -188,7 +188,7 @@ function drawBountyList(ctx, x, y, w, opts = {}) {
 function bountyToast(list) {
   if (!list || !list.length) return;
   for (const b of list) Game.toast('BOUNTY!', { color: PAL.sun, size: 44, y: 150, dur: 2.6, sub: b.short + ' · +' + b.bonus + (CHARS[b.by] ? ' for ' + CHARS[b.by].name : '') });
-  SFX.play('trophy');
+  SFX.play('bounty');
 }
 
 /* ================= TITLE ================= */

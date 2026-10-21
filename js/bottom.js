@@ -518,7 +518,8 @@ class BottomScene extends SessionBase {
 
   /* ---------- update ---------- */
   update(dt) {
-    if (this.baseUpdate(dt)) { this.engine(0); return; }
+    if (this.baseUpdate(dt)) { this.engine(0); SFX.setHull(0); return; }
+    SFX.setHull(0.12 + 0.22 * this.weather.drift);   // drifting in the chop
     this.chum.update(dt); this.wake.update(dt);
     this.twitch = Math.max(0, this.twitch - dt); this.slam = Math.max(0, this.slam - dt);
     this.alarmT = Math.max(0, this.alarmT - dt); this.beepT -= dt;
