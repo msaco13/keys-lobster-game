@@ -18,7 +18,7 @@ const SEA_QUIPS = {
   arrive: ['Right on the numbers.', 'Smooth, Captain.', 'Drop it right here.']
 };
 function runDriver() { const c = Trip.cur; return c.mode === 'crew' ? c.crew[(c.legs || 0) % c.crew.length] : c.crew[0]; }
-function spotAllowed(id) { const c = Trip.cur; if (c.mode === 'solo') return true; return !c.done.includes(id) && c.done.length < c.spotsNeeded; }
+function spotAllowed(id, c = Trip.cur) { if (!c) return false; if (c.mode === 'solo') return true; return !c.done.includes(id) && c.done.length < c.spotsNeeded; }
 function spotsLeft() { const c = Trip.cur; return c.mode === 'crew' && c.done.length >= c.spotsNeeded; }
 
 class SeaScene {
@@ -43,6 +43,7 @@ class SeaScene {
     this.wind = { chop: wx.id === 'glass' ? 0.12 : wx.id === 'breezy' ? 1 : 0.5, ang: 2.5 };
     this.boats = []; this.spawnBoats();
     this.inSpot = null; this.atHome = false;
+    this.view = Store.get('seaView', 'chase') === 'top' ? 'top' : 'chase';
   }
   enter() {
     Music.play(this.homeRun ? 'sunset' : 'run'); SFX.setAmbient(0.7, false);
@@ -51,9 +52,13 @@ class SeaScene {
     else if (!this.c.legs) Game.toast('Cast off!', { color: PAL.sun, size: 44, y: 150, sub: 'Captain ' + C.name + ' at the wheel. Idle out of the canal.' });
     else Game.toast('Captain ' + C.name, { color: PAL.sun, size: 40, y: 150, sub: spotsLeft() ? '' : 'Pick the next spot on the chart, or go exploring' });
     if (this.dest) this.planRoute();
+    Chase.reset(this);
   }
   exit() { SFX.setEngine(0); SFX.setAmbient(0); this.saveBoat(); }
   saveBoat() { this.c.boat = { x: this.x, y: this.y, h: this.h }; Trip.save(); }
+  toggleView() { this.view = this.view === 'chase' ? 'top' : 'chase'; Store.set('seaView', this.view); Chase.reset(this); this.steer = null; }
+  // where the boat is on screen, for effects that pop off it
+  boatScreen() { return this.view === 'chase' ? [Game.W / 2, CAM.BOAT_SY - 20] : this.toScreen(this.x, this.y); }
   say(kind, p = 1) { if (!chance(p) || !SEA_QUIPS[kind]) return; this.quip = { who: pick(this.others), msg: pick(SEA_QUIPS[kind]), t: 2.8 }; }
 
   /* ---------- where things are ---------- */
@@ -134,7 +139,9 @@ class SeaScene {
     // steering
     let rud = 0;
     if (Input.held('ArrowLeft', 'KeyA')) rud -= 1; if (Input.held('ArrowRight', 'KeyD')) rud += 1;
-    if (this.steer) {
+    if (this.steer && this.view === 'chase') {   // behind the boat: hold left or right of it to turn that way, harder the farther out
+      const dx = this.steer.x - Game.W / 2; if (Math.abs(dx) > 14) rud = clamp((dx - Math.sign(dx) * 14) / (Game.W * 0.2), -1, 1);
+    } else if (this.steer) {
       const [sx, sy] = this.toScreen(this.x, this.y), want = Math.atan2(this.steer.y - sy, this.steer.x - sx);
       if (dist(sx, sy, this.steer.x, this.steer.y) > 24) rud = clamp(angleDiff(this.h, want) * 2.4, -1, 1);
     }
@@ -190,6 +197,7 @@ class SeaScene {
     SFX.setEngine(1, this.v / 320); SFX.setAmbient(0.35 + this.v / 600, false);
     this.updateWorld(dt);
     this.updateFoam(dt);
+    Chase.update(this, dt);
     this.saveT += dt; if (this.saveT > 3) { this.saveT = 0; this.saveBoat(); }
   }
   toScreen(x, y) { const z = this.cam.z; return [(x - this.cam.x) * z + Game.W / 2, (y - this.cam.y) * z + Game.H / 2]; }
@@ -242,7 +250,7 @@ class SeaScene {
     if (this.v > 220 && !this.air) {
       this.air = { t: 0, dur: 0.75 }; this.flags.airs++;
       if (this.flags.airs <= 4) this.lines.push({ label: 'Airtime off a wake', pts: 25 });
-      this.fl.add(Game.W / 2, Game.H / 2 - 80, 'AIRTIME! +25', PAL.sun, 26); SFX.play('woo'); this.say('air', 0.8);
+      const [fx, fy] = this.boatScreen(); this.fl.add(fx, fy - 70, 'AIRTIME! +25', PAL.sun, 26); SFX.play('woo'); this.say('air', 0.8);
     } else { Game.shake(3); SFX.play('splash'); }
   }
   bump(msg) {
@@ -252,7 +260,8 @@ class SeaScene {
   runAground() {
     this.stuck = 2.6; this.v = 0; this.flags.aground++;
     const d = World.depth(this.x, this.y), bay = this.y < chainY(this.x);
-    this.parts.burst(Game.W / 2, Game.H / 2, 20, { color: bay ? 'rgba(140,110,70,0.7)' : 'rgba(230,210,160,0.8)', min: 30, max: 120, life: 1.2, drag: 1.5 });
+    const [px, py] = this.boatScreen();
+    this.parts.burst(px, py + 10, 20, { color: bay ? 'rgba(140,110,70,0.7)' : 'rgba(230,210,160,0.8)', min: 30, max: 120, life: 1.2, drag: 1.5 });
     Game.toast('Ran aground!', { color: PAL.coral, size: 40, y: 170, sub: d < 4 && !bay && this.y - chainY(this.x) > 1100 ? 'That’s a patch reef. Brown water means shallow.' : 'Too fast over the flats. Go slow over light water.' });
     SFX.play('bigsplash'); Game.shake(9, 0.5); Game.vibrate(150); this.say('aground');
     if (this.flags.aground === 1) this.lines.push({ label: 'Ran aground', pts: -25 });
@@ -267,9 +276,14 @@ class SeaScene {
     const c = this.c;
     // no-wake zones and FWC
     this.zone = World.inZone(this.x, this.y);
-    if (this.zone && this.v > NO_WAKE && !this.flags.fwc) { this.speedT += dt; if (this.speedT > 1.3) this.pullOver(); } else this.speedT = Math.max(0, this.speedT - dt);
+    // speeding in a no-wake zone: the officer waves you down once, then writes it up if you keep going
+    if (this.zone && this.v > NO_WAKE && !this.flags.fwc) {
+      this.speedT += dt;
+      if (this.speedT > 1.3 && !this.warned) { this.warned = true; SFX.play('siren'); Game.toast('FWC is watching!', { color: '#7fb8ff', size: 32, y: 170, sub: 'Officer: “Slow it down, Captain.” Idle in no-wake zones.' }); }
+      if (this.speedT > 4) this.pullOver();
+    } else this.speedT = Math.max(0, this.speedT - dt);
     if (this.fwc) { this.fwc.t -= dt; this.fwc.k = Math.min(1, this.fwc.k + dt * 1.2); if (this.fwc.t <= 0) this.fwc = null; }
-    if (this.air) { this.air.t += dt; if (this.air.t >= this.air.dur) { this.air = null; SFX.play('bigsplash'); Game.shake(5); for (let i = 0; i < 18; i++) this.foam.push(this.foamBlob(this.x + rand(-30, 30), this.y + rand(-30, 30), rand(-60, 60), rand(-60, 60), rand(8, 18), 1.2)); } }
+    if (this.air) { this.air.t += dt; if (this.air.t >= this.air.dur) { this.air = null; SFX.play('bigsplash'); Game.shake(5); Chase.splash(this); for (let i = 0; i < 18; i++) this.foam.push(this.foamBlob(this.x + rand(-30, 30), this.y + rand(-30, 30), rand(-60, 60), rand(-60, 60), rand(8, 18), 1.2)); } }
     // discover uncharted spots by running past them
     for (const id of SPOT_ORDER) {
       if (Charts.isKnown(id)) continue;
@@ -291,7 +305,7 @@ class SeaScene {
     const deep = World.gridDepth(this.x, this.y) > 12;
     if (!this.flags.dolphins && !this.dolphins && deep && this.v >= 150 && this.t > 8 && chance(dt * 0.07)) {
       this.dolphins = { t: 0, dur: 6, pod: [0, 1, 2].map((i) => ({ ox: rand(50, 110), oy: (i - 1) * 46 + rand(-8, 8), ph: rand(0, TAU) })) };
-      this.flags.dolphins = true; this.lines.push({ label: 'Dolphins rode the bow wake', pts: 25 }); this.fl.add(Game.W / 2, Game.H / 2 - 90, 'Dolphins! +25', '#bff0ff', 22); this.say('dolphins'); SFX.play('coin');
+      this.flags.dolphins = true; this.lines.push({ label: 'Dolphins rode the bow wake', pts: 25 }); this.fl.add(this.boatScreen()[0], this.boatScreen()[1] - 80, 'Dolphins! +25', '#bff0ff', 22); this.say('dolphins'); SFX.play('coin');
     }
     if (this.dolphins) { this.dolphins.t += dt; if (this.dolphins.t > this.dolphins.dur) this.dolphins = null; }
     // manatees in the canals and the shallows near shore
@@ -304,7 +318,7 @@ class SeaScene {
       const m = this.manatee; m.t += dt; m.x += Math.cos(m.h) * 8 * dt; m.y += Math.sin(m.h) * 8 * dt;
       if (!this.flags.manatee && dist(this.x, this.y, m.x, m.y) < 170) {
         this.flags.manatee = true;
-        if (this.v <= NO_WAKE) { this.lines.push({ label: 'Went slow for a manatee', pts: 25 }); this.fl.add(Game.W / 2, Game.H / 2 - 90, 'Manatee +25', '#d8f0e8', 22); this.say('manatee'); SFX.play('coin'); }
+        if (this.v <= NO_WAKE) { this.lines.push({ label: 'Went slow for a manatee', pts: 25 }); this.fl.add(this.boatScreen()[0], this.boatScreen()[1] - 80, 'Manatee +25', '#d8f0e8', 22); this.say('manatee'); SFX.play('coin'); }
         else Game.toast('Manatee! Slow down!', { color: PAL.warn, size: 28, y: 170 });
       }
       if (m.t > 24) this.manatee = null;
@@ -370,36 +384,8 @@ class SeaScene {
 
   /* ---------- drawing ---------- */
   draw(ctx) {
-    const W = Game.W, H = Game.H, t = this.t, z = this.cam.z;
-    const v = { x0: this.cam.x - W / 2 / z, y0: this.cam.y - H / 2 / z, x1: this.cam.x + W / 2 / z, y1: this.cam.y + H / 2 / z, z };
-    v.sun = { x: this.cam.x + 260 / z, y: this.cam.y - 140 / z, r: 300 / z };
-    ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-this.cam.x, -this.cam.y);
-    World.drawWater(ctx, v, t);
-    World.drawCloudShadows(ctx, v, 1);
-    // swell: big soft light and dark patches drifting with the wind
-    ctx.save(); ctx.globalCompositeOperation = 'soft-light'; ctx.globalAlpha = 0.5 + this.wind.chop * 0.3;
-    const sp = ctx.createPattern(World.swell(), 'repeat'), ss = 3.2, so = t * (8 + this.wind.chop * 10);
-    ctx.scale(ss, ss); ctx.translate(so * 0.6 / ss, so * 0.3 / ss); ctx.fillStyle = sp; ctx.fillRect(v.x0 / ss - so, v.y0 / ss - so, (v.x1 - v.x0) / ss + 2 * so + 10, (v.y1 - v.y0) / ss + 2 * so + 10);
-    ctx.restore();
-    World.drawSurface(ctx, v, t, this.wind);
-    this.drawSpotRings(ctx, v, t);
-    this.drawHumpLife(ctx, v, t);
-    World.drawLand(ctx, v, t);
-    World.drawMarkers(ctx, v, t);
-    this.drawCourse(ctx, t);
-    for (const B of this.boats) if (!B.dead) this.drawWake(ctx, B.trail.map((p) => ({ x: p.x, y: p.y, h: B.h, v: B.v * 0.8, t: p.t })), 0.7);
-    this.drawWake(ctx, this.trail, 1);
-    for (const f of this.foam) { const k = 1 - f.t / f.life; ctx.fillStyle = `rgba(255,255,255,${0.55 * k})`; ell(ctx, f.x, f.y, f.r, f.r * 0.7); ctx.fill(); }
-    if (this.manatee) this.drawManatee(ctx, this.manatee, t);
-    if (this.dolphins) this.drawDolphins(ctx, t);
-    for (const B of this.boats) { if (B.dead || B.x < v.x0 - 120 || B.x > v.x1 + 120 || B.y < v.y0 - 120 || B.y > v.y1 + 120) continue; drawBoatTop(ctx, B.x, B.y, B.big ? 0.7 : 0.5, B.h, { hull: B.hull }); }
-    if (this.fwc) this.drawFwc(ctx, t);
-    const za = this.air ? Math.sin((this.air.t / this.air.dur) * Math.PI) : 0;
-    if (za > 0) { ctx.fillStyle = 'rgba(0,30,50,0.25)'; ell(ctx, this.x + 16 * za, this.y + 26 * za, 66, 26, this.h); ctx.fill(); }
-    const bob = Math.sin(t * (2 + this.wind.chop * 2)) * 0.02 * this.wind.chop * (this.v < 50 ? 1 : 0.3);
-    drawBoatTop(ctx, this.x, this.y - 10 * za, 0.62 * (1 + 0.22 * za), this.h + bob, { crew: this.crew });
-    World.drawBridges(ctx, v, t);
-    ctx.restore();
+    const W = Game.W, H = Game.H, t = this.t;
+    if (this.view === 'chase') Chase.draw(this, ctx, W, H, t); else this.drawTop(ctx, W, H, t);
     this.parts.draw(ctx);
     // the light: morning, midday, afternoon, sunset on the way home
     const legs = this.c.legs || 0;
@@ -414,6 +400,51 @@ class SeaScene {
       else if (this.panel.kind === 'summary') this.drawSummary(ctx, W, H, t);
       else if (this.panel.kind === 'pause') this.drawPause(ctx, W, H);
     }
+  }
+  drawTop(ctx, W, H, t) {
+    const z = this.cam.z, v = { x0: this.cam.x - W / 2 / z, y0: this.cam.y - H / 2 / z, x1: this.cam.x + W / 2 / z, y1: this.cam.y + H / 2 / z, z };
+    v.sun = { x: this.cam.x + 260 / z, y: this.cam.y - 140 / z, r: 300 / z };
+    ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-this.cam.x, -this.cam.y);
+    this.drawFlat(ctx, v, t);
+    ctx.restore();
+  }
+  // the water and everything on it, seen from straight above. v.flat: the chase camera's ground textures, which leave
+  // out whatever the chase camera stands up on its own (boats, posts, flags, trees)
+  drawFlat(ctx, v, t) {
+    World.drawWater(ctx, v, t);
+    World.drawCloudShadows(ctx, v, 1);
+    this.drawSwell(ctx, v, t);
+    World.drawSurface(ctx, v, t, this.wind);
+    this.drawSpotRings(ctx, v, t);
+    this.drawHumpLife(ctx, v, t);
+    World.drawLand(ctx, v, t);
+    World.drawMarkers(ctx, v, t);
+    this.drawCourse(ctx, t);
+    for (const B of this.boats) if (!B.dead) this.drawWake(ctx, B.trail.map((p) => ({ x: p.x, y: p.y, h: B.h, v: B.v * 0.8, t: p.t })), 0.7);
+    this.drawWake(ctx, this.trail, 1);
+    for (const f of this.foam) { const k = 1 - f.t / f.life; ctx.fillStyle = `rgba(255,255,255,${0.55 * k})`; ell(ctx, f.x, f.y, f.r, f.r * 0.7); ctx.fill(); }
+    if (this.manatee) this.drawManatee(ctx, this.manatee, t);
+    const za = this.air ? Math.sin((this.air.t / this.air.dur) * Math.PI) : 0, seen = (B) => !B.dead && B.x > v.x0 - 120 && B.x < v.x1 + 120 && B.y > v.y0 - 120 && B.y < v.y1 + 120;
+    if (v.flat) {   // shadows under the boats
+      ctx.fillStyle = 'rgba(0,30,50,0.22)';
+      for (const B of this.boats) if (seen(B)) { ell(ctx, B.x + 4, B.y + 5, B.big ? 52 : 40, B.big ? 18 : 14, B.h); ctx.fill(); }
+      ctx.fillStyle = `rgba(0,30,50,${0.3 - za * 0.12})`; ell(ctx, this.x + 4 + 18 * za, this.y + 5 + 22 * za, 50, 18, this.h); ctx.fill();
+    } else {
+      if (this.dolphins) this.drawDolphins(ctx, t);
+      for (const B of this.boats) if (seen(B)) drawBoatTop(ctx, B.x, B.y, B.big ? 0.7 : 0.5, B.h, { hull: B.hull });
+      if (this.fwc) this.drawFwc(ctx, t);
+      if (za > 0) { ctx.fillStyle = 'rgba(0,30,50,0.25)'; ell(ctx, this.x + 16 * za, this.y + 26 * za, 66, 26, this.h); ctx.fill(); }
+      const bob = Math.sin(t * (2 + this.wind.chop * 2)) * 0.02 * this.wind.chop * (this.v < 50 ? 1 : 0.3);
+      drawBoatTop(ctx, this.x, this.y - 10 * za, 0.62 * (1 + 0.22 * za), this.h + bob, { crew: this.crew });
+    }
+    World.drawBridges(ctx, v, t);
+  }
+  // swell: big soft light and dark patches drifting with the wind
+  drawSwell(ctx, v, t) {
+    ctx.save(); ctx.globalCompositeOperation = 'soft-light'; ctx.globalAlpha = 0.5 + this.wind.chop * 0.3;
+    const sp = ctx.createPattern(World.swell(), 'repeat'), ss = 3.2, so = t * (8 + this.wind.chop * 10);
+    ctx.scale(ss, ss); ctx.translate(so * 0.6 / ss, so * 0.3 / ss); ctx.fillStyle = sp; ctx.fillRect(v.x0 / ss - so, v.y0 / ss - so, (v.x1 - v.x0) / ss + 2 * so + 10, (v.y1 - v.y0) / ss + 2 * so + 10);
+    ctx.restore();
   }
   drawWake(ctx, tr, s) {
     // a continuous V behind the boat, spreading and fading with age, and the white prop wash in the middle
@@ -435,9 +466,10 @@ class SeaScene {
     for (const id of SPOT_ORDER) {
       if (!Charts.isKnown(id) || this.homeRun) continue;
       const [x, y] = spotXY(id), S = SPOTS[id]; if (x + S.r < v.x0 || x - S.r > v.x1 || y + S.r < v.y0 || y - S.r > v.y1) continue;
-      const ok = spotAllowed(id), here = this.inSpot === id;
+      const ok = spotAllowed(id, this.c), here = this.inSpot === id;
       ctx.save(); ctx.strokeStyle = here ? 'rgba(255,214,90,0.85)' : ok ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.18)'; ctx.lineWidth = here ? 5 : 3; ctx.setLineDash([18, 16]); ctx.lineDashOffset = -t * 20;
       ell(ctx, x, y, S.r, S.r); ctx.stroke(); ctx.restore();
+      if (v.flat) continue;
       // a marker buoy with a flag
       ctx.fillStyle = 'rgba(0,0,0,0.25)'; ell(ctx, x + 4, y + 6, 13, 13); ctx.fill();
       ctx.fillStyle = PAL.coral; ell(ctx, x, y, 13, 13); ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillRect(x - 13, y - 3, 26, 6);
@@ -456,12 +488,12 @@ class SeaScene {
       const bx = hx + Math.cos(i * 2.1 + t * 0.05) * 280, by = hy + Math.sin(i * 2.1 + t * 0.05) * 180;
       ctx.fillStyle = 'rgba(20,40,70,0.35)'; ell(ctx, bx, by, 60, 34, i); ctx.fill();
       if (Math.sin(t * 3 + i * 2) > 0.85) { ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ell(ctx, bx + Math.sin(t * 7 + i) * 30, by, 10 + (t * 30 % 20), 5 + (t * 15 % 10)); ctx.stroke(); }
-      for (let k = 0; k < 3; k++) { const a = t * (0.9 + k * 0.2) + k * 2 + i; drawFrigate(ctx, bx + Math.cos(a) * 70, by + Math.sin(a) * 40 - 40, 1.3, t * 6 + k); }
+      if (!v.flat) for (let k = 0; k < 3; k++) { const a = t * (0.9 + k * 0.2) + k * 2 + i; drawFrigate(ctx, bx + Math.cos(a) * 70, by + Math.sin(a) * 40 - 40, 1.3, t * 6 + k); }
     }
   }
-  drawCourse(ctx, t) {
+  drawCourse(ctx, t, w = 6) {
     if (!this.route || !this.dest) return;
-    ctx.save(); ctx.strokeStyle = this.auto ? 'rgba(255,214,90,0.75)' : 'rgba(255,255,255,0.5)'; ctx.lineWidth = 6; ctx.setLineDash([22, 18]); ctx.lineDashOffset = -t * 40; ctx.lineCap = 'round';
+    ctx.save(); ctx.strokeStyle = this.auto ? 'rgba(255,214,90,0.75)' : 'rgba(255,255,255,0.5)'; ctx.lineWidth = w; ctx.setLineDash([w * 3.6, w * 3]); ctx.lineDashOffset = -t * 40; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(this.x, this.y); for (let i = this.ri; i < this.route.length; i++) ctx.lineTo(this.route[i][0], this.route[i][1]); ctx.stroke(); ctx.restore();
   }
   drawManatee(ctx, m, t) {
@@ -518,6 +550,8 @@ class SeaScene {
     // minimap (tap for the chart)
     this.drawMinimap(ctx, mmX, mmY, mmW, mmH, t);
     UI.region('mini', mmX, mmY, mmW, mmH, () => this.openChart(), { disabled: open });
+    const vbY = mmY + mmH + 8;
+    UI.button(ctx, 'view', mmX, vbY, mmW, 30, this.view === 'chase' ? 'Top-down view' : 'Behind the boat', () => this.toggleView(), { style: 'dark', size: 13, r: 10, key: 'KeyV', disabled: open });
     // speed and throttle
     const kts = Math.round(this.v * SEA_KTS), sx = 26, sy = H - 26;
     panel(ctx, sx - 12, sy - 82, 172, 92, { r: 18 });
@@ -527,7 +561,7 @@ class SeaScene {
     text(ctx, 'KNOTS', sx + 50, sy + 2, { size: 11, align: 'center', color: '#9fb8c2', weight: 800 });
     text(ctx, NOTCH[this.notch].name, sx + 108, sy - 30, { size: 15, color: PAL.sun, weight: 800 });
     text(ctx, this.auto ? 'autopilot' : this.v > 150 ? 'on plane' : this.v > 5 ? 'plowing' : 'stopped', sx + 108, sy - 12, { size: 12, color: this.auto ? PAL.sun : '#9fb8c2', weight: 700 });
-    const lx = W - 92, ly0 = mmY + mmH + 46, lh = H - ly0 - 16;
+    const lx = W - 92, ly0 = vbY + 76, lh = H - ly0 - 16;
     panel(ctx, lx - 12, ly0 - 30, 92, lh + 40, { r: 20 });
     text(ctx, 'THROTTLE', lx + 34, ly0 - 10, { size: 12, align: 'center', color: '#9fb8c2', weight: 800 });
     for (let i = 4; i >= 0; i--) {
@@ -543,7 +577,7 @@ class SeaScene {
     if (this.homeRun && this.atHome) {
       UI.button(ctx, 'tieup', bx, by - 8, bw, 56, 'Tie up at the dock', () => this.arrive('home'), { style: 'primary', size: 20, key: 'Enter', disabled: open || this.v > NO_WAKE, sub: this.v > NO_WAKE ? 'Slow down first' : 'End the day' });
     } else if (this.inSpot) {
-      const ok = spotAllowed(this.inSpot), slow = this.v <= 95;
+      const ok = spotAllowed(this.inSpot, this.c), slow = this.v <= 95;
       if (ok) UI.button(ctx, 'fish', bx, by - 8, bw, 56, 'Fish here', () => this.arrive(this.inSpot), { style: 'primary', size: 22, key: 'Enter', disabled: open || !slow, sub: slow ? SPOTS[this.inSpot].name : 'Slow down to stop here' });
       else { panel(ctx, bx, by, bw, 44, { r: 18 }); text(ctx, this.c.done.includes(this.inSpot) ? 'Already fished today' : 'Today’s spots are set', bx + bw / 2, by + 28, { size: 15, align: 'center', color: '#cfe3ea', weight: 700, maxW: bw - 16 }); }
     }
@@ -553,14 +587,31 @@ class SeaScene {
     else if (!open && World.gridDepth(this.x + Math.cos(this.h) * 120, this.y + Math.sin(this.h) * 120) < 4 && this.v > 110) banner('Shallow ahead! Ease off', 'rgba(230,200,120,0.95)', PAL.ink);
     else if (this.stall > 0 && !open) banner('Prop wrapped… ' + this.stall.toFixed(1) + 's', 'rgba(255,255,255,0.92)', PAL.ink);
     // a pointer to the destination when it's off screen
-    if (xy && !open) {
+    if (xy && !open && this.view === 'chase') {
+      const c = Chase.c, rel = angleDiff(Chase.yaw, Math.atan2(xy[1] - c.y, xy[0] - c.x)), half = Math.atan((W / 2 - 40) / c.F);
+      if (Math.abs(rel) > half) {
+        const side = rel > 0 ? 1 : -1, ax = side > 0 ? W - mmW - 70 : 64, ay = c.hor + 40, pulse = 1 + Math.sin(t * 5) * 0.08;
+        ctx.save(); ctx.translate(ax, ay); ctx.scale(side * pulse, pulse); ctx.fillStyle = 'rgba(255,214,90,0.95)'; ctx.strokeStyle = PAL.ink; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(26, 0); ctx.lineTo(-6, -20); ctx.lineTo(0, 0); ctx.lineTo(-6, 20); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+        text(ctx, Math.abs(rel) > 2.4 ? 'Turn around' : side > 0 ? 'Turn right' : 'Turn left', ax, ay + 40, { size: 15, align: 'center', color: PAL.sun, weight: 800, stroke: PAL.ink, sw: 4 });
+      }
+    } else if (xy && !open) {
       const [tx, ty] = this.toScreen(xy[0], xy[1]);
       if (tx < 30 || tx > W - 30 || ty < 70 || ty > H - 30) {
         const a = Math.atan2(ty - H / 2, tx - W / 2), r = Math.min(W * 0.42, H * 0.36), ax = W / 2 + Math.cos(a) * r, ay = H / 2 + Math.sin(a) * r;
         ctx.save(); ctx.translate(ax, ay); ctx.rotate(a); ctx.fillStyle = 'rgba(255,214,90,0.9)'; ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(-10, -13); ctx.lineTo(-4, 0); ctx.lineTo(-10, 13); ctx.closePath(); ctx.fill(); ctx.restore();
       }
     }
-    if (this.t < 9 && !open && !this.c.legs) para(ctx, Game.touch ? 'Hold and drag where you want to go. Throttle is on the right. Tap Chart to pick a spot.' : 'Hold the mouse where you want to go, or ← →. ↑ ↓ or the lever for throttle. M for the chart.', 196, H - 110, Math.min(460, W - 420), { size: 16, color: '#fff', weight: 700, stroke: 'rgba(0,0,0,0.5)', sw: 4, lh: 20 });
+    if (this.view === 'chase') {
+      if (this.t > 2 && this.t < 12 && !open && !this.c.legs) {
+        const hw = Math.min(600, W - 2 * mmW - 70), a = Math.min(1, (this.t - 2) * 3, (12 - this.t) * 2);
+        const msg = Game.touch ? 'Hold your finger left or right of the boat to steer. Throttle is on the right. Tap Chart to pick a spot.' : 'Hold the mouse left or right of the boat to steer, or ← →. ↑ ↓ or the lever for throttle. M for the chart, V to change the view.';
+        ctx.font = fnt(15, 700); const n = wrapText(ctx, msg, hw - 28).length;
+        ctx.save(); ctx.globalAlpha = a; panel(ctx, W / 2 - hw / 2, 108, hw, 14 + n * 19, { r: 16 });
+        para(ctx, msg, W / 2, 129, hw - 28, { size: 15, align: 'center', color: '#fff', weight: 700, lh: 19 });
+        ctx.restore();
+      }
+    } else if (this.t < 9 && !open && !this.c.legs) para(ctx, Game.touch ? 'Hold and drag where you want to go. Throttle is on the right. Tap Chart to pick a spot.' : 'Hold the mouse where you want to go, or ← →. ↑ ↓ or the lever for throttle. M for the chart.', 196, H - 110, Math.min(460, W - 420), { size: 16, color: '#fff', weight: 700, stroke: 'rgba(0,0,0,0.5)', sw: 4, lh: 20 });
     if (this.quip && !open) {
       const q = this.quip, qw = Math.min(360, W * 0.42), qx = 14, qy = H - 170;
       ctx.save(); ctx.globalAlpha = Math.min(1, q.t * 3);
@@ -578,6 +629,7 @@ class SeaScene {
     for (const id of SPOT_ORDER) { if (!Charts.isKnown(id)) continue; const [sx, sy] = spotXY(id); ctx.fillStyle = id === this.dest ? PAL.sun : this.c.done.includes(id) && this.c.mode === 'crew' ? '#8aa' : PAL.coral; ell(ctx, M.X(sx), M.Y(sy), 3.5, 3.5); ctx.fill(); }
     ctx.fillStyle = '#222'; ell(ctx, M.X(World.home.x), M.Y(World.home.dockY), 2.5, 2.5); ctx.fill();
     if (this.route && this.dest) { ctx.strokeStyle = 'rgba(200,120,20,0.9)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(M.X(this.x), M.Y(this.y)); for (let i = this.ri; i < this.route.length; i++) ctx.lineTo(M.X(this.route[i][0]), M.Y(this.route[i][1])); ctx.stroke(); }
+    if (this.view === 'chase') { ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.beginPath(); ctx.moveTo(M.X(this.x), M.Y(this.y)); ctx.arc(M.X(this.x), M.Y(this.y), 22, Chase.yaw - 0.55, Chase.yaw + 0.55); ctx.closePath(); ctx.fill(); }
     ctx.save(); ctx.translate(M.X(this.x), M.Y(this.y)); ctx.rotate(this.h); ctx.fillStyle = '#d7262e'; ctx.beginPath(); ctx.moveTo(7, 0); ctx.lineTo(-5, -4.5); ctx.lineTo(-5, 4.5); ctx.closePath(); ctx.fill(); ctx.restore();
     ctx.restore();
     text(ctx, 'CHART', x + w - 6, y + h - 6, { size: 10, align: 'right', color: 'rgba(30,60,80,0.8)', weight: 800 });
@@ -664,7 +716,7 @@ class SeaScene {
           const iy = cy + 96 + used, per = Math.max(1, Math.floor((sw - 24) / 44));
           S.species.slice(0, per * 2).forEach((k, i) => { ctx.save(); ctx.translate(sx + 34 + (i % per) * 44, iy + 10 + Math.floor(i / per) * 30); if (k === 'lobster') drawLobsterSide(ctx, 22, {}); else drawFish(ctx, k, 38, { wig: 0, sil: Records.all()[k] ? null : 'rgba(255,255,255,0.35)' }); ctx.restore(); });
           if (this.homeRun) text(ctx, 'The day’s done. Head home.', sx + 16, cy + ch - 30, { size: 14, color: '#9fb8c2', weight: 700 });
-          else if (spotAllowed(sel)) {
+          else if (spotAllowed(sel, this.c)) {
             UI.button(ctx, 'setcourse', sx + 14, cy + ch - 126, sw - 28, 54, 'Set course', () => { this.dest = sel; this.planRoute(); this.setAuto(true); this.panel = null; }, { style: 'primary', size: 20, sub: 'Autopilot drives · you can take over' });
             UI.button(ctx, 'skipride', sx + 14, cy + ch - 62, sw - 28, 48, 'Skip the ride', () => this.skipTo(sel), { style: 'secondary', size: 16, sub: 'No captain’s points' });
           } else text(ctx, this.c.done.includes(sel) ? 'Already fished today' : 'Today’s spots are set', sx + 16, cy + ch - 30, { size: 14, color: '#9fb8c2', weight: 700 });

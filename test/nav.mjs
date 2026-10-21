@@ -85,10 +85,18 @@ for (const run of RUNS) {
   });
 
   // ---------- crew trip: cast off, hand-off, fish, pause, quit, resume ----------
-  await path_('crew setup -> cast off -> SeaScene', async () => {
+  await path_('crew setup -> briefing (back keeps the picks) -> cast off -> SeaScene', async () => {
     await fresh(); await click('crew'); await click('half'); await click('len90'); await click('go');
-    await page.waitForTimeout(300); await expectScene('SeaScene', 'cast off');
-    const saved = await page.evaluate(() => !!Trip.load()); if (!saved) throw new Error('crew trip not saved after cast off');
+    await expectScene('BriefingScene', 'go'); await shot('briefing');
+    if (await page.evaluate(() => !!Trip.load())) throw new Error('the briefing should not start (or save) the trip yet');
+    const nb = await page.evaluate(() => Game.scene.bounties.length); if (nb !== 3) throw new Error('briefing shows ' + nb + ' bounties');
+    await click('back'); await expectScene('CrewSetupScene', 'back from the briefing');
+    const picks = await page.evaluate(() => Game.scene.plan + '/' + Game.scene.len); if (picks !== 'half/90') throw new Error('back from the briefing lost the picks: ' + picks);
+    await click('go'); await key('Escape'); await expectScene('CrewSetupScene', 'Esc from the briefing');
+    await click('go'); const want = await page.evaluate(() => Game.scene.bounties.map((b) => b.id).join(','));
+    await click('castoff'); await page.waitForTimeout(300); await expectScene('SeaScene', 'cast off');
+    const saved = await page.evaluate(() => Trip.load()); if (!saved) throw new Error('crew trip not saved after cast off');
+    if ((saved.bounties || []).map((b) => b.id).join(',') !== want) throw new Error('the trip did not keep the briefing\'s bounties');
   });
   // the boat's own pause panel lives in sea.js; this only checks the way out and back in
   await path_('sea: pause -> quit to title -> resume -> SeaScene', async () => {
@@ -178,7 +186,8 @@ for (const run of RUNS) {
 
   // ---------- solo ----------
   await path_('solo: head out -> SeaScene; quit to title from a turn', async () => {
-    await fresh(); await click('solo'); await click('card2'); await click('go'); await page.waitForTimeout(300); await expectScene('SeaScene', 'head out');
+    await fresh(); await click('solo'); await click('card2'); await click('go'); await expectScene('BriefingScene', 'head out'); await shot('briefing-solo');
+    await click('castoff'); await page.waitForTimeout(300); await expectScene('SeaScene', 'cast off solo');
     await toTurn('flats', 0); await shot('turnintro-solo');
     await click('ready'); await page.waitForTimeout(300); await expectScene('FlatsScene', 'ready');
     await click('pause'); await click('totitle'); await shot('quit-confirm-solo');
@@ -213,6 +222,8 @@ for (const run of RUNS) {
       ['CrewSetup', async () => { await fresh(); await jump('new CrewSetupScene()'); }],
       ['CrewSetup+saved', async () => { await fresh(); await startCrew(); await jump('new CrewSetupScene()'); }],
       ['SoloSetup', async () => { await fresh(); await jump('new SoloSetupScene()'); }],
+      ['Briefing', async () => { await fresh(); await jump("new BriefingScene({ mode: 'crew', crew: ['michael', 'jorge'], plan: 'half', sessionLen: 90 })", 900); }],
+      ['Briefing+saved', async () => { await fresh(); await startCrew(); await jump("new BriefingScene({ mode: 'crew', crew: ['michael', 'jorge'], plan: 'half', sessionLen: 90 })", 900); }],
       ['TurnIntro first', async () => { await fresh(); await startCrew(); await toTurn('bughunt', 0); }],
       ['TurnIntro later', async () => { await fresh(); await startCrew(); await toTurn('bughunt', 1); }],
       ['Results', async () => { await fresh(); await startCrew(); await page.evaluate(() => { Trip.cur.spot = 'bottom'; const c = makeCatch('redgrouper', 12, 'michael', 'bottom'); const res = { catches: [c], lines: [{ label: 'Red grouper', pts: c.pts, key: 'redgrouper' }], total: c.pts, best: c }; Trip.record('michael', 'bottom', res); Game.go(new ResultsScene('michael', 'bottom', res, advanceTrip()), true); }); await page.waitForTimeout(400); await page.evaluate(() => { Game.scene.t = 99; }); await page.waitForTimeout(200); }],

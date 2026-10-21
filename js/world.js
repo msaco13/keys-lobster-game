@@ -436,7 +436,7 @@ const World = {
   drawWater(ctx, v, t, o = {}) {
     const C = WORLD.CELL, m = 2;
     const i0 = Math.max(0, Math.floor(v.x0 / C) - m), j0 = Math.max(0, Math.floor(v.y0 / C) - m), i1 = Math.min(this.gw - 1, Math.ceil(v.x1 / C) + m), j1 = Math.min(this.gh - 1, Math.ceil(v.y1 / C) + m);
-    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = v.flat ? 'low' : 'high';   // the chase camera's texture gets redrawn every frame
     ctx.fillStyle = '#0a3276'; ctx.fillRect(v.x0 - 50, v.y0 - 50, v.x1 - v.x0 + 100, v.y1 - v.y0 + 100);
     ctx.drawImage(this.tex, i0, j0, i1 - i0, j1 - j0, i0 * C, j0 * C, (i1 - i0) * C, (j1 - j0) * C);
     // shallow-water detail: grass tufts and sand ripples, only near the boat's zoom
@@ -508,7 +508,7 @@ const World = {
       ctx.fillStyle = 'rgba(80,140,80,0.6)';
       for (let i = 0; i < 6; i++) { const a = k.seed + i * 1.1, r = (0.15 + 0.4 * hash2(i, k.seed * 10)) * Math.min(k.rx, k.ry); ell(ctx, k.x + Math.cos(a) * r, k.y + Math.sin(a) * r * 0.7, 10 + 8 * hash2(k.seed * 10, i), 8); ctx.fill(); }
       ctx.restore();
-      if (k.name && v.z > 0.5) text(ctx, k.name, k.x, k.y + 4, { size: 15, align: 'center', base: 'middle', color: 'rgba(255,255,255,0.85)', weight: 800, stroke: 'rgba(20,50,30,0.6)', sw: 3 });
+      if (k.name && v.z > 0.5 && !v.flat) text(ctx, k.name, k.x, k.y + 4, { size: 15, align: 'center', base: 'middle', color: 'rgba(255,255,255,0.85)', weight: 800, stroke: 'rgba(20,50,30,0.6)', sw: 3 });
     }
     // the Keys themselves
     for (const I of ISLANDS) {
@@ -534,11 +534,12 @@ const World = {
     for (const h of this.houses) {
       if (h.x < v.x0 - 40 || h.x > v.x1 + 40 || h.y < v.y0 - 40 || h.y > v.y1 + 40) continue;
       ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(h.x - h.w / 2 + 4, h.y - h.h / 2 + 5, h.w, h.h);
+      if (v.flat) continue;   // the chase camera builds the houses; just leave their shadows on the ground
       ctx.fillStyle = h.roof; ctx.fillRect(h.x - h.w / 2, h.y - h.h / 2, h.w, h.h);
       ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fillRect(h.x - h.w / 2, h.y - h.h / 2, h.w, h.h / 2);
       if (h.pool) { ctx.fillStyle = '#5fd6ee'; rr(ctx, h.x - h.w / 2 + 2, h.y + h.side * (h.h / 2 + 6) - 5, 14, 10, 3); ctx.fill(); }
     }
-    for (const p of this.palms) { if (p.x < v.x0 - 30 || p.x > v.x1 + 30 || p.y < v.y0 - 30 || p.y > v.y1 + 30) continue; ctx.fillStyle = 'rgba(0,0,0,0.18)'; ell(ctx, p.x + 6, p.y + 7, p.r, p.r * 0.6); ctx.fill(); ctx.fillStyle = '#4f8a3a'; for (let i = 0; i < 6; i++) { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.a + i * 1.05 + Math.sin(t * 1.3 + p.x) * 0.05); ell(ctx, p.r * 0.6, 0, p.r * 0.7, p.r * 0.2); ctx.fill(); ctx.restore(); } }
+    if (!v.flat) for (const p of this.palms) { if (p.x < v.x0 - 30 || p.x > v.x1 + 30 || p.y < v.y0 - 30 || p.y > v.y1 + 30) continue; ctx.fillStyle = 'rgba(0,0,0,0.18)'; ell(ctx, p.x + 6, p.y + 7, p.r, p.r * 0.6); ctx.fill(); ctx.fillStyle = '#4f8a3a'; for (let i = 0; i < 6; i++) { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.a + i * 1.05 + Math.sin(t * 1.3 + p.x) * 0.05); ell(ctx, p.r * 0.6, 0, p.r * 0.7, p.r * 0.2); ctx.fill(); ctx.restore(); } }
     // home canal and dock
     const H = this.home;
     if (vis(H.x - 120, H.x + 120)) {
@@ -546,23 +547,24 @@ const World = {
       ctx.fillStyle = '#e4dfd2'; ctx.fillRect(H.x - 36, H.cy - 66, 6, H.hw + 70); ctx.fillRect(H.x + 30, H.cy - 66, 6, H.hw + 70); ctx.fillRect(H.x - 36, H.cy - 68, 72, 6);
       ctx.fillStyle = '#9a7b55'; ctx.fillRect(H.x - 30, H.cy - 30, 20, 56);
       ctx.strokeStyle = 'rgba(60,40,20,0.45)'; ctx.lineWidth = 1; for (let y = H.cy - 30; y < H.cy + 26; y += 6) { ctx.beginPath(); ctx.moveTo(H.x - 30, y); ctx.lineTo(H.x - 10, y); ctx.stroke(); }
-      if (v.z > 0.5) text(ctx, 'HOME', H.x - 50, H.cy - 82, { size: 14, align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.5)', sw: 4 });
+      if (v.z > 0.5 && !v.flat) text(ctx, 'HOME', H.x - 50, H.cy - 82, { size: 14, align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.5)', sw: 4 });
     }
-    // labels
-    if (v.z > 0.4) {
+    // labels (the chase camera stands these up as billboards instead)
+    if (v.z > 0.4 && !v.flat) {
       for (const I of ISLANDS) { const lx = clamp((I.x0 + Math.min(I.x1, WORLD.W)) / 2, v.x0 + 200, v.x1 - 200); if (lx < I.x0 + 100 || lx > I.x1 - 100 || !vis(I.x0, I.x1)) continue; text(ctx, I.name, lx, chainY(lx) - 24, { size: 20, align: 'center', base: 'middle', color: 'rgba(255,255,255,0.72)', weight: 800, stroke: 'rgba(30,60,30,0.5)', sw: 4 }); }
     }
   },
   drawMarkers(ctx, v, t) {
     const vis = (x, y, m = 60) => x > v.x0 - m && x < v.x1 + m && y > v.y0 - m && y < v.y1 + m;
-    for (const f of this.floats) {
+    if (!v.flat) for (const f of this.floats) {
       if (f.hit || !vis(f.x, f.y)) continue;
       const bob = Math.sin(t * 2 + f.x) * 1.5;
       ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(f.x - 16, f.y + 6); ctx.stroke();
       ctx.fillStyle = 'rgba(0,0,0,0.22)'; ell(ctx, f.x + 3, f.y + 4, 8, 8); ctx.fill();
       ctx.fillStyle = f.c; ell(ctx, f.x, f.y + bob, 8, 8); ctx.fill(); ctx.fillStyle = f.st; ctx.fillRect(f.x - 8, f.y + bob - 2, 16, 4);
     }
-    for (const m of this.markers) {
+    // v.flat: drawing the water for the chase camera, which stands posts, signs and the light up on their own
+    if (!v.flat) for (const m of this.markers) {
       if (!vis(m.x, m.y)) continue;
       ctx.fillStyle = 'rgba(0,0,0,0.25)'; ell(ctx, m.x + 5, m.y + 6, 8, 8); ctx.fill();
       if (m.kind === 'white') { ctx.fillStyle = '#f4f4f0'; ell(ctx, m.x, m.y, 5, 5); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1; ctx.stroke(); continue; }
@@ -572,14 +574,14 @@ const World = {
       if (m.kind === 'red') { ctx.moveTo(m.x, m.y - 15); ctx.lineTo(m.x + 12, m.y + 5); ctx.lineTo(m.x - 12, m.y + 5); } else ctx.rect(m.x - 10, m.y - 11, 20, 18);
       ctx.fill(); if (v.z > 0.6) text(ctx, String(m.n), m.x, m.y, { size: 10, align: 'center', base: 'middle', color: '#fff', weight: 800 });
     }
-    for (const s of this.signs) {
+    if (!v.flat) for (const s of this.signs) {
       if (!vis(s.x, s.y)) continue;
       ctx.fillStyle = '#7a6a54'; ctx.fillRect(s.x - 2, s.y, 4, 12);
       ctx.fillStyle = '#ffffff'; rr(ctx, s.x - 34, s.y - 20, 68, 22, 4); ctx.fill(); ctx.strokeStyle = '#ff7a1a'; ctx.lineWidth = 2.5; ctx.stroke();
       text(ctx, 'NO WAKE', s.x, s.y - 8, { size: 11, align: 'center', base: 'middle', color: '#1a1a1a', weight: 800 });
     }
     const L = this.light;
-    if (vis(L.x, L.y, 120)) {
+    if (vis(L.x, L.y, 120) && !v.flat) {
       ctx.fillStyle = 'rgba(0,0,0,0.22)'; ell(ctx, L.x + 14, L.y + 18, 48, 48); ctx.fill();
       ctx.strokeStyle = '#2b2b2b'; ctx.lineWidth = 3;
       for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU; ctx.beginPath(); ctx.moveTo(L.x + Math.cos(a) * 14, L.y + Math.sin(a) * 14); ctx.lineTo(L.x + Math.cos(a) * 44, L.y + Math.sin(a) * 44); ctx.stroke(); }
@@ -589,7 +591,7 @@ const World = {
       ctx.fillStyle = `rgba(255,244,170,${0.4 + 0.6 * Math.max(0, Math.sin(t * 3))})`; ell(ctx, L.x, L.y, 5, 5); ctx.fill();
       if (v.z > 0.4) text(ctx, 'Alligator Light', L.x, L.y + 66, { size: 15, align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.55)', sw: 4 });
     }
-    for (const b of this.wreckBuoys) { if (!vis(b.x, b.y)) continue; ctx.fillStyle = 'rgba(0,0,0,0.2)'; ell(ctx, b.x + 3, b.y + 4, 8, 8); ctx.fill(); ctx.fillStyle = '#ffffff'; ell(ctx, b.x, b.y + Math.sin(t * 2 + b.x) * 1.4, 8, 8); ctx.fill(); ctx.fillStyle = '#2a5bd8'; ctx.fillRect(b.x - 8, b.y - 2, 16, 4); }
+    if (!v.flat) for (const b of this.wreckBuoys) { if (!vis(b.x, b.y)) continue; ctx.fillStyle = 'rgba(0,0,0,0.2)'; ell(ctx, b.x + 3, b.y + 4, 8, 8); ctx.fill(); ctx.fillStyle = '#ffffff'; ell(ctx, b.x, b.y + Math.sin(t * 2 + b.x) * 1.4, 8, 8); ctx.fill(); ctx.fillStyle = '#2a5bd8'; ctx.fillRect(b.x - 8, b.y - 2, 16, 4); }
     for (const w of this.weed) {
       if (!vis(w.x, w.y, w.len + 40)) continue;
       ctx.save(); ctx.translate(w.x, w.y); ctx.rotate(w.ang);
@@ -601,6 +603,12 @@ const World = {
   drawBridges(ctx, v, t) {
     for (const g of GAPS) {
       if (g.x1 < v.x0 - 80 || g.x0 > v.x1 + 80) continue;
+      if (v.flat) {   // just the bridge's shadow on the water; the chase camera builds the bridge itself
+        ctx.fillStyle = 'rgba(0,20,30,0.25)'; ctx.beginPath();
+        for (let x = g.x0 - 20; x <= g.x1 + 20; x += 20) ctx.lineTo(x + 14, chainY(x) + 30);
+        for (let x = g.x1 + 20; x >= g.x0 - 20; x -= 20) ctx.lineTo(x + 14, chainY(x) + 2); ctx.fill();
+        continue;
+      }
       for (const p of this.piers) if (p.g === g) { ctx.fillStyle = 'rgba(0,20,30,0.3)'; ctx.fillRect(p.x - 5, p.y - 20, 16, 48); ctx.fillStyle = '#8d877a'; ctx.fillRect(p.x - 7, p.y - 26, 14, 52); }
       ctx.fillStyle = 'rgba(0,20,30,0.22)'; ctx.beginPath();
       for (let x = g.x0 - 20; x <= g.x1 + 20; x += 20) ctx.lineTo(x + 8, chainY(x) + 22);
