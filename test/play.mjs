@@ -1,0 +1,59 @@
+import { chromium } from 'playwright';
+import http from 'http'; import fs from 'fs'; import path from 'path';
+const root = process.argv[2]; const out = process.argv[3]; const W = +(process.argv[4]||960), H = +(process.argv[5]||540);
+const types = { '.html':'text/html', '.js':'text/javascript', '.png':'image/png' };
+const srv = http.createServer((req,res)=>{ const p = path.join(root, decodeURIComponent(req.url.split('?')[0]) === '/' ? 'index.html' : decodeURIComponent(req.url.split('?')[0])); fs.readFile(p,(e,d)=>{ if(e){res.writeHead(404);res.end();return;} res.writeHead(200,{'content-type':types[path.extname(p)]||'application/octet-stream'}); res.end(d); }); }).listen(0);
+const port = srv.address().port;
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
+const errs = []; page.on('console', m => { if (m.type()==='error') errs.push(m.text()); }); page.on('pageerror', e => errs.push('PAGEERR '+e.message));
+await page.goto(`http://localhost:${port}/`); await page.waitForTimeout(1800);
+let n = 0; const shot = async (name) => { await page.screenshot({ path: `${out}/${String(++n).padStart(2,'0')}-${name}.png` }); const ge = await page.evaluate(()=>Game.error ? String(Game.error.stack||Game.error) : null); if (ge) { errs.push(name+': '+ge); await page.evaluate(()=>{Game.error=null;}); } };
+const go = async (expr, wait=700) => { await page.evaluate(`Game.go(${expr}, true)`); await page.waitForTimeout(wait); };
+await shot('title');
+await go('new CrewSetupScene()'); await shot('crew');
+await page.evaluate(()=>{ Trip.start({mode:'crew', crew:['michael','jorge','jemel'], plan:'full', sessionLen:120}); Trip.cur.weather = {id:'glass',name:'Glass calm',wind:'0–5 kts',vis:1.25,drift:0,aim:0.75,tag:'#Glass'}; });
+await go('new MapScene()'); await shot('map');
+await page.evaluate(()=>{ Game.scene.sel='bughunt'; }); await page.waitForTimeout(300); await shot('map-sel');
+await page.evaluate(()=>{ Trip.cur.spot='bughunt'; Trip.cur.turn=0; }); await go('new TurnIntroScene()'); await shot('turn');
+// bug hunt
+await page.evaluate(()=>{ window.__res=null; Game.go(new BugHuntScene({ch:'michael', spot:'bughunt', len:120, weather:Trip.cur.weather, onEnd:(r)=>{window.__res=r;}}), true); });
+await page.waitForTimeout(900); await shot('bug-start');
+await page.evaluate(()=>{ const s=Game.scene; const den=s.dens.find(d=>d.kind==='lobster'); s.diver.x = den.x - den.dir*60; s.diver.y = den.y; s.diver.facing = -den.dir; s.cam = Math.max(0, s.diver.x - Game.W*0.45); den.coax=0.6; den.twitch=0.4; });
+await page.keyboard.down('Space'); await page.waitForTimeout(250); await shot('bug-tickle'); await page.keyboard.up('Space');
+await page.evaluate(()=>{ const s=Game.scene; const den=s.dens.find(d=>d.kind==='lobster' && d.state==='in'); s.diver.x = den.x - den.dir*60; s.diver.y = den.y; s.diver.facing=-den.dir; den.lob={cl:3.05,w:0.9,eggs:false}; s.emerge(den); });
+await page.waitForTimeout(1500); await shot('bug-ring');
+await page.evaluate(()=>{ const s=Game.scene; s.gauge={lob:{cl:2.93,w:0.8,eggs:false},t:0}; }); await page.waitForTimeout(500); await shot('bug-gauge-short');
+await page.evaluate(()=>{ const s=Game.scene; s.decide(true); s.gauge={lob:{cl:4.6,w:2.9,eggs:true},t:0}; }); await page.waitForTimeout(500); await shot('bug-gauge-eggs');
+await page.evaluate(()=>{ const s=Game.scene; s.decide(false); for(const cl of [3.4,4.8,3.1]) s.bag.push({cl,w:Math.round(0.034*Math.pow(cl,2.9)*10)/10,eggs:false}); s.breath=3; s.diver.y=400; }); await page.waitForTimeout(400); await shot('bug-lowair');
+await page.evaluate(()=>{ Game.scene.timeLeft=0.05; }); await page.waitForTimeout(2600);
+const bugRes = await page.evaluate(()=>window.__res && {total:window.__res.total, lines:window.__res.lines.map(l=>l.label+' '+l.pts), best: window.__res.best && window.__res.best.cl});
+console.log('BUG RESULT', JSON.stringify(bugRes));
+await page.evaluate(()=>{ Game.go(new ResultsScene('michael','bughunt', window.__res), true); }); await page.waitForTimeout(3200); await shot('bug-results');
+// bottom
+await page.evaluate(()=>{ Game.go(new BottomScene({ch:'jorge', spot:'bottom', len:120, weather:Trip.cur.weather, onEnd:(r)=>{window.__res=r;}}), true); }); await page.waitForTimeout(2500); await shot('bottom');
+await page.evaluate(()=>{ const s=Game.scene; s.targetDepth=90; s.baitDepth=90; const f=s.fish[0]; f.state='bite'; f.timer=5; f.x=s.baitX()-20; f.y=s.yOf(90); f.key='redgrouper'; }); await page.waitForTimeout(200); await shot('bottom-bite');
+await page.evaluate(()=>{ Game.scene.startFight({sp:'blackgrouper', weight:44, ctxType:'reef', depth:90}); }); await page.waitForTimeout(600); await shot('fight-turn');
+await page.evaluate(()=>{ const f=Game.scene.child; f.phase='fight'; f.revealed=true; f.dist=40; f.T=0.7; f.running=true; f.runT=2; }); await page.waitForTimeout(300); await shot('fight-reef');
+await page.evaluate(()=>{ const f=Game.scene.child; f.dist=0; }); await page.waitForTimeout(1800); await shot('fight-won');
+await page.mouse.click(400,300); await page.waitForTimeout(600); await shot('bottom-after');
+// troll
+await page.evaluate(()=>{ Game.go(new TrollScene({ch:'jemel', spot:'troll', len:120, weather:Trip.cur.weather, onEnd:(r)=>{window.__res=r;}}), true); }); await page.waitForTimeout(6000); await shot('troll');
+await page.evaluate(()=>{ const s=Game.scene; s.spawnFeature('birds'); s.features[s.features.length-1].x = Game.W*0.3; for(const f of s.fish) if(f.feat===s.features[s.features.length-1]) { f.x=Game.W*0.3+Math.random()*60; } }); await page.waitForTimeout(500); await shot('troll-birds');
+await page.evaluate(()=>{ Game.scene.startFight({sp:'mahi', weight:31, ctxType:'offshore'}); }); await page.waitForTimeout(400);
+await page.evaluate(()=>{ const f=Game.scene.child; f.running=true; f.runT=3; f.startJump(); }); await page.waitForTimeout(500); await shot('fight-jump');
+await page.evaluate(()=>{ const f=Game.scene.child; f.lose('snap'); }); await page.waitForTimeout(800); await shot('fight-lost');
+// flats
+await page.evaluate(()=>{ Game.go(new FlatsScene({ch:'michael', spot:'flats', len:120, weather:Trip.cur.weather, onEnd:(r)=>{window.__res=r;}}), true); }); await page.waitForTimeout(5000); await shot('flats');
+await page.mouse.move(600,250); await page.mouse.down(); await page.waitForTimeout(700); await shot('flats-aim'); await page.mouse.up(); await page.waitForTimeout(900); await shot('flats-cast');
+await page.evaluate(()=>{ const s=Game.scene; s.startFight({sp:'tarpon', weight:110, ctxType:'flats', rock:0}); s.child.revealed=true; s.child.dist=30; }); await page.waitForTimeout(500); await shot('fight-flats');
+// results / day end / logbook / howto
+await page.evaluate(()=>{ const c1=makeCatch('mahi',29.4,'jemel','troll'); const c2=makeCatch('blackfin',17,'jorge','troll'); Trip.record('jemel','troll',{catches:[c1],total:c1.pts,lines:[]}); Trip.record('jorge','troll',{catches:[c2],total:c2.pts,lines:[]}); const l=makeCatch('lobster',3.4,'michael','bughunt'); l.cl=4.9; Trip.record('michael','bughunt',{catches:[l],total:l.pts,lines:[]}); });
+await go('new MapScene()'); await shot('map-scores');
+await go('new DayEndScene()', 1500); await shot('dayend');
+await go('new LogbookScene()'); await shot('logbook');
+await go('new HowToScene()'); await shot('howto');
+await page.evaluate(()=>{ Game.scene.page=1; }); await page.waitForTimeout(200); await shot('howto2');
+await go('new SoloSetupScene()'); await shot('solo');
+console.log(errs.length ? 'ERRORS:\n'+errs.join('\n') : 'NO ERRORS');
+await browser.close(); srv.close();

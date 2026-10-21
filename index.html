@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0c2734">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Keys Crew</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700;800&family=Shrikhand&display=swap">
+<style>
+  /* One full-screen canvas. The game commits to a single sunlit-water look in both themes. */
+  :root { --bg: #041d29; color-scheme: dark; }
+  html, body { height: 100%; margin: 0; background: var(--bg); overflow: hidden; }
+  html { box-sizing: border-box; }
+  body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overscroll-behavior: none; }
+  #wrap { position: relative; width: 100%; height: 100%; }
+  #game { display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game" tabindex="0" aria-label="Keys Crew, a Florida Keys lobstering and fishing game"></canvas></div>
+<script src="js/core.js"></script>
+<script src="js/data.js"></script>
+<script src="js/art.js"></script>
+<script src="js/fight.js"></script>
+<script src="js/session.js"></script>
+<script src="js/bughunt.js"></script>
+<script src="js/bottom.js"></script>
+<script src="js/troll.js"></script>
+<script src="js/flats.js"></script>
+<script src="js/screens.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

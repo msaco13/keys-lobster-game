@@ -1,0 +1,17 @@
+{
+  "name": "keys-crew",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Keys Crew: a Florida Keys lobstering and fishing game. Plain HTML canvas, no dependencies to play.",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "check": "for f in js/*.js; do node --check $f || exit 1; done",
+    "test:flow": "mkdir -p test/flow && node test/flow.mjs \"$PWD\" test/flow 844 390 touch",
+    "test:screens": "mkdir -p test/shots && node test/play.mjs \"$PWD\" test/shots 960 540",
+    "test:balance": "node test/balance.mjs \"$PWD\"",
+    "test:sim": "node test/sim.mjs \"$PWD\""
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}
