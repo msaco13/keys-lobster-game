@@ -9,7 +9,10 @@
     "test:flow": "mkdir -p test/flow && node test/flow.mjs \"$PWD\" test/flow 844 390 touch",
     "test:screens": "mkdir -p test/shots && node test/play.mjs \"$PWD\" test/shots 960 540",
     "test:balance": "node test/balance.mjs \"$PWD\"",
-    "test:sim": "node test/sim.mjs \"$PWD\""
+    "test:sim": "node test/sim.mjs \"$PWD\"",
+    "test:nav": "node test/nav.mjs \"$PWD\"",
+    "test:sea": "mkdir -p test/shots && node test/sea.mjs \"$PWD\" test/shots && node test/autopilot.mjs \"$PWD\"",
+    "test:bug": "mkdir -p test/shots && node test/bug.mjs \"$PWD\" test/shots"
   },
   "devDependencies": {
     "playwright": "1.56.1"
