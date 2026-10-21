@@ -767,11 +767,15 @@ class BottomScene extends SessionBase {
       ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1;
       for (let x = xa + 14; x < xb; x += 30) { ctx.beginPath(); ctx.moveTo(x, Y(top + 5)); ctx.lineTo(x + 2, Y(112)); ctx.stroke(); }
       for (const d of [11, 18, 24]) { ctx.beginPath(); ctx.moveTo(xa, Y(top + d)); ctx.lineTo(xb, Y(top + d + 0.6)); ctx.stroke(); }
-      for (let x = xa + 22; x < xb; x += 47) { const rg = ctx.createLinearGradient(0, Y(top + 6), 0, Y(top + 22)); rg.addColorStop(0, 'rgba(150,80,40,0.38)'); rg.addColorStop(1, 'rgba(150,80,40,0)'); ctx.fillStyle = rg; ctx.fillRect(x, Y(top + 6), 5 + (x % 3) * 2, Y(top + 22) - Y(top + 6)); }
+      const rg = ctx.createLinearGradient(0, Y(top + 6), 0, Y(top + 22)); rg.addColorStop(0, 'rgba(150,80,40,0.38)'); rg.addColorStop(1, 'rgba(150,80,40,0)'); ctx.fillStyle = rg; ctx.beginPath();
+      for (let x = xa + 22; x < xb; x += 47) ctx.rect(x, Y(top + 6), 5 + (x % 3) * 2, Y(top + 22) - Y(top + 6));
+      ctx.fill();
       // boot-top paint at the old waterline, half in the sand
       ctx.fillStyle = 'rgba(120,40,34,0.42)'; ctx.fillRect(xa, Y(104), xb - xa, Y(108) - Y(104));
       // growth on the plates
-      for (let x = xa + 8; x < xb; x += 13) { const r = ((x * 9301 + 49297) % 233280) / 233280; if (r < 0.5) continue; ctx.fillStyle = r < 0.7 ? 'rgba(90,110,70,0.35)' : r < 0.85 ? 'rgba(150,80,110,0.3)' : 'rgba(180,120,60,0.3)'; ell(ctx, x, Y(top + 6 + r * 18), 3 + r * 4, 2 + r * 2); ctx.fill(); }
+      const gp = [new Path2D(), new Path2D(), new Path2D()];
+      for (let x = xa + 8; x < xb; x += 13) { const r = ((x * 9301 + 49297) % 233280) / 233280; if (r < 0.5) continue; const q = gp[r < 0.7 ? 0 : r < 0.85 ? 1 : 2], ex = x, ey = Y(top + 6 + r * 18); q.moveTo(ex + 3 + r * 4, ey); q.ellipse(ex, ey, 3 + r * 4, 2 + r * 2, 0, 0, TAU); }
+      ['rgba(90,110,70,0.35)', 'rgba(150,80,110,0.3)', 'rgba(180,120,60,0.3)'].forEach((c, i) => { ctx.fillStyle = c; ctx.fill(gp[i]); });
       ctx.restore();
       ctx.strokeStyle = 'rgba(210,220,200,0.14)'; ctx.lineWidth = 2; ctx.beginPath();
       for (let x = xa + 6; x <= xb - 6; x += 8) { const y = Y(btPolyTop(poly, x)) + 1; x === xa + 6 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } ctx.stroke();
@@ -946,8 +950,9 @@ class BottomScene extends SessionBase {
     ctx.fillStyle = bg; ctx.fillRect(sx, sy, sw, sh);
     ctx.fillStyle = 'rgba(255,255,255,0.07)'; for (let ft = 20; ft < range; ft += 20) ctx.fillRect(sx, Y(ft), hw, 1);
     // surface clutter and weak scatter
-    ctx.fillStyle = 'rgba(90,200,255,0.55)';
-    for (let i = 0; i < cols.length; i++) { const c = cols[i]; for (const d of c.surf) ctx.fillRect(X(i), Y(d) - 1, cw + 0.6, 2); for (const d of c.noise) ctx.fillRect(X(i), Y(d), 1.6, 1.6); }
+    ctx.fillStyle = 'rgba(90,200,255,0.55)'; ctx.beginPath();
+    for (let i = 0; i < cols.length; i++) { const c = cols[i]; for (const d of c.surf) ctx.rect(X(i), Y(d) - 1, cw + 0.6, 2); for (const d of c.noise) ctx.rect(X(i), Y(d), 1.6, 1.6); }
+    ctx.fill();
     // the bottom: a hard red return fading to yellow, green and blue below it
     const bands = [[0, (c) => 1.0 + 2.4 * c.hard, '#ff3b2c'], [(c) => 1.0 + 2.4 * c.hard, (c) => 2.8 + 2.6 * c.hard, '#ff9a20'], [(c) => 2.8 + 2.6 * c.hard, (c) => 5.2 + 2.6 * c.hard, '#ffe034'], [(c) => 5.2 + 2.6 * c.hard, (c) => 8.6 + 2.6 * c.hard, '#4fcf5a'], [(c) => 8.6 + 2.6 * c.hard, () => 60, '#145e86']];
     const fv = (v, c) => (typeof v === 'function' ? v(c) : v);
@@ -958,17 +963,19 @@ class BottomScene extends SessionBase {
       for (let i = cols.length - 1; i >= 0; i--) { const c = cols[i], yy = Y(c.bot + fv(b, c)); ctx.lineTo(X(i) + cw, yy); ctx.lineTo(X(i), yy); }
       ctx.closePath(); ctx.fill();
     }
-    // bait clouds and fish arches: bigger fish paint bigger, redder marks
+    // bait clouds and fish arches: bigger fish paint bigger, redder marks (batched into one path per color)
+    const P = { cg: new Path2D(), cb: new Path2D(), g: new Path2D(), y1: new Path2D(), y2: new Path2D(), o: new Path2D(), r: new Path2D() };
     for (let i = 0; i < cols.length; i++) {
       const c = cols[i], px = X(i);
-      for (const d of c.cloud) { ctx.fillStyle = (d * 7) % 3 < 1 ? 'rgba(120,235,170,0.75)' : 'rgba(80,185,255,0.8)'; ctx.fillRect(px, Y(d) - 1, cw + 0.8, 2); }
+      for (const d of c.cloud) ((d * 7) % 3 < 1 ? P.cg : P.cb).rect(px, Y(d) - 1, cw + 0.8, 2);
       for (const [d, th, s] of c.fish) {
         const yy = Y(d), hp = Math.max(3, (th / range) * sh * 1.25);
-        ctx.fillStyle = s < 0.3 ? '#46d36a' : '#ffe034'; ctx.fillRect(px, yy - hp / 2, cw + 0.7, hp);
-        if (s > 0.15) { const h2 = hp * 0.62; ctx.fillStyle = s < 0.5 ? '#ffe034' : '#ff9a20'; ctx.fillRect(px, yy - h2 / 2, cw + 0.7, h2); }
-        if (s > 0.42) { const h3 = hp * 0.34; ctx.fillStyle = '#ff3b2c'; ctx.fillRect(px, yy - h3 / 2, cw + 0.7, h3); }
+        (s < 0.3 ? P.g : P.y1).rect(px, yy - hp / 2, cw + 0.7, hp);
+        if (s > 0.15) { const h2 = hp * 0.62; (s < 0.5 ? P.y2 : P.o).rect(px, yy - h2 / 2, cw + 0.7, h2); }
+        if (s > 0.42) { const h3 = hp * 0.34; P.r.rect(px, yy - h3 / 2, cw + 0.7, h3); }
       }
     }
+    for (const [k, col] of [['cg', 'rgba(120,235,170,0.75)'], ['cb', 'rgba(80,185,255,0.8)'], ['g', '#46d36a'], ['y1', '#ffe034'], ['y2', '#ffe034'], ['o', '#ff9a20'], ['r', '#ff3b2c']]) { ctx.fillStyle = col; ctx.fill(P[k]); }
     // your bait's track
     ctx.strokeStyle = 'rgba(240,248,255,0.9)'; ctx.lineWidth = 1.5; ctx.beginPath(); let pen = false;
     for (let i = 0; i < cols.length; i++) { const c = cols[i]; if (c.bait < 0) { pen = false; continue; } const yy = Y(c.bait); if (pen) ctx.lineTo(X(i) + cw, yy); else ctx.moveTo(X(i), yy); pen = true; }
