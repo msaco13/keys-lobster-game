@@ -435,11 +435,11 @@ class SeaScene {
       ctx.fillStyle = `rgba(0,30,50,${0.3 - za * 0.12})`; ell(ctx, this.x + 4 + 18 * za, this.y + 5 + 22 * za, 50, 18, this.h); ctx.fill();
     } else {
       if (this.dolphins) this.drawDolphins(ctx, t);
-      for (const B of this.boats) if (seen(B)) drawBoatTop(ctx, B.x, B.y, B.big ? 0.7 : 0.5, B.h, { hull: B.hull });
+      for (const B of this.boats) if (seen(B)) drawCenterConsoleTop(ctx, B.x, B.y, B.big ? 0.7 : 0.5, B.h, { hull: B.hull, t });
       if (this.fwc) this.drawFwc(ctx, t);
       if (za > 0) { ctx.fillStyle = 'rgba(0,30,50,0.25)'; ell(ctx, this.x + 16 * za, this.y + 26 * za, 66, 26, this.h); ctx.fill(); }
       const bob = Math.sin(t * (2 + this.wind.chop * 2)) * 0.02 * this.wind.chop * (this.v < 50 ? 1 : 0.3);
-      drawBoatTop(ctx, this.x, this.y - 10 * za, 0.62 * (1 + 0.22 * za), this.h + bob, { crew: this.crew });
+      drawCenterConsoleTop(ctx, this.x, this.y - 10 * za, 0.62 * (1 + 0.22 * za), this.h + bob, { crew: this.crew, t });
     }
     World.drawBridges(ctx, v, t);
   }
@@ -501,32 +501,22 @@ class SeaScene {
     ctx.beginPath(); ctx.moveTo(this.x, this.y); for (let i = this.ri; i < this.route.length; i++) ctx.lineTo(this.route[i][0], this.route[i][1]); ctx.stroke(); ctx.restore();
   }
   drawManatee(ctx, m, t) {
-    const up = Math.sin(m.t * 0.8) > 0.1;
-    ctx.save(); ctx.translate(m.x, m.y); ctx.rotate(m.h); ctx.globalAlpha = up ? 0.85 : 0.4;
-    ctx.fillStyle = '#7d7f78'; ell(ctx, 0, 0, 34, 16); ctx.fill(); ell(ctx, -36, 0, 13, 15); ctx.fill(); ell(ctx, 30, 0, 12, 10); ctx.fill();
-    ctx.fillStyle = '#6a6c66'; ell(ctx, 12, -15, 8, 4, 0.5); ctx.fill(); ell(ctx, 12, 15, 8, 4, -0.5); ctx.fill();
-    ctx.restore();
+    const sf = Math.sin(m.t * 0.8), up = sf > 0.1;
+    drawManateeTop(ctx, m.x, m.y, 0.85, m.h, { t, surfacing: clamp(sf * 1.4, 0, 1), depth: up ? 0.2 : 0.6 });
     if (up && chance(0.05)) this.foam.push(this.foamBlob(m.x + Math.cos(m.h) * 34, m.y + Math.sin(m.h) * 34, 0, 0, 4, 0.8));
   }
   drawDolphins(ctx, t) {
     const D = this.dolphins, fade = Math.min(1, D.t * 2, (D.dur - D.t) * 2), ca = Math.cos(this.h), sa = Math.sin(this.h);
     for (const p of D.pod) {
       const ph = t * 3 + p.ph, up = Math.sin(ph), x = this.x + ca * (p.ox + 20) - sa * p.oy, y = this.y + sa * (p.ox + 20) + ca * p.oy;
-      ctx.save(); ctx.translate(x, y); ctx.rotate(this.h); ctx.globalAlpha = fade * (up > 0 ? 1 : 0.45);
-      const s = 1 + Math.max(0, up) * 0.25; ctx.scale(s, s);
-      ctx.fillStyle = '#6d7e8c'; ell(ctx, 0, 0, 26, 8); ctx.fill(); ell(ctx, 26, 0, 6, 3); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(-26, 0); ctx.lineTo(-36, -8); ctx.lineTo(-33, 0); ctx.lineTo(-36, 8); ctx.fill();
-      ctx.fillStyle = '#566672'; ctx.beginPath(); ctx.moveTo(-4, 0); ctx.lineTo(-14, -3); ctx.lineTo(-10, 0); ctx.fill();
-      ctx.restore();
+      ctx.save(); ctx.globalAlpha = fade; drawDolphinTop(ctx, x, y, 0.62, this.h, { t, up: Math.max(0, up), phase: p.ph }); ctx.restore();
       if (up > 0.95 && chance(0.3)) this.foam.push(this.foamBlob(x, y, 0, 0, 5, 0.6));
     }
   }
   drawFwc(ctx, t) {
     const k = easeOut(this.fwc.k), x = this.x - Math.cos(this.h) * lerp(400, 90, k) + Math.cos(this.h + Math.PI / 2) * 60, y = this.y - Math.sin(this.h) * lerp(400, 90, k) + Math.sin(this.h + Math.PI / 2) * 60;
-    drawBoatTop(ctx, x, y, 0.55, this.h, {});
-    ctx.fillStyle = 'rgba(40,90,200,0.85)'; rr(ctx, x - 12, y - 12, 26, 24, 4); ctx.fill();
-    const on = Math.floor(t * 8) % 2; ctx.fillStyle = on ? '#4aa0ff' : '#ffffff'; ell(ctx, x, y - 8, 4, 4); ctx.fill(); ctx.fillStyle = on ? '#ffffff' : '#4aa0ff'; ell(ctx, x, y + 8, 4, 4); ctx.fill();
-    text(ctx, 'FWC', x, y + 32, { size: 14, align: 'center', color: '#fff', weight: 800, stroke: '#123a8a', sw: 4 });
+    drawFwcBoatTop(ctx, x, y, 0.5, this.h, { t });
+    text(ctx, 'FWC', x, y + 34, { size: 14, align: 'center', color: '#fff', weight: 800, stroke: '#123a8a', sw: 4 });
   }
 
   /* ---------- HUD ---------- */

@@ -1,5 +1,5 @@
-// Contact sheets for the sea art: top-down sea life, boats and birds on open water, and the chase-view
-// sprites (the player's boat from behind, far boats, markers, floats, the lighthouse) over water with a horizon.
+// Contact sheets for the sea art (js/art.js): top-down sea life, boats, birds and floats on open water for the overhead
+// view, and the side-view billboards for the chase camera over water with a horizon. Also prints a rough cost per call.
 // usage: node test/seaart.mjs <repo root> <out dir> [extra.js to inject after the game's scripts]
 import { chromium } from 'playwright';
 import fs from 'fs';
@@ -19,8 +19,16 @@ const sheets = await page.evaluate(() => {
     const r = mulberry(seed); g.fillStyle = 'rgba(255,255,255,0.12)';
     for (let i = 0; i < (w * h) / 2600; i++) { const px = x + r() * w, py = y + r() * h; g.beginPath(); g.ellipse(px, py, 6, 1.2, 0, 0, Math.PI * 2); g.fill(); }
   };
-  const label = (g, s, x, y, o = {}) => { g.font = `${o.w || 700} ${o.size || 13}px sans-serif`; g.fillStyle = o.color || '#fff'; g.textAlign = o.align || 'left'; g.fillText(s, x, y); };
-  // rows of cells: { name, h, cells: [{ w, cap, draw(g, cx, cy) }] }
+  // sky above a horizon at hy, water below with streaks that crowd toward the horizon
+  const seaH = (g, x, y, w, h, hy, seed = 3) => {
+    const sky = g.createLinearGradient(0, y, 0, hy); sky.addColorStop(0, '#5aa8e6'); sky.addColorStop(1, '#cfe9f7'); g.fillStyle = sky; g.fillRect(x, y, w, hy - y);
+    const sea = g.createLinearGradient(0, hy, 0, y + h); sea.addColorStop(0, '#5b9fc4'); sea.addColorStop(0.18, '#2a7fae'); sea.addColorStop(1, '#165f8a'); g.fillStyle = sea; g.fillRect(x, hy, w, y + h - hy);
+    const r = mulberry(seed); g.fillStyle = 'rgba(255,255,255,0.16)';
+    for (let i = 0; i < 160; i++) { const k = Math.pow(r(), 1.6), py = hy + k * (y + h - hy), sz = 1 + k * 9; g.beginPath(); g.ellipse(x + r() * w, py, sz * 1.6, sz * 0.22, 0, 0, Math.PI * 2); g.fill(); }
+    g.fillStyle = 'rgba(255,255,255,0.5)'; g.fillRect(x, hy, w, 1);
+  };
+  const label = (g, s, x, y, o = {}) => { g.font = `${o.w || 700} ${o.size || 13}px sans-serif`; g.fillStyle = o.color || '#fff'; g.textAlign = 'left'; g.fillText(s, x, y); };
+  // rows of cells: { name, sub, h, cells: [{ w, cap, draw(g, cx, cy) }] }
   const sheet = (rows, W, bg) => {
     const H = rows.reduce((a, r) => a + r.h, 0), [c, g] = mk(W, H); g.fillStyle = '#0c2734'; g.fillRect(0, 0, W, H);
     let y = 0;
@@ -66,7 +74,7 @@ const sheets = await page.evaluate(() => {
       cell(150, 's 1.3 ang -1.6', (g, x, y) => drawRayTop(g, x, y + 30, 1.3, -1.6, { t: 2 }))] }
   ], 1020, water);
 
-  /* ---------- top-down: boats and birds ---------- */
+  /* ---------- top-down: boats, birds, floats ---------- */
   res['top-boats'] = sheet([
     { name: 'Center console', sub: 'drawCenterConsoleTop', h: 230, cells: [
       cell(80, 's .2', (g, x, y) => drawCenterConsoleTop(g, x, y, 0.2, -0.5, { hull: '#2f6fb0' })),
@@ -104,100 +112,104 @@ const sheets = await page.evaluate(() => {
       cell(150, 'pelican t .5', (g, x, y) => { drawBirdShadow(g, x, y, 1, 0, { kind: 'pelican', t: 0.5 }); drawPelicanTop(g, x, y, 1, 0, { t: 0.5 }); }),
       cell(130, 'gull t 0 / .2', (g, x, y) => { drawBirdShadow(g, x, y - 40, 1, 0, { t: 0 }); drawGullTop(g, x, y - 40, 1, 0, { t: 0 }); drawBirdShadow(g, x, y + 35, 1, 0, { t: 0.2 }); drawGullTop(g, x, y + 35, 1, 0, { t: 0.2 }); }),
       cell(250, 'pelican s 2', (g, x, y) => { drawBirdShadow(g, x - 10, y - 10, 2, -0.3, { kind: 'pelican', t: 1.1, alt: 50 }); drawPelicanTop(g, x - 10, y - 10, 2, -0.3, { t: 1.1 }); }),
-      cell(150, 'gull s 2', (g, x, y) => { drawBirdShadow(g, x, y, 2, 2.2, { t: 0.4, alt: 40 }); drawGullTop(g, x, y, 2, 2.2, { t: 0.4 }); })] }
+      cell(150, 'gull s 2', (g, x, y) => { drawBirdShadow(g, x, y, 2, 2.2, { t: 0.4, alt: 40 }); drawGullTop(g, x, y, 2, 2.2, { t: 0.4 }); })] },
+    { name: 'Trap floats', sub: 'drawTrapFloatTop', h: 120, cells: [
+      cell(80, 's .6', (g, x, y) => drawTrapFloatTop(g, x, y, 0.6, 0.4, { t: 1 })),
+      cell(260, 's 1', (g, x, y) => ['#ff6a3d', '#ffffff', '#ffd23a', '#7be36a', '#ff4fa0'].forEach((col, i) => drawTrapFloatTop(g, x - 100 + i * 50, y, 1, 0.3, { color: col, stripe: ['#1b3f8a', '#e03a3a', '#111111', '#1b3f8a', '#111111'][i], t: i }))),
+      cell(200, 's 2.5', (g, x, y) => drawTrapFloatTop(g, x, y, 2.5, -0.5, { color: '#ff6a3d', t: 2 }))] }
   ], 1100, water);
 
-  /* ---------- the chase view ---------- */
-  const seaH = (g, x, y, w, h, hy, seed = 3) => {   // sky above a horizon at hy, water below with streaks that crowd toward the horizon
-    const sky = g.createLinearGradient(0, y, 0, hy); sky.addColorStop(0, '#5aa8e6'); sky.addColorStop(1, '#cfe9f7'); g.fillStyle = sky; g.fillRect(x, y, w, hy - y);
-    const sea = g.createLinearGradient(0, hy, 0, y + h); sea.addColorStop(0, '#5b9fc4'); sea.addColorStop(0.18, '#2a7fae'); sea.addColorStop(1, '#165f8a'); g.fillStyle = sea; g.fillRect(x, hy, w, y + h - hy);
-    const r = mulberry(seed); g.fillStyle = 'rgba(255,255,255,0.16)';
-    for (let i = 0; i < 160; i++) { const k = Math.pow(r(), 1.6), py = hy + k * (y + h - hy), sz = 1 + k * 9; g.beginPath(); g.ellipse(x + r() * w, py, sz * 1.6, sz * 0.22, 0, 0, Math.PI * 2); g.fill(); }
-    g.fillStyle = 'rgba(255,255,255,0.5)'; g.fillRect(x, hy, w, 1);
-  };
-  // a mock chase scene: a camera 28 ft up looking ahead; things farther off sit higher, smaller, and are seen at a lower angle
+  /* ---------- side-view billboards for the chase camera ---------- */
+  const chaseBg = (hy) => (g, x, y, w, h, seed) => seaH(g, x, y, w, h, y + hy, seed);
+  const ph = [0.15, 0.6, 1.57, 2.3, 2.9, 4.2];
+  res['side-billboards'] = sheet([
+    { name: 'Dolphin', sub: 'drawDolphinSide s 2.4', h: 180, cells: ph.map((p) => cell(150, 'phase ' + p, (g, x, y) => drawDolphinSide(g, x, y + 40, 2.4, p))) },
+    { name: 'Dolphin', sub: 's .5 / 1 / -1.4 / haze', h: 130, cells: [
+      cell(120, 's .5', (g, x, y) => drawDolphinSide(g, x, y + 30, 0.5, 1.2)), cell(150, 's 1', (g, x, y) => drawDolphinSide(g, x, y + 30, 1, 1.8)),
+      cell(180, 's -1.4 (left)', (g, x, y) => drawDolphinSide(g, x, y + 30, -1.4, 1.0)), cell(180, 's 1.4 haze .5', (g, x, y) => drawDolphinSide(g, x, y + 30, 1.4, 1.4, { haze: 0.5 }))] },
+    { name: 'Pelican', sub: 'drawPelicanSide s 3.2', h: 170, cells: [0, 1, 2, 3, 4, 5].map((f) => cell(150, 'flap ' + f, (g, x, y) => drawPelicanSide(g, x - 10, y, 3.2, f))) },
+    { name: 'Gull', sub: 'drawGullSide s 5', h: 140, cells: [0, 1, 2, 3, 4, 5].map((f) => cell(120, 'flap ' + f, (g, x, y) => drawGullSide(g, x - 5, y, 5, f))) },
+    { name: 'Birds small', sub: 's .5 – 1.5', h: 110, cells: [
+      cell(200, 'pelicans s .6 / 1 / 1.5', (g, x, y) => { drawPelicanSide(g, x - 65, y, 0.6, 1); drawPelicanSide(g, x - 15, y, 1, 2.5); drawPelicanSide(g, x + 55, y, -1.5, 4); }),
+      cell(200, 'gulls s .6 / 1 / 1.5', (g, x, y) => { drawGullSide(g, x - 65, y, 0.6, 1); drawGullSide(g, x - 15, y, 1, 2.5); drawGullSide(g, x + 50, y, -1.5, 4); }),
+      cell(160, 'haze .6', (g, x, y) => { drawPelicanSide(g, x - 25, y, 1.4, 0.5, { haze: 0.6 }); drawGullSide(g, x + 45, y, 1.5, 2, { haze: 0.6 }); })] },
+    { name: 'Turtle', sub: 'drawTurtleSide s 4', h: 130, cells: [0, 1, 1.75, 2.6, 3.4].map((t) => cell(150, 't ' + t, (g, x, y) => drawTurtleSide(g, x - 5, y + 25, 4, t))).concat([cell(150, 's 1 / 2 / -2', (g, x, y) => { drawTurtleSide(g, x - 50, y + 25, 1, 1.7); drawTurtleSide(g, x - 10, y + 25, 2, 1.7); drawTurtleSide(g, x + 45, y + 25, -2, 0.3); })]) },
+    { name: 'Markers', sub: 'drawMarkerPost', h: 200, cells: [
+      cell(110, 'red 8 s 2', (g, x, y) => drawMarkerPost(g, x, y + 80, 2, { kind: 'red', n: 8, t: 0.1 })),
+      cell(110, 'green 7 s 2', (g, x, y) => drawMarkerPost(g, x, y + 80, 2, { kind: 'green', n: 7, t: 1 })),
+      cell(110, 'white s 2.5', (g, x, y) => drawMarkerPost(g, x, y + 70, 2.5, { kind: 'white', n: 2, t: 1 })),
+      cell(140, 's 1', (g, x, y) => { drawMarkerPost(g, x - 35, y + 50, 1, { kind: 'red', n: 12, t: 1 }); drawMarkerPost(g, x + 5, y + 50, 1, { kind: 'green', n: 11, t: 1 }); drawMarkerPost(g, x + 45, y + 50, 1, { kind: 'white', n: 5, t: 1 }); }),
+      cell(140, 's .4', (g, x, y) => { drawMarkerPost(g, x - 30, y + 20, 0.4, { kind: 'red', n: 2, t: 1 }); drawMarkerPost(g, x, y + 20, 0.4, { kind: 'green', n: 1, t: 1 }); drawMarkerPost(g, x + 30, y + 20, 0.4, { kind: 'white', n: 9, t: 1 }); }),
+      cell(140, 's 1 haze .5', (g, x, y) => { drawMarkerPost(g, x - 20, y + 50, 1, { kind: 'red', n: 4, t: 1, haze: 0.5 }); drawMarkerPost(g, x + 25, y + 50, 1, { kind: 'green', n: 3, t: 1, haze: 0.5 }); })] },
+    { name: 'Trap floats', sub: 'drawTrapFloat', h: 120, cells: [
+      cell(130, 's 3', (g, x, y) => drawTrapFloat(g, x, y + 20, 3, { color: '#ff6a3d', stripe: '#1b3f8a', t: 0.5 })),
+      cell(200, 's 1.5', (g, x, y) => ['#ff6a3d', '#ffffff', '#7be36a', '#ff4fa0'].forEach((col, i) => drawTrapFloat(g, x - 60 + i * 40, y + 15, 1.5, { color: col, stripe: ['#1b3f8a', '#111111', '#1b3f8a', '#111111'][i], t: i }))),
+      cell(150, 's .6', (g, x, y) => ['#ff6a3d', '#ffffff', '#ffd23a', '#ff4fa0'].forEach((col, i) => drawTrapFloat(g, x - 45 + i * 30, y + 10, 0.6, { color: col, stripe: '#1b3f8a', t: i })))] },
+    { name: 'Alligator Light', sub: 'drawLighthouseSide', h: 330, cells: [
+      cell(330, 's .45 (flash)', (g, x, y) => drawLighthouseSide(g, x, y + 140, 0.45, { t: 0.1 })),
+      cell(200, 's .45 dark', (g, x, y) => drawLighthouseSide(g, x, y + 140, 0.45, { t: 2.5 })),
+      cell(160, 's .2 haze .4', (g, x, y) => drawLighthouseSide(g, x, y + 60, 0.2, { t: 0.65, haze: 0.4 })),
+      cell(120, 's .1', (g, x, y) => drawLighthouseSide(g, x, y + 30, 0.1, { t: 1.2 }))] }
+  ], 1060, chaseBg(70));
+
+  // a mock chase-camera scene: camera 118 units up, focal 560 (like js/chase.js); farther things sit higher and smaller
   {
-    const W = 1280, H = 720, [c, g] = mk(W, H), hy = 120, F = 629, hc = 28, t = 4.2;
+    const W = 960, H = 540, [c, g] = mk(W, H), hy = 150, F = 560, hc = 118, t = 4.2;
     seaH(g, 0, 0, W, H, hy, 7);
-    drawCloud(g, 220, 60, 1.1, 0.9); drawCloud(g, 900, 40, 0.8, 0.8); drawCloud(g, 1150, 90, 0.6, 0.7);
-    const proj = (wx, d) => ({ x: W / 2 + F * wx / d, y: hy + F * hc / d, s: F / (d * 12), tilt: Math.atan2(hc, d) });
+    drawCloud(g, 160, 60, 0.9, 0.9); drawCloud(g, 700, 40, 0.7, 0.8);
+    const P = (wx, d, z = 0) => ({ x: W / 2 + F * wx / d, y: hy + F * (hc - z) / d, s: F / d, haze: clamp((d - 900) / 6000, 0, 0.7) });
     const objs = [];
-    objs.push([1100, (p) => drawLighthouseSide(g, p.x, p.y, p.s, { t: 0.1, tilt: p.tilt }), -330]);
-    for (const [wx, d, kind, n] of [[-34, 95, 'green', 7], [34, 95, 'red', 8], [-34, 190, 'green', 5], [34, 190, 'red', 6], [-34, 330, 'green', 3], [34, 330, 'red', 4], [-34, 520, 'green', 1], [34, 520, 'red', 2]]) objs.push([d, (p) => drawMarkerPost(g, p.x, p.y, p.s, { kind, n, t, tilt: p.tilt }), wx]);
-    for (const [wx, d] of [[70, 75], [95, 140], [-80, 120], [-120, 260]]) objs.push([d, (p) => drawMarkerPost(g, p.x, p.y, p.s, { kind: 'white', n: wx, t, tilt: p.tilt }), wx]);
-    for (const [wx, d, col, st] of [[-16, 58, '#ff6a3d', '#1b3f8a'], [48, 88, '#ffd23a', '#e03a3a'], [-60, 150, '#ffffff', '#111111'], [14, 230, '#7be36a', '#1b3f8a'], [26, 62, '#ff4fa0', '#111111']]) objs.push([d, (p) => drawTrapFloat(g, p.x, p.y, p.s, { color: col, stripe: st, t, tilt: p.tilt }), wx]);
-    for (const [wx, d, a, hull, sp] of [[120, 420, 1.2, '#ffffff', 0.7], [-200, 640, -2.2, '#2f6fb0', 0.5], [40, 900, 0.3, '#f2c33a', 0.4], [-60, 230, 2.9, '#ffffff', 0.6], [110, 170, -1.4, '#24282c', 0.3]]) objs.push([d, (p) => drawBoatChaseFar(g, p.x, p.y, p.s, a, { hull, speed: sp, t, tilt: p.tilt }), wx]);
-    objs.sort((a, b) => b[0] - a[0]).forEach(([d, fn, wx]) => fn(proj(wx, d)));
-    const hp = proj(0, 40); drawBoatChase(g, hp.x, hp.y, hp.s, { t, speed: 0.85, roll: 0.06, pitch: 0.07, crew: ['michael', 'jorge', 'jemel'] });
+    objs.push([5200, (p) => drawLighthouseSide(g, p.x, p.y, p.s, { t: 0.1, haze: p.haze }), -900]);
+    for (const [wx, d, kind, n] of [[-120, 700, 'green', 7], [120, 700, 'red', 8], [-120, 1400, 'green', 5], [120, 1400, 'red', 6], [-120, 2600, 'green', 3], [120, 2600, 'red', 4]]) objs.push([d, (p) => drawMarkerPost(g, p.x, p.y, p.s, { kind, n, t, haze: p.haze }), wx]);
+    for (const [wx, d] of [[300, 900], [-330, 1200]]) objs.push([d, (p) => drawMarkerPost(g, p.x, p.y, p.s, { kind: 'white', n: wx, t, haze: p.haze }), wx]);
+    for (const [wx, d, col, st] of [[-60, 420, '#ff6a3d', '#1b3f8a'], [170, 600, '#ffd23a', '#e03a3a'], [-230, 900, '#ffffff', '#111111'], [40, 1300, '#7be36a', '#1b3f8a']]) objs.push([d, (p) => drawTrapFloat(g, p.x, p.y, p.s, { color: col, stripe: st, t, haze: p.haze }), wx]);
+    objs.push([330, (p) => drawDolphinSide(g, p.x, p.y, p.s, 1.3), -70]);
+    objs.push([360, (p) => drawDolphinSide(g, p.x, p.y, p.s, 2.4), 60]);
+    objs.push([300, (p) => drawTurtleSide(g, p.x, p.y, p.s, 1.7), 150]);
+    for (const [wx, d, z, f, k] of [[-200, 800, 140, 1, 'p'], [-150, 860, 150, 2.4, 'p'], [-250, 900, 130, 3.8, 'p'], [250, 500, 90, 0.6, 'g'], [300, 560, 110, 3.3, 'g']]) objs.push([d, (p) => { const q = P(wx, d, z); (k === 'p' ? drawPelicanSide : drawGullSide)(g, q.x, q.y, q.s, f + t * 4, { haze: q.haze }); }, wx]);
+    objs.sort((a, b) => b[0] - a[0]).forEach(([d, fn, wx]) => fn(P(wx, d)));
     res['chase-scene'] = c.toDataURL('image/png');
   }
-  const chaseBg = (hy) => (g, x, y, w, h, seed) => seaH(g, x, y, w, h, y + hy, seed);
-  res['chase-hero'] = sheet([
-    { name: 'Player boat', sub: 'drawBoatChase s 1', h: 330, cells: [
-      cell(270, 'idle, no crew', (g, x, y) => drawBoatChase(g, x, y + 50, 1, { t: 1 })),
-      cell(270, 'idle, crew', (g, x, y) => drawBoatChase(g, x, y + 50, 1, { t: 1, crew: ['michael', 'jorge', 'jemel'] })),
-      cell(270, 'speed .5', (g, x, y) => drawBoatChase(g, x, y + 50, 1, { t: 1, speed: 0.5, pitch: 0.04, crew: ['jemel', 'michael'] })),
-      cell(270, 'speed 1, pitch .1', (g, x, y) => drawBoatChase(g, x, y + 50, 1, { t: 1, speed: 1, pitch: 0.1, crew: ['michael', 'jorge', 'jemel'] }))] },
-    { name: 'Banking', sub: 'roll ±.22, speed .8', h: 330, cells: [
-      cell(270, 'roll -.22 (left turn)', (g, x, y) => drawBoatChase(g, x, y + 50, 1, { t: 2, speed: 0.8, roll: -0.22, pitch: 0.06, crew: ['michael', 'jorge', 'jemel'] })),
-      cell(270, 'roll .22 (right turn)', (g, x, y) => drawBoatChase(g, x, y + 50, 1, { t: 2, speed: 0.8, roll: 0.22, pitch: 0.06, crew: ['michael', 'jorge', 'jemel'] })),
-      cell(270, 'navy hull, roll .1', (g, x, y) => drawBoatChase(g, x, y + 50, 1, { t: 3, speed: 0.6, roll: 0.1, hull: '#1f3554', top: '#e9edf0', crew: ['jorge'] })),
-      cell(270, 'drifting, roll -.06', (g, x, y) => drawBoatChase(g, x, y + 50, 1, { t: 3, roll: -0.06, pitch: -0.02, crew: ['jemel', 'jorge', 'michael'] }))] },
-    { name: 'Sizes', sub: 's .25 / .45 / 1.6', h: 420, cells: [
-      cell(110, 's .25', (g, x, y) => drawBoatChase(g, x, y + 30, 0.25, { t: 1, speed: 0.8, crew: ['michael', 'jorge', 'jemel'] })),
-      cell(170, 's .45', (g, x, y) => drawBoatChase(g, x, y + 40, 0.45, { t: 1, speed: 0.6, roll: 0.1, crew: ['michael', 'jorge', 'jemel'] })),
-      cell(450, 's 1.6', (g, x, y) => drawBoatChase(g, x, y + 80, 1.6, { t: 1.4, speed: 0.75, roll: 0.05, pitch: 0.06, crew: ['michael', 'jorge', 'jemel'] }))] }
-  ], 1220, chaseBg(40));
-  const heads = [0, 0.785, 1.571, 2.356, 3.1416, -2.356, -1.571, -0.785];
-  res['chase-objects'] = sheet([
-    { name: 'Far boats', sub: 'drawBoatChaseFar s .45', h: 190, cells: heads.map((a, i) => cell(130, 'ang ' + a.toFixed(2), (g, x, y) => drawBoatChaseFar(g, x, y + 30, 0.45, a, { hull: ['#ffffff', '#2f6fb0', '#f2c33a', '#24282c'][i % 4], speed: 0.6, t: i }))) },
-    { name: 'Far boats', sub: 's .2 and .1', h: 110, cells: heads.map((a, i) => cell(130, '', (g, x, y) => { drawBoatChaseFar(g, x - 25, y + 10, 0.2, a, { hull: ['#ffffff', '#2f6fb0', '#f2c33a', '#24282c'][i % 4], speed: 0.6, t: i }); drawBoatChaseFar(g, x + 35, y + 10, 0.1, a, { hull: '#ffffff', speed: 0.5, t: i }); })) },
-    { name: 'Markers', sub: 'drawMarkerPost', h: 250, cells: [
-      cell(130, 'red 8 s 1', (g, x, y) => drawMarkerPost(g, x, y + 95, 1, { kind: 'red', n: 8, t: 0.1 })),
-      cell(130, 'green 7 s 1', (g, x, y) => drawMarkerPost(g, x, y + 95, 1, { kind: 'green', n: 7, t: 1 })),
-      cell(130, 'white s 1.4', (g, x, y) => drawMarkerPost(g, x, y + 85, 1.4, { kind: 'white', n: 2, t: 1 })),
-      cell(140, 's .5', (g, x, y) => { drawMarkerPost(g, x - 30, y + 60, 0.5, { kind: 'red', n: 12, t: 1 }); drawMarkerPost(g, x + 15, y + 60, 0.5, { kind: 'green', n: 11, t: 1 }); drawMarkerPost(g, x + 45, y + 60, 0.5, { kind: 'white', n: 5, t: 1 }); }),
-      cell(140, 's .25', (g, x, y) => { drawMarkerPost(g, x - 30, y + 30, 0.25, { kind: 'red', n: 2, t: 1 }); drawMarkerPost(g, x, y + 30, 0.25, { kind: 'green', n: 1, t: 1 }); drawMarkerPost(g, x + 30, y + 30, 0.25, { kind: 'white', n: 9, t: 1 }); })] },
-    { name: 'Trap floats', sub: 'drawTrapFloat', h: 170, cells: [
-      cell(130, 's 5', (g, x, y) => drawTrapFloat(g, x, y + 30, 5, { color: '#ff6a3d', stripe: '#1b3f8a', t: 0.5 })),
-      cell(130, 's 5 yellow', (g, x, y) => drawTrapFloat(g, x, y + 30, 5, { color: '#ffd23a', stripe: '#e03a3a', t: 1.5 })),
-      cell(200, 's 2.5', (g, x, y) => ['#ff6a3d', '#ffffff', '#7be36a', '#ff4fa0'].forEach((col, i) => drawTrapFloat(g, x - 60 + i * 40, y + 20, 2.5, { color: col, stripe: ['#1b3f8a', '#111111', '#1b3f8a', '#111111'][i], t: i }))),
-      cell(150, 's 1.2', (g, x, y) => ['#ff6a3d', '#ffffff', '#ffd23a', '#ff4fa0'].forEach((col, i) => drawTrapFloat(g, x - 45 + i * 30, y + 10, 1.2, { color: col, stripe: '#1b3f8a', t: i })))] },
-    { name: 'Alligator Light', sub: 'drawLighthouseSide', h: 330, cells: [
-      cell(330, 's .14 (flash)', (g, x, y) => drawLighthouseSide(g, x, y + 140, 0.14, { t: 0.1 })),
-      cell(200, 's .14 dark', (g, x, y) => drawLighthouseSide(g, x, y + 140, 0.14, { t: 2.5 })),
-      cell(160, 's .06', (g, x, y) => drawLighthouseSide(g, x, y + 60, 0.06, { t: 0.65 })),
-      cell(120, 's .03', (g, x, y) => drawLighthouseSide(g, x, y + 30, 0.03, { t: 1.2 }))] }
-  ], 1180, chaseBg(70));
   // the small sizes, blown up 3x so the pixels can be judged
   {
-    const [c, g] = mk(420, 150); water(g, 0, 0, 420, 150, 5);
-    drawManateeTop(g, 30, 40, 0.3, -0.4, { t: 1 }); drawDolphinTop(g, 90, 40, 0.35, 0.3, { t: 1, up: 0.6 }); drawTurtleTop(g, 145, 40, 0.5, -0.6, { t: 1 }); drawRayTop(g, 205, 40, 0.45, 0, { t: 1 });
-    drawCenterConsoleTop(g, 270, 40, 0.2, -0.4, { hull: '#2f6fb0' }); drawFwcBoatTop(g, 330, 40, 0.2, 0.2, { t: 0.02 }); drawSailboatTop(g, 390, 40, 0.18, -0.5, {});
-    drawSkiffTop2(g, 30, 110, 0.27, 0.3, {}); drawKayakTop(g, 90, 110, 0.45, -0.5, { t: 1 }); drawBirdShadow(g, 150, 105, 0.35, 0, { kind: 'pelican', t: 0.3, alt: 14 }); drawPelicanTop(g, 150, 105, 0.35, 0, { t: 0.3 });
-    drawBirdShadow(g, 200, 110, 0.5, 0.4, { t: 0.1, alt: 12 }); drawGullTop(g, 200, 110, 0.5, 0.4, { t: 0.1 });
-    seaH(g, 230, 70, 190, 80, 80, 2); drawBoatChaseFar(g, 260, 120, 0.12, 1.2, { speed: 0.6 }); drawBoatChaseFar(g, 300, 110, 0.08, -0.4, { hull: '#2f6fb0', speed: 0.6 }); drawMarkerPost(g, 335, 125, 0.2, { kind: 'red', n: 4, t: 1 }); drawMarkerPost(g, 355, 120, 0.15, { kind: 'green', n: 3, t: 1 }); drawTrapFloat(g, 375, 130, 1, { t: 1 }); drawLighthouseSide(g, 400, 95, 0.02, { t: 0.1 }); drawBoatChase(g, 260, 140, 0.18, { speed: 0.7, crew: ['michael', 'jorge', 'jemel'] });
+    const [c, g] = mk(420, 150); water(g, 0, 0, 420, 75, 5);
+    drawManateeTop(g, 30, 38, 0.3, -0.4, { t: 1 }); drawDolphinTop(g, 85, 38, 0.35, 0.3, { t: 1, up: 0.6 }); drawTurtleTop(g, 135, 38, 0.5, -0.6, { t: 1 }); drawRayTop(g, 195, 30, 0.45, 0, { t: 1 });
+    drawCenterConsoleTop(g, 260, 38, 0.2, -0.4, { hull: '#2f6fb0' }); drawFwcBoatTop(g, 320, 38, 0.2, 0.2, { t: 0.02 }); drawSailboatTop(g, 385, 35, 0.18, -0.5, {});
+    seaH(g, 0, 75, 420, 75, 90, 2);
+    drawSkiffTop2(g, 30, 60, 0.27, 0.3, {}); drawKayakTop(g, 90, 62, 0.45, -0.5, { t: 1 }); drawTrapFloatTop(g, 140, 62, 0.8, 0, { t: 1 });
+    drawDolphinSide(g, 40, 130, 0.5, 1.4); drawPelicanSide(g, 110, 105, 0.7, 1); drawGullSide(g, 150, 110, 0.8, 2); drawTurtleSide(g, 190, 128, 0.9, 1.7);
+    drawMarkerPost(g, 240, 135, 0.6, { kind: 'red', n: 4, t: 1 }); drawMarkerPost(g, 265, 125, 0.35, { kind: 'green', n: 3, t: 1 }); drawTrapFloat(g, 300, 135, 0.6, { t: 1 }); drawLighthouseSide(g, 370, 120, 0.08, { t: 0.1 });
     const [z, zg] = mk(1260, 450); zg.imageSmoothingEnabled = false; zg.drawImage(c, 0, 0, 1260, 450);
     res['small-3x'] = z.toDataURL('image/png');
   }
   return res;
 });
-// rough per-call cost, to keep the per-frame sprites cheap
+// rough cost per call (rasterization included), to keep the per-frame sprites cheap
 const perf = await page.evaluate(() => {
   const c = document.createElement('canvas'); c.width = 960; c.height = 540; const g = c.getContext('2d'), out = {};
-  const time = (name, fn, n = 60) => { fn(0); const t0 = performance.now(); for (let i = 0; i < n; i++) fn(i * 0.016); out[name] = +((performance.now() - t0) / n).toFixed(3); };
-  time('drawBoatChase s1 speed.8 crew3', (t) => drawBoatChase(g, 480, 400, 1, { t, speed: 0.8, roll: 0.1, pitch: 0.06, crew: ['michael', 'jorge', 'jemel'] }));
-  time('drawBoatChaseFar s.3', (t) => drawBoatChaseFar(g, 300, 200, 0.3, 1, { t, speed: 0.6 }), 200);
-  time('drawMarkerPost s.5', (t) => drawMarkerPost(g, 300, 200, 0.5, { kind: 'red', n: 4, t }), 400);
-  time('drawTrapFloat s2', (t) => drawTrapFloat(g, 300, 200, 2, { t }), 400);
-  time('drawLighthouseSide s.08', (t) => drawLighthouseSide(g, 300, 300, 0.08, { t }), 200);
-  time('drawCenterConsoleTop s.6', (t) => drawCenterConsoleTop(g, 300, 200, 0.6, t, { crew: ['michael', 'jorge'] }), 200);
-  time('drawManateeTop s1', (t) => drawManateeTop(g, 300, 200, 1, t, { t, surfacing: 1 }), 200);
-  time('drawDolphinTop s1 up.6', (t) => drawDolphinTop(g, 300, 200, 1, t, { t, up: 0.6 }), 200);
-  time('drawRayTop s1', (t) => drawRayTop(g, 300, 200, 1, t, { t }), 200);
+  const time = (name, fn, n = 150) => { for (let k = 0; k < 10; k++) fn(k); g.getImageData(0, 0, 1, 1); const t0 = performance.now(); for (let i = 0; i < n; i++) fn(i * 0.016); g.getImageData(0, 0, 1, 1); out[name] = +((performance.now() - t0) / n).toFixed(3); };
+  time('drawManateeTop s1', (t) => drawManateeTop(g, 300, 200, 1, t, { t, surfacing: 1 }));
+  time('drawDolphinTop s.6 up.6', (t) => drawDolphinTop(g, 300, 200, 0.6, t, { t, up: 0.6 }));
+  time('drawTurtleTop s1', (t) => drawTurtleTop(g, 300, 200, 1, t, { t }));
+  time('drawRayTop s1', (t) => drawRayTop(g, 300, 200, 1, t, { t }));
+  time('drawCenterConsoleTop s.6 crew', (t) => drawCenterConsoleTop(g, 300, 200, 0.6, t, { crew: ['michael', 'jorge'] }));
+  time('drawFwcBoatTop s.6', (t) => drawFwcBoatTop(g, 300, 200, 0.6, t, { t }));
+  time('drawSailboatTop s.5', (t) => drawSailboatTop(g, 300, 200, 0.5, t, { t }));
+  time('drawSkiffTop2 s.6', (t) => drawSkiffTop2(g, 300, 200, 0.6, t, {}));
+  time('drawKayakTop s1', (t) => drawKayakTop(g, 300, 200, 1, t, { t }));
+  time('drawPelicanTop+shadow s1', (t) => { drawBirdShadow(g, 300, 200, 1, t, { kind: 'pelican', t }); drawPelicanTop(g, 300, 200, 1, t, { t }); });
+  time('drawGullTop s1', (t) => drawGullTop(g, 300, 200, 1, t, { t }));
+  time('drawTrapFloatTop s1', (t) => drawTrapFloatTop(g, 300, 200, 1, 0, { t }));
+  time('drawDolphinSide s1.5', (t) => drawDolphinSide(g, 300, 300, 1.5, t * 20));
+  time('drawPelicanSide s1.5', (t) => drawPelicanSide(g, 300, 200, 1.5, t * 20));
+  time('drawGullSide s1.5', (t) => drawGullSide(g, 300, 200, 1.5, t * 20));
+  time('drawTurtleSide s2', (t) => drawTurtleSide(g, 300, 300, 2, t * 5));
+  time('drawMarkerPost s1', (t) => drawMarkerPost(g, 300, 300, 1, { kind: 'red', n: 4, t }));
+  time('drawTrapFloat s1', (t) => drawTrapFloat(g, 300, 300, 1, { t }));
+  time('drawLighthouseSide s.3', (t) => drawLighthouseSide(g, 300, 400, 0.3, { t }));
   return out;
 });
-console.log('ms per call:', JSON.stringify(perf));
+console.log('ms per call:'); for (const [k, v] of Object.entries(perf)) console.log('  ' + k.padEnd(32) + v);
 for (const [k, url] of Object.entries(sheets)) { const f = path.join(out, `seaart-${k}.png`); fs.writeFileSync(f, Buffer.from(url.split(',')[1], 'base64')); console.log(f); }
 console.log(errs.length ? errs.join('\n') : 'ok');
 await browser.close();

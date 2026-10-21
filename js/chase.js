@@ -51,14 +51,14 @@ const BOAT3D = (() => {
 const BOAT_COLS = { boot: [30, 40, 50], hull: [250, 251, 252], stripe: [31, 61, 107], deck: [222, 228, 232], console: [248, 250, 251], consoleTop: [236, 240, 243], glass: [40, 84, 120], seat: [214, 220, 225], seatTop: [64, 84, 104], engine: [52, 58, 64], engineTop: [80, 88, 96], ttop: [29, 53, 87], ttopTop: [36, 64, 104] };
 
 const Chase = {
-  yaw: 0, k: 0, c: null, spray: [], q: 1, slowT: 0, frames: 0,
+  yaw: 0, k: 0, c: null, spray: [], life: [], q: 1, slowT: 0, frames: 0,
   canvas(name, w, h) {
     let cv = this[name]; if (!cv) cv = this[name] = document.createElement('canvas');
     w = Math.max(16, Math.ceil(w)); h = Math.max(16, Math.ceil(h));
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
     return cv;
   },
-  reset(s) { this.yaw = s.h; this.k = s.v > 150 ? 1 : 0; this.spray = []; },
+  reset(s) { this.yaw = s.h; this.k = s.v > 150 ? 1 : 0; this.spray = []; this.life = []; },
   sky(s) { const legs = s.c.legs || 0; return s.homeRun ? SKIES.sunset : legs === 0 ? SKIES.morning : legs >= 3 ? SKIES.afternoon : SKIES.day; },
 
   /* ---------- camera ---------- */
@@ -73,6 +73,17 @@ const Chase = {
     if (!s.air && v > 110 && chance(dt * v * 0.12)) { const side = chance(0.5) ? 1 : -1; add(22, side * 15, v * 0.25, side * rand(60, 120), rand(50, 110), rand(3, 6), rand(0.5, 0.8)); }
     if (!s.air && v > 120 && Math.abs(s.rudder) > 0.4 && chance(dt * 30)) { const side = s.rudder > 0 ? -1 : 1; add(-10, side * 17, 0, side * rand(80, 150), rand(60, 130), rand(4, 8), rand(0.5, 0.9)); }
     if (!s.air && v > 40 && chance(dt * (8 + v * 0.08))) add(-58, rand(-8, 8), v * 0.2, rand(-20, 20), rand(30, 30 + v * 0.35), rand(3, 5 + v * 0.02), rand(0.4, 0.7));
+    // wildlife along the way: a turtle coming up to breathe, pelicans gliding the shoreline, gulls
+    this.lifeT = (this.lifeT == null ? 3 : this.lifeT) - dt;
+    if (this.lifeT <= 0 && World.ready) {
+      this.lifeT = rand(5, 11);
+      const ahead = rand(500, 1100), lat = rand(-420, 420), x = s.x + ca * ahead - sa * lat, y = s.y + sa * ahead + ca * lat, d = World.gridDepth(x, y), shore = Math.abs(y - chainY(x)) - shoreHW(x);
+      const kind = d > 3 && d < 80 && chance(0.45) ? 'turtle' : shore < 1600 && chance(0.6) ? 'pelican' : 'gull';
+      if (d > 0.5) this.life.push({ kind, x, y, h: kind === 'turtle' ? rand(0, TAU) : s.h + (lat > 0 ? -Math.PI / 2 : Math.PI / 2) + rand(-0.4, 0.4),   // birds cross in front of us
+        z: kind === 'pelican' ? rand(18, 34) : kind === 'gull' ? rand(40, 70) : 0, t: 0, life: kind === 'turtle' ? 9 : 14, ph: rand(0, 9) });
+    }
+    for (const L of this.life) { L.t += dt; if (L.kind !== 'turtle') { const sp = L.kind === 'pelican' ? 70 : 90; L.x += Math.cos(L.h) * sp * dt; L.y += Math.sin(L.h) * sp * dt; } }
+    this.life = this.life.filter((L) => L.t < L.life);
     for (const p of this.spray) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.vz -= 320 * dt; p.vx *= 1 - dt * 1.5; p.vy *= 1 - dt * 1.5; }
     this.spray = this.spray.filter((p) => p.t < p.life && p.z > -2);
     // drop to cheaper textures if the device is struggling
@@ -258,12 +269,18 @@ const Chase = {
     }
     // birds working the Hump
     { const [hx, hy] = HUMP_XY; if (near(hx, hy, 7000)) for (let i = 0; i < 3; i++) { const bx = hx + Math.cos(i * 2.1 + t * 0.05) * 280, by = hy + Math.sin(i * 2.1 + t * 0.05) * 180; for (let k = 0; k < 4; k++) { const a = t * (0.9 + k * 0.2) + k * 2 + i, p = P(bx + Math.cos(a) * 70, by + Math.sin(a) * 40, 70 + k * 14); if (p && onScreen(p) && p.d > 30) items.push({ z: p.z, f: (g) => drawFrigate(g, p.x, p.y, clamp(p.s * 1.6, 0.25, 2.2), t * 6 + k) }); } } }
+    for (const L of this.life) {
+      const p = P(L.x, L.y, 0); if (!p || p.d < 30 || !onScreen(p)) continue;
+      const fadeL = Math.min(1, L.t, L.life - L.t);
+      if (L.kind === 'turtle') items.push({ z: p.z, a: fadeL, f: (g) => this.drawSide(g, drawTurtleSide, p, L.h, L.t + L.ph) });
+      else items.push({ z: p.z, a: fadeL, f: (g) => this.drawSide(g, L.kind === 'pelican' ? drawPelicanSide : drawGullSide, p, L.h, t * (L.kind === 'pelican' ? 2.2 : 5) + L.ph, L.z) });
+    }
     // dolphins on the bow
     if (s.dolphins) {
       const D = s.dolphins, fadeD = Math.min(1, D.t * 2, (D.dur - D.t) * 2), ca = Math.cos(s.h), sa = Math.sin(s.h);
       for (const pd of D.pod) {
-        const ph = t * 3 + pd.ph, up = Math.sin(ph), x = s.x + ca * (pd.ox + 20) - sa * pd.oy, y = s.y + sa * (pd.ox + 20) + ca * pd.oy, p = P(x, y, Math.max(0, up) * 16);
-        if (p) items.push({ z: p.z, a: fadeD, f: (g) => this.drawDolphin(g, p, up, ph) });
+        const ph = t * 3 + pd.ph, x = s.x + ca * (pd.ox + 20) - sa * pd.oy, y = s.y + sa * (pd.ox + 20) + ca * pd.oy, p = P(x, y, 0);
+        if (p) items.push({ z: p.z, a: fadeD, f: (g) => this.drawSide(g, drawDolphinSide, p, s.h, ph) });
       }
     }
     // our boat, and its spray
@@ -403,13 +420,11 @@ const Chase = {
     text(g, S.name, lp.x, lp.y, { size: sz, align: 'center', color: here ? PAL.sun : '#fff', weight: 800, stroke: PAL.ink, sw: 4, alpha: a });
     text(g, done ? 'Fished today' : S.kind, lp.x, lp.y + sz * 0.95, { size: sz * 0.75, align: 'center', color: done ? '#cfd8dc' : PAL.sun, weight: 800, stroke: PAL.ink, sw: 3, alpha: a });
   },
-  drawDolphin(g, p, up, ph) {
-    if (up < -0.2) { g.fillStyle = 'rgba(70,90,104,0.5)'; g.beginPath(); g.moveTo(p.x - 4 * p.s, p.y); g.lineTo(p.x, p.y - 7 * p.s); g.lineTo(p.x + 3 * p.s, p.y); g.fill(); return; }
-    const k = Math.max(0, up), s = p.s, a = Math.cos(ph) * 0.9;
-    g.save(); g.translate(p.x, p.y); g.rotate(a * 0.5);
-    g.fillStyle = '#5f7383'; ell(g, 0, 0, 9 * s, 6 * s + k * 2 * s); g.fill();
-    g.fillStyle = '#4f6170'; g.beginPath(); g.moveTo(-2 * s, -5 * s); g.lineTo(2 * s, -12 * s); g.lineTo(5 * s, -4 * s); g.fill();
-    g.fillStyle = '#c9d6dc'; ell(g, 0, 3 * s, 5 * s, 2.5 * s); g.fill();
+  // a side-view sprite for something heading `h`: squeezed when it's going straight away from us, facing the way it's crossing
+  drawSide(g, fn, p, h, arg, lift = 0) {
+    const rel = angleDiff(this.c.yaw, h), side = Math.sin(rel), sq = Math.max(0.42, Math.abs(side));
+    g.save(); g.translate(p.x, p.y - lift * p.s); g.scale(sq, 1);
+    fn(g, 0, 0, p.s * (side < 0 ? -1 : 1), arg, { haze: this.fog(p.z), hazeColor: rgbs(this.haze) });
     g.restore();
   },
   drawDestPin(g, s, xy, p, t) {
