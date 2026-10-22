@@ -32,7 +32,13 @@ function longDate(d = new Date()) { return d.toLocaleDateString('en-US', { month
 
 const FONT_D = '"Shrikhand", Georgia, "Times New Roman", serif';
 const FONT_UI = '"Barlow Semi Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif';
-const fnt = (size, weight = 700) => `${weight} ${size}px ${FONT_UI}`;
+// Small print stays readable on a phone: when the game is drawn small (a phone held sideways draws it at about 0.7x),
+// text from 10 up to TEXT_FLOOR px is drawn at TEXT_FLOOR (set in Game.resize). Everything that measures text goes
+// through fnt, so measuring and drawing agree; text() can still shrink below it to fit a box (maxW).
+let TEXT_FLOOR = 0;
+const floorPx = (size) => (TEXT_FLOOR && size >= 10 && size < TEXT_FLOOR ? TEXT_FLOOR : size);
+const fntRaw = (size, weight = 700) => `${weight} ${size}px ${FONT_UI}`;
+const fnt = (size, weight = 700) => fntRaw(floorPx(size), weight);
 const dfnt = (size) => `400 ${size}px ${FONT_D}`;
 
 // Sun-bleached Keys palette: gelcoat white, deep Gulf Stream navy, lobster orange, sun yellow.
@@ -43,8 +49,8 @@ const PAL = {
 };
 
 function text(ctx, s, x, y, o = {}) {
-  let size = o.size || 20;
-  const setFont = () => { ctx.font = o.display ? dfnt(size) : fnt(size, o.weight || 700); };
+  let size = o.display ? o.size || 20 : floorPx(o.size || 20);
+  const setFont = () => { ctx.font = o.display ? dfnt(size) : fntRaw(size, o.weight || 700); };
   setFont();
   ctx.textAlign = o.align || 'left';
   ctx.textBaseline = o.base || 'alphabetic';
@@ -64,9 +70,10 @@ function wrapText(ctx, s, maxW) {
   return lines;
 }
 function para(ctx, s, x, y, maxW, o = {}) {
-  ctx.font = fnt(o.size || 18, o.weight || 500);
-  const lines = wrapText(ctx, s, maxW); const lh = o.lh || (o.size || 18) * 1.3;
-  lines.forEach((l, i) => text(ctx, l, x, y + i * lh, Object.assign({}, o, { size: o.size || 18, weight: o.weight || 500 })));
+  const want = o.size || 18, size = floorPx(want);   // line spacing grows with the floored size
+  ctx.font = fntRaw(size, o.weight || 500);
+  const lines = wrapText(ctx, s, maxW); const lh = (o.lh || want * 1.3) * (size / want);
+  lines.forEach((l, i) => text(ctx, l, x, y + i * lh, Object.assign({}, o, { size, weight: o.weight || 500 })));
   return lines.length * lh;
 }
 function rr(ctx, x, y, w, h, r) {
@@ -932,14 +939,34 @@ const BTN = {
 };
 const UI = {
   regions: [], prev: [], active: null,
+  // On a touch screen a small target answers a near miss: each side grows (by up to GROW) toward minTap (48 CSS
+  // px, set in Game.resize). An exact hit on a button still wins; an exact hit on a backdrop (a full-screen
+  // region such as the chart's or a cover under a card) gives way to a near miss on a target drawn over it.
+  // Between two near misses the closer center wins.
+  minTap: 0, GROW: 16,
   reset() { this.regions = []; this.prev = []; this.active = null; },
   beginFrame() { this.prev = this.regions; this.regions = []; },
+  grow(r) { return { gx: Math.max(0, Math.min(this.GROW, (this.minTap - r.w) / 2)), gy: Math.max(0, Math.min(this.GROW, (this.minTap - r.h) / 2)) }; },
+  inside(r, x, y, slop) {
+    const g = slop ? this.grow(r) : { gx: 0, gy: 0 };
+    return x >= r.x - g.gx && x <= r.x + r.w + g.gx && y >= r.y - g.gy && y <= r.y + r.h + g.gy;
+  },
   hit(x, y) {
+    let top = -1;
     for (let i = this.prev.length - 1; i >= 0; i--) {
       const r = this.prev[i];
-      if (!r.disabled && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return r;
+      if (!r.disabled && this.inside(r, x, y)) { top = i; break; }
     }
-    return null;
+    const exact = top >= 0 ? this.prev[top] : null;
+    if (!this.minTap || (exact && exact.w * exact.h < Game.W * Game.H * 0.5)) return exact;
+    let best = null, bd = Infinity;
+    for (let i = top + 1; i < this.prev.length; i++) {
+      const r = this.prev[i];
+      if (r.disabled || !this.inside(r, x, y, true)) continue;
+      const d = Math.hypot(x - (r.x + r.w / 2), y - (r.y + r.h / 2));
+      if (d < bd) { bd = d; best = r; }
+    }
+    return best || exact;
   },
   byId(id) { for (let i = this.prev.length - 1; i >= 0; i--) if (this.prev[i].id === id) return this.prev[i]; return null; },
   region(id, x, y, w, h, fn, o = {}) { this.regions.push({ id, x, y, w, h, fn, key: o.key, disabled: o.disabled }); },
@@ -1051,6 +1078,8 @@ const Game = {
     this.cw = cw; this.ch = ch; this.portrait = ch > cw * 1.05;
     this.H = 540; this.W = Math.round(clamp(540 * (cw / ch), 720, 1280));
     this.scale = Math.min(cw / this.W, ch / this.H);
+    TEXT_FLOOR = this.scale < 0.85 ? 15 : 0;   // a phone: small print gets a floor (see floorPx)
+    UI.minTap = this.touch ? 48 / this.scale : 0;   // touch: small buttons answer a near miss (see UI.hit)
     this.ox = (cw - this.W * this.scale) / 2; this.oy = (ch - this.H * this.scale) / 2;
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
     this.canvas.width = Math.round(cw * this.dpr); this.canvas.height = Math.round(ch * this.dpr);
@@ -1096,7 +1125,7 @@ const Game = {
       if (e.pointerType === 'mouse') Input.hover = this.toLogical(e);
       const ptr = this.pointers().get(e.pointerId); if (!ptr) return;
       const p = this.toLogical(e); ptr.x = p.x; ptr.y = p.y;
-      if (ptr.ui) { if (UI.active && UI.active.pointer === e.pointerId) { const r = UI.byId(ptr.ui); UI.active.inside = !!r && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h; } return; }
+      if (ptr.ui) { if (UI.active && UI.active.pointer === e.pointerId) { const r = UI.byId(ptr.ui); UI.active.inside = !!r && UI.inside(r, p.x, p.y, !!UI.minTap); } return; }
       if (ptr.scene === this.scene) this.safe(() => this.scene.pointerMove && this.scene.pointerMove(ptr));
     });
     const up = (e, cancel) => {
@@ -1164,8 +1193,16 @@ const Game = {
     ctx.restore();
     if (this.portrait && this.touch && this.oy > 40) {
       ctx.setTransform(k, 0, 0, k, 0, 0);
-      ctx.font = fnt(16, 700); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,0.75)';
-      ctx.fillText('Turn your phone sideways for the full view', this.cw / 2, this.oy / 2);
+      const cx = this.cw / 2, ty = this.oy > 150 ? this.oy / 2 + 40 : this.oy / 2;
+      if (this.oy > 150) {   // room for a phone that tips onto its side, then rests, then stands back up
+        const ph = this.reduced ? 0.6 : (this.t % 3) / 3, a = -Math.PI / 2 * (ph < 0.2 ? 0 : ph < 0.45 ? (1 - Math.cos((ph - 0.2) / 0.25 * Math.PI)) / 2 : ph < 0.85 ? 1 : 1 - (ph - 0.85) / 0.15);
+        ctx.save(); ctx.translate(cx, ty - 70); ctx.rotate(a);
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 3; rr(ctx, -19, -32, 38, 64, 7); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.8)'; ell(ctx, 0, 24, 3, 3); ctx.fill();
+        ctx.restore();
+      }
+      ctx.font = fntRaw(17, 700); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.fillText('Turn your phone sideways for the full view', cx, ty);
     }
   },
   // the way out when something breaks: back to the title, or (if the title itself can't draw) drop the saved trip
