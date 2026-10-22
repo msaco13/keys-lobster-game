@@ -600,7 +600,7 @@ class SeaScene {
       }
     }
     if (this.view === 'chase') {
-      if (this.t > 2 && this.t < 12 && !open && !this.c.legs) {
+      if (this.t > 2 && this.t < 12 && !open && !this.c.legs && !Game.toasts.length) {   // the tip steps aside while a banner is up
         const hw = Math.min(600, W - 2 * mmW - 70), a = Math.min(1, (this.t - 2) * 3, (12 - this.t) * 2);
         const msg = Game.touch ? 'Hold your finger left or right of the boat to steer. Throttle is on the right. Tap Chart to pick a spot.' : 'Hold the mouse left or right of the boat to steer, or ← →. ↑ ↓ or the lever for throttle. M for the chart, V to change the view.';
         ctx.font = fnt(15, 700); const n = wrapText(ctx, msg, hw - 28).length;
