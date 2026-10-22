@@ -36,3 +36,4 @@ const res = await page.evaluate(() => {
 for (const [k,v] of Object.entries(res)) console.log(k.padEnd(28), String(v.win).padStart(3)+'%', String(v.avgT).padStart(3)+'s', JSON.stringify(v.reasons));
 console.log(errs.length? errs.join('\n') : 'no errors');
 await browser.close();
+process.exitCode = errs.length ? 1 : 0;

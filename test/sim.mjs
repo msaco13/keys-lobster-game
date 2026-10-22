@@ -56,3 +56,4 @@ const r = await page.evaluate(() => {
 for (const [k, v] of Object.entries(r)) console.log(k.padEnd(8), v);
 console.log(errs.length ? errs.join('\n') : 'no errors');
 await browser.close();
+process.exitCode = errs.length ? 1 : 0;

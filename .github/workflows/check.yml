@@ -1,0 +1,46 @@
+# Checks every pull request before it can go live: the scripts parse, the committed single-file game in dist/
+# matches the source, the built game plays (test/smoke.mjs), the autopilot reaches every spot without running
+# aground, and the 3D view's safeguards still fall back on slow or broken graphics.
+name: Check
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Every script parses
+        run: npm run check
+      - name: Build the single-file game
+        run: node tools/build.mjs
+      - name: dist/ matches the source
+        run: |
+          if ! git diff --quiet -- dist/; then
+            echo "::error::dist/ is out of date. Run 'npm run build' and commit dist/."
+            git diff --stat -- dist/
+            exit 1
+          fi
+      - name: Install the test browser
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Smoke test the built game
+        run: node test/smoke.mjs dist/keys-crew.html
+      - name: Autopilot reaches every spot
+        run: node test/autopilot.mjs "$PWD"
+      - name: 3D safeguards
+        run: node test/gfx.mjs "$PWD"

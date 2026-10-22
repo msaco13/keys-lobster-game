@@ -146,6 +146,7 @@ function btDome(ctx, b, x, y, ry) {  // brain coral, star coral or a lump of rub
   ctx.restore();
 }
 
+const FINDER_SIZES = ['big', 'small', 'off'];
 class BottomScene extends SessionBase {
   constructor(o) {
     super(o);
@@ -160,6 +161,7 @@ class BottomScene extends SessionBase {
     this.fish = []; this.chumT = 0; this.chumCd = 0; this.slickQ = []; this.slickT = 0; this.chum = new Particles(); this.wake = new Particles();
     this.drag = null; this.twitch = 0; this.slam = 0; this.move = null; this.moveV = 0; this.engOn = false; this.swingK = 1;
     this.alarmT = 0; this.beepT = 0; this.quietT = 0; this.sonar = []; this.pingT = 0; this.sonarRect = null;
+    this.finder = FINDER_SIZES.includes(Store.get('finder', 'big')) ? Store.get('finder', 'big') : 'big'; this.colWv = this.colTarget();
     this.track = new Array(Math.ceil(BOT.STRIP / 25) + 2).fill(null); this.wps = []; this.hookX = 0;
     this.others = (Trip.cur && Trip.cur.crew ? Trip.cur.crew : CHAR_ORDER).filter((c) => c !== this.ch).slice(0, 2);
     this.buildBottom();
@@ -192,7 +194,15 @@ class BottomScene extends SessionBase {
   exit() { SFX.setAmbient(0); this.engine(0); }
 
   /* ---------- layout ---------- */
-  colW() { return clamp(Math.round(Game.W * 0.3), 236, 336); }
+  // the right-hand column: the fish finder over the bait panel. The player sizes the finder (big, small, or tucked
+  // away to a chip over the bait panel) and the column, and the water beside it, follow.
+  colTarget() { return this.finder === 'big' ? clamp(Math.round(Game.W * 0.3), 236, 336) : this.finder === 'small' ? clamp(Math.round(Game.W * 0.2), 204, 236) : clamp(Math.round(Game.W * 0.18), 204, 224); }
+  colW() { return Math.round(this.colWv); }
+  sizeFinder() {
+    this.finder = FINDER_SIZES[(FINDER_SIZES.indexOf(this.finder) + 1) % FINDER_SIZES.length]; Store.set('finder', this.finder);
+    if (this.finder === 'off') this.sonarRect = null;
+    if (this.drag && this.drag.sonar) this.drag = null;
+  }
   colX() { return Game.W - this.colW() - 12; }
   sceneW() { return this.colX() - 6; }
   baitSX() { return this.sceneW() * 0.54; }          // where the line hangs on screen
@@ -523,6 +533,7 @@ class BottomScene extends SessionBase {
     this.chum.update(dt); this.wake.update(dt);
     this.twitch = Math.max(0, this.twitch - dt); this.slam = Math.max(0, this.slam - dt);
     this.alarmT = Math.max(0, this.alarmT - dt); this.beepT -= dt;
+    this.colWv = approach(this.colWv, this.colTarget(), 12, dt);
     if (this.chumT > 0) {
       this.chumT -= dt;
       if (chance(dt * 16)) this.chum.add({ x: this.bx - 20 + rand(-10, 10), y: BOT.SURF + 4, vx: rand(4, 18) + this.weather.drift * 10, vy: rand(10, 26), life: 7, size: rand(1.4, 3.2), color: 'rgba(205,175,125,0.6)', drag: 0.15 });
@@ -907,7 +918,7 @@ class BottomScene extends SessionBase {
     this.drawTopBar(ctx);
     const cw = this.colW(), cx = this.colX(), sw = this.sceneW(), mid = this.baitSX();
     const baitH = 122, sonH = H - 12 - baitH - 10 - 10;
-    this.drawSonar(ctx, cx, 10, cw, sonH);
+    if (this.finder === 'off') this.drawFinderChip(ctx, cx, 10, cw); else this.drawSonar(ctx, cx, 10, cw, sonH);
     this.drawBaitPanel(ctx, cx, H - 12 - baitH, cw, baitH);
     // moving the boat
     const mw = Math.min(124, sw * 0.27), my = H - 60, m = this.move;
@@ -936,7 +947,7 @@ class BottomScene extends SessionBase {
     ctx.restore();
     text(ctx, 'FISH FINDER', x + 14, y + 22, { size: 13, color: '#8fb0bd', weight: 800 });
     if (this.move) text(ctx, ((this.moveV / BOT.SPEED) * 2.6).toFixed(1) + ' kn', x + 14, y + 39, { size: 12, color: '#6f8f9b', weight: 700 });
-    else {   // a color key: what's bait, what's a fish, what's a big one
+    else if (w >= 236) {   // a color key: what's bait, what's a fish, what's a big one
       let lx = x + 14;
       for (const [c, l] of [['#50b9ff', 'bait'], ['#ffe034', 'fish'], ['#ff3b2c', 'big']]) { ctx.fillStyle = c; rr(ctx, lx, y + 31, 7, 7, 2); ctx.fill(); lx += 10; ctx.font = fnt(12, 700); text(ctx, l, lx, y + 39, { size: 12, color: '#8fb0bd', weight: 700 }); lx += ctx.measureText(l).width + 8; }
     }
@@ -1007,7 +1018,9 @@ class BottomScene extends SessionBase {
       ctx.save(); ctx.translate(sx + hw - 22, sy + 16); ctx.fillStyle = 'rgba(0,10,40,0.7)'; rr(ctx, -17, -10, 34, 20, 8); ctx.fill(); drawFish(ctx, 'mutton', 22, { sil: PAL.sun }); ctx.restore();
     }
     // the track: the bottom you've crossed so far, your catches, and where the boat sits on the strip
-    const tx = x + 10, ty = y + h - 46, tw = w - 20, th = 36, [lo, hi] = this.L.track;
+    // the size button, bottom left: big → small → tucked away (or F)
+    UI.button(ctx, 'finder-size', x + 10, y + h - 46, 40, 36, '▸', () => this.sizeFinder(), { style: 'secondary', size: 20, r: 8, key: 'KeyF' });
+    const tx = x + 56, ty = y + h - 46, tw = w - 66, th = 36, [lo, hi] = this.L.track;
     ctx.fillStyle = '#0a1115'; rr(ctx, tx, ty, tw, th, 7); ctx.fill();
     const TX = (wx) => tx + 8 + (wx / BOT.STRIP) * (tw - 16), TY = (ft) => ty + 6 + clamp((ft - lo) / (hi - lo), 0, 1) * (th - 12);
     ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.setLineDash([2, 4]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(tx + 8, ty + th - 8); ctx.lineTo(tx + tw - 8, ty + th - 8); ctx.stroke(); ctx.setLineDash([]);
@@ -1019,6 +1032,19 @@ class BottomScene extends SessionBase {
     ctx.fillStyle = 'rgba(255,200,69,0.18)'; ctx.fillRect(bxp - cone, ty + 3, cone * 2, th - 6);
     ctx.fillStyle = PAL.sun; ctx.beginPath(); ctx.moveTo(bxp - 6, ty + 2); ctx.lineTo(bxp + 6, ty + 2); ctx.lineTo(bxp, ty + 10); ctx.closePath(); ctx.fill();
     ctx.fillRect(bxp - 0.75, ty + 8, 1.5, th - 12);
+  }
+  // the fish finder tucked away: the depth, what's under the boat right now, and the fish alarm. Tap (or F) for it back.
+  drawFinderChip(ctx, x, y, w) {
+    const h = 58, last = this.sonar[this.sonar.length - 1], now = this.sonarMarks(6)[0];
+    this.sonarRect = null;
+    UI.button(ctx, 'finder-size', x, y, w, h, '', () => this.sizeFinder(), { style: 'dark', r: 14, key: 'KeyF' });
+    text(ctx, '◂', x + 18, y + 31, { size: 20, align: 'center', base: 'middle', color: '#cfe3ea', weight: 800 });
+    text(ctx, 'FISH FINDER', x + 34, y + 23, { size: 12, color: '#8fb0bd', weight: 800 });
+    const mark = now && now.s > 0.05 ? (now.s > 0.42 ? ['#ff3b2c', 'big mark ' + Math.round(now.ft) + '′'] : ['#ffe034', 'mark ' + Math.round(now.ft) + '′']) : ['#5d7884', 'no marks'];
+    ctx.fillStyle = mark[0]; ell(ctx, x + 39, y + 39, 4, 4); ctx.fill();
+    text(ctx, mark[1], x + 48, y + 44, { size: 13, color: mark[0] === '#5d7884' ? '#8fb0bd' : '#fff', weight: 700 });
+    text(ctx, (last ? last.bot : this.L.base).toFixed(0) + ' ft', x + w - 12, y + 37, { size: 20, align: 'right', color: '#f4f8fa', weight: 800 });
+    if (this.alarmT > 0 && Math.sin(this.t * 18) > -0.3) { ctx.save(); ctx.translate(x + w - 30, y + h + 16); ctx.fillStyle = 'rgba(0,10,40,0.7)'; rr(ctx, -17, -10, 34, 20, 8); ctx.fill(); drawFish(ctx, 'mutton', 22, { sil: PAL.sun }); ctx.restore(); }
   }
   drawBaitPanel(ctx, x, y, w, h) {
     panel(ctx, x, y, w, h, { r: 16 });

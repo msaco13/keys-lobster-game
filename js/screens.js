@@ -26,6 +26,7 @@ function advanceTrip() {
   const c = Trip.cur, kind = tripNext(c);
   if (kind === 'turn') c.turn++;
   else { if (!c.done.includes(c.spot)) c.done.push(c.spot); c.turn = 0; c.spot = null; }
+  c.leg = null;   // someone fished here, so the run that got the boat here is settled
   Trip.save();
   return kind;
 }
@@ -533,6 +534,28 @@ class BriefingScene {
 }
 
 /* ================= TURN HAND-OFF ================= */
+// Back to the boat before anyone fishes: the run that got here isn't finished after all. The same captain keeps the
+// wheel, the run's points come back off the board, and the next arrival pays for the whole run, start to finish.
+function reopenLeg(c) {
+  const L = c.leg; c.leg = null;
+  if (!L || L.spot !== c.spot) return;
+  if (L.pts) {
+    c.scores[L.ch] = (c.scores[L.ch] || 0) - L.pts;
+    for (let i = c.turns.length - 1; i >= 0; i--) if (c.turns[i].spot === 'run:' + L.spot && c.turns[i].ch === L.ch) { c.turns.splice(i, 1); break; }
+  }
+  c.legs = Math.max(0, (c.legs || 0) - 1);
+  c.legBack = { dist: L.dist || 0, flags: L.flags || {}, lines: Array.isArray(L.lines) ? L.lines : [] };
+}
+// a solo day isn't saved, so going to the title from the middle of one asks first. Drawn last, over everything.
+function askLeaveSolo(ctx, stay, leave) {
+  const W = Game.W, H = Game.H, y = Math.round(H / 2 - 70);
+  ctx.fillStyle = 'rgba(4,22,34,0.86)'; ctx.fillRect(0, 0, W, H);
+  UI.region('ask-cover', 0, 0, W, H, null, { key: 'Enter|Space' });   // nothing under it reacts while it's up
+  text(ctx, 'Leave your solo day?', W / 2, y, { display: true, size: 38, align: 'center', color: '#fff', maxW: W - 40 });
+  text(ctx, 'Solo days aren’t saved. Your catches stay in the logbook.', W / 2, y + 36, { size: 18, align: 'center', color: '#cfe3ea', weight: 600, maxW: W - 40 });
+  UI.button(ctx, 'ask-stay', W / 2 - 230, y + 70, 220, 56, 'Keep fishing', stay, { style: 'primary', size: 20, key: 'Escape' });
+  UI.button(ctx, 'ask-leave', W / 2 + 10, y + 70, 220, 56, 'Leave', leave, { style: 'ghost', size: 20 });
+}
 class TurnIntroScene {
   // who and where are fixed when the hand-off opens, so it still draws while fading out after Back to the boat clears the spot
   constructor() {
@@ -574,8 +597,9 @@ class TurnIntroScene {
     // before anyone has fished this spot the captain can still pick another one; after that, everyone fishes it.
     // Esc goes back a step: to the boat while that's open, otherwise out to the title (a crew trip stays saved).
     const canLeave = c.mode !== 'crew' || this.turn === 0;
-    UI.button(ctx, 'menu', 20, 18, 96, 40, 'Title', () => Game.go(new TitleScene()), { style: 'ghost', size: 17, key: canLeave ? undefined : 'Escape' });
-    if (canLeave) UI.button(ctx, 'chart', 20, H - 64, 170, 46, 'Back to the boat', () => { c.spot = null; c.turn = 0; Trip.save(); Game.go(new SeaScene()); }, { style: 'ghost', size: 17, key: 'Escape' });
+    UI.button(ctx, 'menu', 20, 18, 96, 40, 'Title', () => (c.mode === 'crew' ? Game.go(new TitleScene()) : (this.ask = true)), { style: 'ghost', size: 17, key: canLeave ? undefined : 'Escape' });
+    if (canLeave) UI.button(ctx, 'chart', 20, H - 64, 170, 46, 'Back to the boat', () => { reopenLeg(c); c.spot = null; c.turn = 0; Trip.save(); Game.go(new SeaScene()); }, { style: 'ghost', size: 17, key: 'Escape' });
+    if (this.ask) askLeaveSolo(ctx, () => (this.ask = false), () => Game.go(new TitleScene()));
   }
 }
 
@@ -715,7 +739,7 @@ class ResultsScene {
       const nw = Math.min(320, lw - 110), k = easeBack(clamp((this.t - this.doneAt) / 0.3, 0, 1));
       ctx.save(); ctx.globalAlpha = clamp(k, 0, 1); ctx.translate(0, (1 - k) * 16);
       UI.button(ctx, 'next', 30, H - 70, nw, 56, this.nextLabel(), () => this.leave(), { style: 'primary', size: 21, key: 'Enter|Space' });
-      UI.button(ctx, 'title', 40 + nw, H - 66, 100, 48, 'Title', () => this.leave(true), { style: 'ghost', size: 17 });
+      UI.button(ctx, 'title', 40 + nw, H - 66, 100, 48, 'Title', () => (this.c.mode === 'crew' ? this.leave(true) : (this.ask = true)), { style: 'ghost', size: 17 });
       ctx.restore();
     } else UI.region('skip', 0, 0, W, H, () => { this.t = 99; });
     const cx = W - L.cardW - 24;
@@ -730,6 +754,7 @@ class ResultsScene {
       text(ctx, 'Next time.', cx + L.cardW / 2, 290, { display: true, size: 28, align: 'center', color: '#fff' });
     }
     this.parts.draw(ctx); this.fl.draw(ctx);
+    if (this.ask) askLeaveSolo(ctx, () => (this.ask = false), () => this.leave(true));
   }
 }
 
@@ -832,7 +857,7 @@ const LOG_INK = '#2a2418', LOG_BROWN = '#7a5a2a', LOG_RED = '#b8401f';
 class LogbookScene {
   constructor() {
     this.t = 0; this.scroll = 0; this.target = 0; this.vel = 0; this.drag = null; this.maxScroll = 0;
-    this.rec = Records.all(); this.trips = Records.trips(); this.known = Charts.known(); this.found = new Set(Store.get('charted', []));
+    this.rec = Records.all(); this.trips = Records.trips(); this.known = Charts.known(); this.found = new Set(Store.arr('charted'));
     this.onWheel = (e) => { this.vel = 0; this.target = clamp(this.target + e.deltaY * (e.deltaMode === 1 ? 30 : 0.9), 0, this.maxScroll); };
   }
   enter() { window.addEventListener('wheel', this.onWheel, { passive: true }); Music.play('title'); }
@@ -981,7 +1006,7 @@ const HOWTO = [
   { title: 'The trip', art: 'boat', lines: ['Crew Trip: pass one phone around. The captain drives the boat to a spot, then everyone fishes it.', 'Bigger fish and bigger bugs score more. Trophies, slams and clean releases add bonuses.', 'Every day has three bounties, like a mahi over 20\u00a0lb. The first one to finish a bounty takes its bonus.', 'Full day is four spots, half day is two. Then run home at sunset. Most points is Captain of the Day.'] },
   { title: 'Running the boat', art: 'boat', lines: ['Hold and drag where you want the boat to go (or ← →). The throttle is on the right: STOP, IDLE, SLOW, CRUISE, FULL.', 'Open the Chart to pick a spot. Set course and the autopilot drives, and you can take over any time.', 'Watch the depth. Light water is shallow: slow down or you run aground. No-wake zones mean SLOW or FWC pulls you over.', 'Only four spots are charted. Find the rest by exploring: run past a ? on the chart to discover it.'] },
   { title: 'Bug Hunt', art: 'lobster', lines: ['Swim down and look for antennae poking out of holes. Not every hole has a bug in it.', 'Hold on the hole (or the TICKLE button) to coax the bug out. When it twitches, let go or it backs in.', 'When it walks out, click or tap the bug to swing your net. If it crouches, it’s about to tail-flip backward.', 'Pro move: put the net down behind it, and it flips right in. Gauge every bug: past the 3" gauge and no eggs.'] },
-  { title: 'Bottom fishing', art: 'grouper', lines: ['Watch the fish finder on the right. Arches are fish (red means big), blue speckle is bait.', 'Drag up or down (or on the fish finder) to drop your bait to the marks. Squid for snapper, pinfish for grouper and jacks.', 'Small twitches are nibbles. Wait. When the rod slams down, tap to set the hook.', 'Nothing on the finder? Tap Move ◀ ▶ to idle along the ledge or the wreck until it lights up.'] },
+  { title: 'Bottom fishing', art: 'grouper', lines: ['Watch the fish finder on the right. Arches are fish (red means big), blue speckle is bait.', 'Drag up or down (or on the fish finder) to drop your bait to the marks. Squid for snapper, pinfish for grouper and jacks.', 'Small twitches are nibbles. Wait. When the rod slams down, tap to set the hook.', 'Nothing on the finder? Tap Move ◀ ▶ to idle along the ledge or the wreck until it lights up.', 'The ▸ under the finder (or F) makes it smaller, then tucks it away. Tap it again to bring it back.'] },
   { title: 'Trolling', art: 'mahi', lines: ['Drag up and down to steer. Your lures follow the path the boat took.', 'Frigate birds and weed lines mean mahi. Diving terns and bait balls mean tuna.', 'The fish are out there, but you have to find them. Read the birds and the weed.', 'Trap floats wrap your prop and foul your lures. Tripletail like to hide under them.'] },
   { title: 'The backcountry', art: 'bonefish', lines: ['Your buddy poles the skiff (◀ ▶ at the bottom right) and calls fish by the clock: 12 is straight ahead.', 'Look for tails, wakes, mud puffs and rolling tarpon. Press and hold where you want the fly, then let go to cast.', 'Land it a few feet in front of the fish. Too close, behind it, or the line across its back, and it spooks.', 'Tap to strip in the fish’s rhythm. When it eats, tap to set. At the bridge, the tide carries your fly.'] },
   { title: 'Fighting a fish', art: 'fight', lines: ['Hold to reel. Keep the drag needle in the green.', 'When it runs, let go. Holding on a hard run snaps the line.', 'When it jumps, let go. That’s bowing to the fish, and it earns a bonus.', 'Too much slack and it spits the hook. Take too long and a shark might take it.'] }

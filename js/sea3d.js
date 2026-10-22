@@ -721,7 +721,7 @@ const Sea3D = {
     });
     const F = this.fwcBoat; F.visible = !!s.fwc;
     if (s.fwc) {
-      const k = easeOut(s.fwc.k), x = s.x - Math.cos(s.h) * lerp(400, 90, k) + Math.cos(s.h + Math.PI / 2) * 70, y = s.y - Math.sin(s.h) * lerp(400, 90, k) + Math.sin(s.h + Math.PI / 2) * 70;
+      const [x, y] = s.fwcXY();   // pulls up alongside (sea.js)
       F.position.set(x, this.waveH(x, y) - 1, y); F.rotation.set(0, -s.h, 0.04); const on = Math.floor(t * 8) % 2;
       this.fwcLights[0].material.color.setHex(on ? 0x2f7bff : 0x9fc4ff); this.fwcLights[1].material.color.setHex(on ? 0xffffff : 0xff3b3b);
       this.fwcAt = [x, y];

@@ -49,3 +49,4 @@ const fps = await page.evaluate(() => new Promise((res) => { let n = 0; const t0
 console.log('software fps', fps.toFixed(1), 'tier', await page.evaluate(() => GFX.tier));
 console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'NO ERRORS');
 await browser.close();
+process.exitCode = errs.length ? 1 : 0;

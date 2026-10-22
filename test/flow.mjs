@@ -51,3 +51,4 @@ await click('log'); await expect('LogbookScene', 'logbook'); await shot('logbook
 console.log('boat ride drawn in:', await page.evaluate(() => (GL.state === 'ready' ? '3D' : 'classic (' + (GL.why || GFX.mode) + ')')));
 console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'NO ERRORS');
 await browser.close();
+process.exitCode = errs.length ? 1 : 0;

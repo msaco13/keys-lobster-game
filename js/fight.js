@@ -55,9 +55,10 @@ class FightScene {
 
   update(dt) {
     this.t += dt; this.parts.update(dt); this.fl.update(dt); this.crankFx = Math.max(0, this.crankFx - dt);
-    if (this.o.tick) this.o.tick(dt);
+    if (this.phase !== 'over' && this.holding()) this.crankA = (this.crankA || 0) + dt * 11;   // the reel icon on the prompt turns while you hold
     if (this.phase === 'over') { this.overT += dt; if (this.overT > (this.won ? 7 : 3.5)) this.finish(); return; }
     if (this.phase === 'landing') { this.landT += dt; this.fightAnim(dt, false); if (this.landT > 0.9) this.toOver(); return; }
+    if (this.o.tick) this.o.tick(dt);   // the turn clock runs while the fish fights, not while its card is up
     const hold = this.holding(); this.fightT += dt;
     if (this.phase === 'turn') {
       if (this.turnGrace > 0) this.turnGrace -= dt;
@@ -291,8 +292,10 @@ class FightScene {
     const ny = yOf(clamp(this.T, 0, scale));
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(mx - 22, ny); ctx.lineTo(mx - 12, ny - 7); ctx.lineTo(mx - 12, ny + 7); ctx.fill();
     ctx.fillRect(mx - 12, ny - 2, 24, 4);
-    // prompt
-    let msg = 'HOLD TO REEL', col = '#fff';
+    // the prompt doubles as the reel button: it lights up and presses in while you're holding (anywhere on screen,
+    // or Space), so you can always tell your hold is registering. Green is reeling; red is holding when you shouldn't.
+    const held = this.phase !== 'turn' && this.holding();
+    let msg = held ? 'REELING…' : 'HOLD TO REEL', col = '#fff';
     const danger = this.T > 0.86 * L, slack = this.slackT > 0.6;
     if (this.phase === 'turn') { msg = 'TAP TAP TAP! TURN IT!'; col = PAL.sun; }
     else if (this.jumpT > 0) { msg = 'IT JUMPED! LET GO!'; col = PAL.sun; }
@@ -300,11 +303,21 @@ class FightScene {
     else if (this.tele) { msg = 'GET READY…'; col = PAL.warn; }
     else if (slack) { msg = 'SLACK! REEL!'; col = '#9fe0ff'; }
     else if (danger) { msg = 'TOO TIGHT!'; col = PAL.bad; }
-    const pw = Math.min(W - 180, 460);
-    panel(ctx, W / 2 - pw / 2, H - 70, pw, 52, { r: 26 });
+    const pw = Math.min(W - 180, 460), px = W / 2 - pw / 2, wrong = held && (this.running || this.jumpT > 0 || this.tele || danger), tapped = this.phase === 'turn' && this.crankFx > 0;
+    const lit = held || tapped, dy = lit ? 3 : 0;
+    if (lit) {
+      const fill = wrong ? PAL.bad : tapped ? PAL.sun : PAL.good;
+      ctx.save(); ctx.shadowColor = fill; ctx.shadowBlur = 18; ctx.fillStyle = fill; rr(ctx, px, H - 70 + dy, pw, 52, 26); ctx.fill(); ctx.restore();
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 3; rr(ctx, px, H - 70 + dy, pw, 52, 26); ctx.stroke();
+      col = wrong ? '#fff' : PAL.ink;
+    } else { ctx.fillStyle = 'rgba(0,0,0,0.3)'; rr(ctx, px, H - 66, pw, 52, 26); ctx.fill(); panel(ctx, px, H - 70, pw, 52, { r: 26 }); }
+    // the reel: its handle goes round while you hold
+    { const rx = px + 34, ry = H - 44 + dy, a = this.crankA || 0, c = lit ? (wrong ? '#fff' : PAL.ink) : 'rgba(255,255,255,0.7)';
+      ctx.strokeStyle = c; ctx.fillStyle = c; ctx.lineWidth = 3; ell(ctx, rx, ry, 13, 13); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + Math.cos(a) * 13, ry + Math.sin(a) * 13); ctx.stroke(); ell(ctx, rx + Math.cos(a) * 13, ry + Math.sin(a) * 13, 4.5, 4.5); ctx.fill(); }
     const pulse = (this.running || this.jumpT > 0 || this.phase === 'turn') ? 1 + Math.sin(this.t * 14) * 0.04 : 1;
-    ctx.save(); ctx.translate(W / 2, H - 43); ctx.scale(pulse, pulse);
-    text(ctx, msg, 0, 0, { size: 26, align: 'center', base: 'middle', color: col, weight: 800, maxW: pw - 30 });
+    ctx.save(); ctx.translate(W / 2 + 14, H - 43 + dy); ctx.scale(pulse, pulse);
+    text(ctx, msg, 0, 0, { size: 26, align: 'center', base: 'middle', color: col, weight: 800, maxW: pw - 86 });
     ctx.restore();
     if (this.phase === 'turn') {
       const bw = Math.min(420, W - 200), bx = W / 2 - bw / 2, by = H - 128;

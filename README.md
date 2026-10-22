@@ -91,7 +91,9 @@ And now and then a shark shows up, and you race it back to the boat while the cr
 blue speckle is bait. Fish are scarce and hold on structure (ledge pockets, coral heads, the freighter's bow and stern),
 so tap Move to idle along the bottom until the finder lights up, then drop your bait to the marks. Squid for snapper and
 hogfish, live pinfish for grouper, amberjack and cobia. Wait out the nibbles and tap when the rod slams down.
-Chum brings yellowtail up into the slick.
+Chum brings yellowtail up into the slick. The ▸ button under the finder (or F) makes it smaller, then tucks it away to a
+chip that still shows the depth, what's under the boat and the fish alarm, for more room to watch the water. The game
+remembers the size you pick.
 
 **Trolling** (The Weedline, The Hump). Steer the boat and drag your three-lure spread through the fish. Most weed is empty,
 so read the signs: frigate birds and flying fish for mahi, diving terns and bait sprays for tuna, a lone log or float that
@@ -152,7 +154,8 @@ test/             Playwright playtests, fight-balance and session simulations
 ```
 npm install            # only needed for the tests (Playwright)
 npm run check          # syntax-check every script
-npm run build          # rebuild dist/keys-crew.html after changing js/
+npm run build          # rebuild dist/keys-crew.html after changing js/ (and commit dist/: the pull request check compares it)
+npm run test:smoke     # the built game plays: a crew trip by tapping, every spot, broken saves, no storage (~1 min)
 npm run test:flow      # plays a whole crew trip by tapping the real buttons, phone-sized
 npm run test:nav       # clicks every way back to the title screen and checks where each button goes
 npm run test:sea       # screenshots around the map, and the autopilot to every spot
@@ -163,6 +166,10 @@ npm run test:flow3d    # the whole crew trip with 3D on
 npm run test:fight3d   # screenshots of the 3D fight at every kind of spot: hooked, running, jumping, landed, lost
 npm run vendor         # rebuild js/vendor/three.min.js after changing tools/three-entry.js
 ```
+
+Every pull request runs `.github/workflows/check.yml`: the scripts parse, dist/ matches the source, the smoke test,
+the autopilot to every spot, and the 3D safeguards. The deploy to GitHub Pages runs the smoke test on the built page
+first and stops if it fails, so the live game stays as it was. Every test exits non-zero when something fails.
 
 `node test/clip.mjs . out.mp4 3d autopilot 16` records a smooth video of the boat ride (needs ffmpeg).
 `node test/fightclip.mjs . out.mp4 3d offshore,bridge 12` records fish fights played by a bot (the same fight in 3D

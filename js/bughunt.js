@@ -878,12 +878,16 @@ class BugHuntScene extends SessionBase {
       label = tw ? 'LET GO' : 'TICKLE'; fill = tw ? PAL.bad : PAL.sun; fg = tw ? '#fff' : PAL.ink;
       prog = this.target.kind === 'lobster' ? this.target.coax : clamp(this.target.probe / 0.8, 0, 1);
     }
-    const pulse = active ? 1 + Math.sin(t * (hot ? 14 : 6)) * (hot ? 0.06 : 0.03) : 1;
-    ctx.save(); ctx.translate(a.x, a.y); ctx.scale(pulse, pulse);
-    ctx.globalAlpha = active ? 1 : 0.5;
+    // held down (a finger on it, or Space): it sinks in a little and gets a bright rim, so you know it's registering
+    const down = this.actionHeld();
+    const pulse = down ? 0.93 : active ? 1 + Math.sin(t * (hot ? 14 : 6)) * (hot ? 0.06 : 0.03) : 1;
+    ctx.save(); ctx.translate(a.x, a.y + (down ? 3 : 0)); ctx.scale(pulse, pulse);
+    ctx.globalAlpha = active || down ? 1 : 0.5;
     if (active) { ctx.fillStyle = rgba(fill.startsWith('#') ? fill : '#ffffff', 0.25); ell(ctx, 0, 0, a.r + 12, a.r + 12); ctx.fill(); }
+    if (down) { ctx.save(); ctx.shadowColor = '#fff'; ctx.shadowBlur = 20; ctx.fillStyle = fill; ell(ctx, 0, 0, a.r, a.r); ctx.fill(); ctx.restore(); }
     ctx.fillStyle = fill; ell(ctx, 0, 0, a.r, a.r); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 3; ctx.stroke();
+    if (down) { ctx.fillStyle = 'rgba(255,255,255,0.22)'; ell(ctx, 0, 0, a.r, a.r); ctx.fill(); }
+    ctx.strokeStyle = down ? '#ffffff' : 'rgba(255,255,255,0.8)'; ctx.lineWidth = down ? 5 : 3; ell(ctx, 0, 0, a.r, a.r); ctx.stroke();
     if (prog != null) {
       ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 7; ell(ctx, 0, 0, a.r + 6, a.r + 6); ctx.stroke();
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 0, a.r + 6, -Math.PI / 2, -Math.PI / 2 + TAU * prog); ctx.stroke();

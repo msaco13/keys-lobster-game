@@ -19,6 +19,13 @@ const SEA_QUIPS = {
 };
 function runDriver() { const c = Trip.cur; return c.mode === 'crew' ? c.crew[(c.legs || 0) % c.crew.length] : c.crew[0]; }
 function spotAllowed(id, c = Trip.cur) { if (!c) return false; if (c.mode === 'solo') return true; return !c.done.includes(id) && c.done.length < c.spotsNeeded; }
+// where the chart puts the ? for an uncharted spot: near it but not on it, and always close enough that
+// driving to the ? finds the spot (found within r + 300, see updateWorld)
+function rumorXY(id) {
+  const [x, y] = spotXY(id), dx = (hash2(id.length, 3) - 0.5) * 1400, dy = (hash2(3, id.length) - 0.5) * 900;
+  const L = Math.hypot(dx, dy), cap = 0.55 * (SPOTS[id].r + 300), k = L > cap ? cap / L : 1;
+  return [x + dx * k, y + dy * k];
+}
 function spotsLeft() { const c = Trip.cur; return c.mode === 'crew' && c.done.length >= c.spotsNeeded; }
 
 class SeaScene {
@@ -44,18 +51,34 @@ class SeaScene {
     this.boats = []; this.spawnBoats();
     this.inSpot = null; this.atHome = false;
     this.view = Store.get('seaView', 'chase') === 'top' ? 'top' : 'chase';
+    // a run picked back up: from the hand-off (Back to the boat) it keeps its distance and its record; from the title
+    // the boat also keeps its course and autopilot
+    const L = c.legBack || (b && b.run);
+    if (L && typeof L === 'object' && Array.isArray(L.lines)) { this.legDist = +L.dist || 0; Object.assign(this.flags, L.flags || {}); this.lines = L.lines.slice(); }
+    if (c.legBack) { this.reopened = true; c.legBack = null; }
+    if (b && !this.homeRun && b.home) this.homeRun = true;
+    if (b && (b.dest === 'home' || (b.dest && SPOTS[b.dest] && spotAllowed(b.dest, c)))) { this.dest = b.dest; this.wantAuto = !!b.auto; }
+    if (this.homeRun) this.dest = 'home';
   }
   enter() {
     Music.play(this.homeRun ? 'sunset' : 'run'); SFX.setAmbient(0.7, false);
     const C = CHARS[this.driver];
     if (this.homeRun) Game.toast('Heading home', { color: PAL.sun, size: 40, y: 150, sub: 'Captain ' + C.name + ', take us back to the dock in Tavernier' });
+    else if (this.reopened) Game.toast('Captain ' + C.name, { color: PAL.sun, size: 40, y: 150, sub: 'Still your run. Pick a spot on the chart.' });
     else if (!this.c.legs) Game.toast('Cast off!', { color: PAL.sun, size: 44, y: 150, sub: 'Captain ' + C.name + ' at the wheel. Idle out of the canal.' });
     else Game.toast('Captain ' + C.name, { color: PAL.sun, size: 40, y: 150, sub: spotsLeft() ? '' : 'Pick the next spot on the chart, or go exploring' });
     if (this.dest) this.planRoute();
+    if (this.wantAuto && this.route) { this.auto = true; this.notch = 3; }
+    this.wantAuto = false;
     Chase.reset(this);
   }
   exit() { SFX.setEngine(0); SFX.setAmbient(0); this.saveBoat(); }
-  saveBoat() { this.c.boat = { x: this.x, y: this.y, h: this.h }; Trip.save(); }
+  // where the boat is and the run so far, so quitting mid-run and resuming from the title picks it all back up
+  saveBoat() {
+    const run = this.done ? null : { dist: this.legDist, flags: Object.assign({}, this.flags), lines: this.lines.filter((l) => !l.end) };
+    this.c.boat = { x: this.x, y: this.y, h: this.h, dest: this.dest || null, auto: !!this.auto, home: !!this.homeRun, run };
+    Trip.save();
+  }
   toggleView() { this.view = this.view === 'chase' ? 'top' : 'chase'; Store.set('seaView', this.view); Chase.reset(this); this.steer = null; }
   // the view behind the boat is drawn in 3D when this device can (sea3d.js), else the classic 2D chase view
   uses3D() { return this.view === 'chase' && Sea3D.ready(); }
@@ -168,7 +191,7 @@ class SeaScene {
       let bend = 0; { let h0 = Math.atan2(P[bi + 1][1] - P[bi][1], P[bi + 1][0] - P[bi][0]); const [, , j] = along(300); for (let i = bi + 1; i <= j && i < N; i++) { const h1 = Math.atan2(P[i + 1][1] - P[i][1], P[i + 1][0] - P[i][0]); bend = Math.max(bend, Math.abs(angleDiff(h0, h1))); h0 = h1; } }
       if (bend > 0.5 || Math.abs(off) > 0.5) cap = NOTCH[2].v; if (bend > 1.1 || Math.abs(off) > 1.1) cap = NOTCH[1].v;
       if (World.inZone(this.x, this.y) || World.inZone(this.x + Math.cos(this.h) * 200, this.y + Math.sin(this.h) * 200)) cap = Math.min(cap, NOTCH[2].v);
-      if (World.gridDepth(this.x + Math.cos(this.h) * 160, this.y + Math.sin(this.h) * 160) < 5) cap = Math.min(cap, 130);
+      if (World.gridDepth(this.x + Math.cos(this.h) * 160, this.y + Math.sin(this.h) * 160) < 5 || this.shallowAhead() < 2.6) cap = Math.min(cap, 130);   // off plane over a reef crown it would clip
       const end = P[N], left = dist(this.x, this.y, end[0], end[1]);
       if (left < 260) cap = Math.min(cap, NOTCH[2].v);
       if (left < 70 || (bi === N - 1 && bt > 0.98)) { this.auto = false; this.notch = 0; Game.toast('Arrived', { size: 30, y: 160, color: PAL.good }); }
@@ -264,10 +287,10 @@ class SeaScene {
   }
   runAground() {
     this.stuck = 2.6; this.v = 0; this.flags.aground++;
-    const d = World.depth(this.x, this.y), bay = this.y < chainY(this.x);
+    const bay = this.y < chainY(this.x), bx = this.x + Math.cos(this.h) * 46, by = this.y + Math.sin(this.h) * 46, reef = !bay && nearReefCrown(bx, by);
     const [px, py] = this.boatScreen();
     this.parts.burst(px, py + 10, 20, { color: bay ? 'rgba(140,110,70,0.7)' : 'rgba(230,210,160,0.8)', min: 30, max: 120, life: 1.2, drag: 1.5 });
-    Game.toast('Ran aground!', { color: PAL.coral, size: 40, y: 170, sub: d < 4 && !bay && this.y - chainY(this.x) > 1100 ? 'That’s a patch reef. Brown water means shallow.' : 'Too fast over the flats. Go slow over light water.' });
+    Game.toast('Ran aground!', { color: PAL.coral, size: 40, y: 170, sub: reef ? 'That’s a patch reef. Brown water means shallow.' : 'Too fast over the flats. Go slow over light water.' });
     SFX.play('bigsplash'); Game.shake(9, 0.5); Game.vibrate(150); this.say('aground');
     if (this.flags.aground === 1) this.lines.push({ label: 'Ran aground', pts: -25 });
     this.x -= Math.cos(this.h) * 20; this.y -= Math.sin(this.h) * 20;
@@ -365,11 +388,22 @@ class SeaScene {
     this.foam = this.foam.filter((f) => f.t < f.life);
   }
 
+  // the shallowest water the bow reaches in the next 1.6 s at this speed: the same depth and the same 2.6 ft that
+  // run the boat aground (move), so the banner shows exactly when holding course would ground you. Checked 10x a second.
+  shallowAhead() {
+    if (this.t < (this.shallowT || 0)) return this.shallowD;
+    this.shallowT = this.t + 0.1;
+    const ca = Math.cos(this.h), sa = Math.sin(this.h), reach = 46 + Math.max(120, this.v * 1.6);
+    let m = 99; for (let d = 46; d <= reach; d += 20) { const dd = World.depth(this.x + ca * d, this.y + sa * d); if (dd > 0 && dd < m) m = dd; }
+    return (this.shallowD = m);
+  }
+
   /* ---------- arriving ---------- */
   arrive(id) {
     this.auto = false; this.notch = 0; this.v = 0;
-    if (this.legDist > UNITS_PER_NM * 1.5) this.lines.push({ label: 'Ran ' + (this.legDist / UNITS_PER_NM).toFixed(1) + ' nm', pts: Math.min(100, Math.round(this.legDist / UNITS_PER_NM) * 5) });
-    if (!this.flags.aground && !this.flags.fwc && !this.flags.bumps && this.legDist > UNITS_PER_NM * 3) this.lines.push({ label: 'Clean run · no bumps, no tickets', pts: 50 });
+    this.lines = this.lines.filter((l) => !l.end);   // arriving again after Back to the boat: the end-of-run lines are counted fresh
+    if (this.legDist > UNITS_PER_NM * 1.5) this.lines.push({ label: 'Ran ' + (this.legDist / UNITS_PER_NM).toFixed(1) + ' nm', pts: Math.min(100, Math.round(this.legDist / UNITS_PER_NM) * 5), end: true });
+    if (!this.flags.aground && !this.flags.fwc && !this.flags.bumps && this.legDist > UNITS_PER_NM * 3) this.lines.push({ label: 'Clean run · no bumps, no tickets', pts: 50, end: true });
     this.total = this.lines.reduce((a, l) => a + l.pts, 0);
     this.panel = { kind: 'summary', id, t: 0 };
     SFX.play(this.total > 0 ? 'catch' : 'click'); this.say('arrive', 0.6);
@@ -380,12 +414,15 @@ class SeaScene {
     if (pts) { c.scores[this.driver] = (c.scores[this.driver] || 0) + pts; c.turns.push({ ch: this.driver, spot: 'run:' + id, total: pts, n: 0 }); }
     c.legs = (c.legs || 0) + 1;
     if (id === 'home') { this.saveBoat(); Game.go(new DayEndScene()); return; }
-    c.spot = id; c.turn = 0; this.saveBoat(); Game.go(new TurnIntroScene());
+    // kept until someone fishes here, so Back to the boat can hand the same captain the same run (reopenLeg)
+    c.leg = { ch: this.driver, spot: id, pts, dist: skipped ? 0 : this.legDist, flags: Object.assign({}, this.flags), lines: skipped ? [] : this.lines.filter((l) => !l.end) };
+    c.spot = id; c.turn = 0; this.dest = null; this.auto = false; this.saveBoat(); Game.go(new TurnIntroScene());
   }
   skipTo(id) {
     const [sx, sy] = id === 'home' ? [World.home.x + 10, World.home.dockY + 4] : spotXY(id);
     this.x = sx + (id === 'home' ? 0 : -60); this.y = sy + (id === 'home' ? 0 : 30); this.cam.x = this.x; this.cam.y = this.y;
     this.lines = []; this.total = 0; this.trail = []; this.foam = []; this.panel = { kind: 'summary', id, t: 0, skipped: true };
+    this.auto = false; this.saveBoat();
   }
 
   /* ---------- drawing ---------- */
@@ -401,6 +438,7 @@ class SeaScene {
     if (tint[1]) { const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, tint[1]); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
     if (this.v > 200) { const k = (this.v - 200) / 120, g = ctx.createRadialGradient(W / 2, H / 2, H * 0.4, W / 2, H / 2, H * 0.95); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,20,40,${0.28 * k})`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
     this.fl.draw(ctx);
+    if (this.steer && !this.panel) this.drawSteer(ctx);
     this.drawHud(ctx, W, H, t);
     if (this.panel) {
       if (this.panel.kind === 'chart') this.drawChart(ctx, W, H, t);
@@ -516,8 +554,30 @@ class SeaScene {
       if (up > 0.95 && chance(0.3)) this.foam.push(this.foamBlob(x, y, 0, 0, 5, 0.6));
     }
   }
+  // a finger (or the mouse) held on the water to steer: a ring where it is and an arrow for how hard the wheel is over,
+  // so it's plain the boat has heard you
+  drawSteer(ctx) {
+    const s = this.steer, r = this.rudder || 0;
+    if (this.view === 'top') {
+      const [bx, by] = this.toScreen(this.x, this.y);
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(s.x, s.y); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.16)'; ell(ctx, s.x, s.y, 26, 26); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 3; ell(ctx, s.x, s.y, 26, 26); ctx.stroke();
+    if (Math.abs(r) > 0.06) {
+      const d = Math.sign(r), len = 16 + Math.abs(r) * 30, x0 = s.x + d * 34;
+      ctx.fillStyle = PAL.sun; ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x0, s.y - 7); ctx.lineTo(x0 + d * len, s.y - 7); ctx.lineTo(x0 + d * len, s.y - 13); ctx.lineTo(x0 + d * (len + 14), s.y); ctx.lineTo(x0 + d * len, s.y + 13); ctx.lineTo(x0 + d * len, s.y + 7); ctx.lineTo(x0, s.y + 7); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+  }
+  // where the FWC boat is while it pulls you over: it comes up from astern and stops alongside, to starboard.
+  // One place, so the top-down, chase and 3D views all put it in the same spot.
+  fwcXY() {
+    const k = easeOut(this.fwc.k), back = lerp(420, -10, k), ca = Math.cos(this.h), sa = Math.sin(this.h);
+    return [this.x - ca * back - sa * 85, this.y - sa * back + ca * 85];
+  }
   drawFwc(ctx, t) {
-    const k = easeOut(this.fwc.k), x = this.x - Math.cos(this.h) * lerp(400, 90, k) + Math.cos(this.h + Math.PI / 2) * 60, y = this.y - Math.sin(this.h) * lerp(400, 90, k) + Math.sin(this.h + Math.PI / 2) * 60;
+    const [x, y] = this.fwcXY();
     drawFwcBoatTop(ctx, x, y, 0.5, this.h, { t });
     text(ctx, 'FWC', x, y + 34, { size: 14, align: 'center', color: '#fff', weight: 800, stroke: '#123a8a', sw: 4 });
   }
@@ -581,7 +641,7 @@ class SeaScene {
     // banners
     const banner = (msg, fill, col) => { panel(ctx, W / 2 - 170, 66, 340, 34, { r: 17, fill, line: 'rgba(0,0,0,0.1)' }); text(ctx, msg, W / 2, 88, { size: 15, align: 'center', color: col, weight: 800 }); };
     if (this.zone && !open) banner(this.v > NO_WAKE ? 'NO WAKE! Throttle down to SLOW' : 'NO WAKE ZONE · ' + this.zone.name, this.v > NO_WAKE ? 'rgba(200,60,20,0.92)' : 'rgba(255,255,255,0.92)', this.v > NO_WAKE ? '#fff' : PAL.ink);
-    else if (!open && World.gridDepth(this.x + Math.cos(this.h) * 120, this.y + Math.sin(this.h) * 120) < 4 && this.v > 110) banner('Shallow ahead! Ease off', 'rgba(230,200,120,0.95)', PAL.ink);
+    else if (!open && this.v > 140 && this.shallowAhead() < 2.6) banner('Shallow ahead! Ease off', 'rgba(230,200,120,0.95)', PAL.ink);
     else if (this.stall > 0 && !open) banner('Prop wrapped… ' + this.stall.toFixed(1) + 's', 'rgba(255,255,255,0.92)', PAL.ink);
     // a pointer to the destination when it's off screen
     if (xy && !open && this.view === 'chase') {
@@ -666,8 +726,7 @@ class SeaScene {
       UI.region('chartpin-' + id, X - 22, Y - 22, 44, 44, () => { this.sel = id; SFX.play('tick'); });
     };
     for (const id of SPOT_ORDER) {
-      const known = Charts.isKnown(id); let [x, y] = spotXY(id);
-      if (!known) { x += (hash2(id.length, 3) - 0.5) * 1400; y += (hash2(3, id.length) - 0.5) * 900; }
+      const known = Charts.isKnown(id), [x, y] = known ? spotXY(id) : rumorXY(id);
       pin(id, x, y, known);
     }
     const hx = M.X(World.home.x), hy = M.Y(World.home.dockY);
@@ -764,7 +823,7 @@ class SeaScene {
     UI.button(ctx, 'endtrip', W / 2 - 130, 360, 125, 50, c.mode === 'crew' ? 'End the trip' : 'Head home', () => (this.panel = { kind: 'pause', confirm: true }), { style: 'coral', size: 17 });
     UI.button(ctx, 'totitle', W / 2 + 5, 360, 125, 50, 'Quit to title', () => { this.saveBoat(); Game.go(new TitleScene()); }, { style: 'ghost', size: 17 });
     GFX.pauseRow(ctx, W / 2, 422);
-    text(ctx, c.mode === 'crew' ? 'Your trip is saved. Resume it from the title screen.' : 'Solo days aren’t saved. Your logbook is.', W / 2, 496, { size: 15, align: 'center', color: '#9fb8c2', weight: 600 });
+    text(ctx, c.mode !== 'crew' ? 'Solo days aren’t saved. Your logbook is.' : Store.failed ? 'This browser isn’t saving, so the trip ends if you leave.' : 'Your trip is saved. Resume it from the title screen.', W / 2, 496, { size: 15, align: 'center', color: '#9fb8c2', weight: 600 });
   }
 }
 function segCross(ax, ay, bx, by, cx, cy, dx, dy) {

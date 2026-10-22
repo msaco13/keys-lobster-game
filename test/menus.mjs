@@ -84,3 +84,4 @@ for (const W of widths) {
 }
 await browser.close();
 console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'NO ERRORS');
+process.exitCode = errs.length ? 1 : 0;

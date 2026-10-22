@@ -51,3 +51,4 @@ const reach = await page.evaluate(() => {
 console.log('paths from home', JSON.stringify(reach));
 console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'NO ERRORS');
 await browser.close();
+process.exitCode = errs.length ? 1 : 0;
