@@ -52,6 +52,16 @@ for (const dev of [{ label: 'phone', viewport: { width: 844, height: 390 }, touc
     await press('castoff'); check((await name()) === 'SeaScene', dev.label + ': Cast off → the boat');
     await page.waitForTimeout(1500);
     check((await drawn()) > 4 && !(await gameErr()), dev.label + ': the boat ride runs (' + (await page.evaluate(() => (Game.scene.uses3D() ? '3D' : 'classic'))) + ')');
+    // with the autopilot driving, a quick tap on the water leaves it on; holding takes the wheel
+    if (!dev.touch) {
+      await page.evaluate(() => { const s = Game.scene; Game.toasts = []; s.dest = 'bottom'; s.planRoute(); s.setAuto(true); });
+      const at = { x: dev.viewport.width * 0.7, y: dev.viewport.height * 0.55 };
+      await page.mouse.click(at.x, at.y); await page.waitForTimeout(400);
+      const afterTap = await page.evaluate(() => Game.scene.auto);
+      await page.mouse.move(at.x, at.y); await page.mouse.down(); await page.waitForTimeout(600); await page.mouse.up(); await page.waitForTimeout(100);
+      const afterHold = await page.evaluate(() => Game.scene.auto);
+      check(afterTap === true && afterHold === false, dev.label + ': a stray tap leaves the autopilot on; a hold takes the wheel (' + afterTap + ', ' + afterHold + ')');
+    }
     // pull up at the nearest charted spot and fish it
     await page.evaluate(() => { const s = Game.scene; s.skipTo('bughunt'); });
     await S.settle(); await page.waitForTimeout(300);
@@ -73,6 +83,11 @@ for (const dev of [{ label: 'phone', viewport: { width: 844, height: 390 }, touc
     check(['TurnIntroScene', 'SeaScene'].includes(await name()) && !(await gameErr()), dev.label + ': results → next angler (' + (await name()) + ')');
     const saved = await page.evaluate(() => { const t = JSON.parse(localStorage.getItem('keyscrew_trip') || 'null'); return t && t.turns && t.turns.length; });
     check(saved >= 1, dev.label + ': the trip is saved with the turn on it');
+    // the second leg's captain (the next angler) brings the boat to the next spot and fishes it first
+    const order = await page.evaluate(() => { const c = Trip.cur; c.spot = null; c.turn = 0; c.legs = 1; Game.go(new SeaScene(), true); const S = Game.scene; S.panel = { kind: 'summary', id: 'bottom', t: 0, skipped: true }; S.finishLeg(true);
+      return { captain: S.driver, first: Trip.angler(c, 0), order: c.crew.map((_, i) => Trip.angler(c, i)), crew: c.crew.slice() }; });
+    await S.settle();
+    check(order.captain === order.crew[1] && order.first === order.captain && new Set(order.order).size === order.crew.length && (await page.evaluate(() => Game.scene.ch)) === order.captain, dev.label + ': the captain fishes the spot first, then the rest in turn (' + order.order.join(' → ') + ')');
     // every kind of spot opens, runs, and has a fish fight
     for (const [cls, spot, fight] of [['BottomScene', 'wreck', { sp: 'amberjack', weight: 30, ctxType: 'reef', depth: 100 }], ['TrollScene', 'troll', { sp: 'mahi', weight: 20, ctxType: 'offshore' }], ['FlatsScene', 'flats', { sp: 'redfish', weight: 8, ctxType: 'flats' }], ['BugHuntScene', 'alligator', null]]) {
       await page.evaluate(([cls, spot]) => { Game.go(new (eval(cls))({ ch: 'jorge', spot, len: 120, weather: Trip.cur.weather, onEnd: () => {} }), true); }, [cls, spot]);

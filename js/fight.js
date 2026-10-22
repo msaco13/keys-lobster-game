@@ -1,6 +1,8 @@
 'use strict';
 /* Keys Crew — the fish fight. Shared by bottom fishing, trolling and the flats.
-   Hold to reel. Let go when it runs. Bow when it jumps. Turn grouper off the reef. */
+   Hold to reel. Let go when a run is strong enough to push the drag into the red (small fish you can crank right
+   through). Bow when it jumps: there's a "coming up" cue first. Turn grouper off the reef. Once the fish is beaten it
+   stops running and comes in fast, and a shark can't take it. */
 
 const LOSS_TEXT = {
   snap: ['SNAP!', 'Too much pressure while it was running. Let go on the runs.'],
@@ -32,7 +34,9 @@ class FightScene {
     this.running = false; this.runT = 0; this.runStr = 1; this.restT = rand(0.9, 1.6); this.tele = false;
     this.jumpT = 0; this.jumpDelay = 0; this.jumpHold = 0; this.jumps = 0; this.bows = 0; this.jumpX = 0;
     this.slackT = 0; this.snapT = 0; this.revealed = false;
-    this.taxRisk = this.kind !== 'flats' && chance(0.22); this.shark = null;
+    // a shark shows up in some offshore and reef fights; the longer this fish fights, the later it comes and the more time it gives
+    this.taxRisk = this.kind !== 'flats' && chance(0.22); this.shark = null; this.sharkAt = Math.max(16, this.staminaSec * 0.75);
+    this.beat = false; this.risky = false;
     this.parts = new Particles(); this.fl = new Floaters();
     this.overT = 0; this.won = false; this.reason = null; this.catch = null; this.landT = 0; this.crankFx = 0;
     this.fx = 0; this.fy = 0; this.fang = 0;
@@ -71,40 +75,51 @@ class FightScene {
       this.fightAnim(dt, hold);
       return;
     }
-    const S = this.S, life = 0.45 + 0.55 * S, sp = this.sp;
+    const S = this.S, life = 0.45 + 0.55 * S, sp = this.sp, Lmax = this.perks.line;
+    // would holding on through a run of this strength push the drag past the green? (only then does the prompt say let go)
+    const riskyAt = (str) => 0.3 + this.pw * str * life * 1.05 > 0.86 * Lmax;
     if (this.running) {
       this.runT -= dt;
       if (this.jumpDelay > 0) { this.jumpDelay -= dt; if (this.jumpDelay <= 0) this.startJump(); }
-      if (this.runT <= 0) { this.running = false; this.restT = rand(1.1, 2.6) * (1.25 - this.pw * 0.45) * (1 + (1 - S) * 0.8); }
-    } else {
+      if (this.runT <= 0 || (this.beat && this.jumpT <= 0 && this.jumpDelay <= 0)) { this.running = false; this.jumpDelay = 0; this.restT = rand(1.1, 2.6) * (1.25 - this.pw * 0.45) * (1 + (1 - S) * 0.8); }
+    } else if (!this.beat) {   // a beaten fish doesn't run any more
       this.restT -= dt;
-      if (this.restT <= 0.5 && !this.tele) { this.tele = true; SFX.play('tick'); }
+      if (this.restT <= 0.5 && !this.tele && riskyAt(1)) { this.tele = true; SFX.play('tick'); }
       if (this.restT <= 0) {
         this.running = true; this.tele = false;
         this.runT = rand(0.8, 2.0) * (0.55 + this.pw) * (0.5 + 0.5 * S); this.runStr = rand(0.88, 1.1);
-        if (sp.jump && this.jumps < 5 && chance(sp.jump * (0.4 + 0.6 * S))) this.jumpDelay = rand(0.15, 0.45);
+        // a jump gets a cue first ("IT'S COMING UP!"), long enough to react to
+        if (sp.jump && this.jumps < 5 && chance(sp.jump * (0.4 + 0.6 * S))) { this.jumpDelay = rand(0.45, 0.7); this.runT = Math.max(this.runT, this.jumpDelay + 0.4); SFX.play('tick'); }
       }
     }
+    this.risky = this.running && riskyAt(this.runStr);
     let p = this.pw * (this.running ? this.runStr : 0.33) * life;
     if (this.jumpT > 0) p *= 0.4;
-    const Lmax = this.perks.line;
+    if (this.beat) p *= 0.5;
     const target = hold ? 0.3 + p * 1.05 : p * 0.5;
     this.T = approach(this.T, target + Math.sin(this.t * 13) * 0.02 * p, hold && this.running ? 6 : 4, dt);
     if (this.running) this.dist += 9.5 * this.pw * p * dt * (hold ? 0.45 : 1);
-    if (hold) this.dist -= 7.5 * this.perks.reel * (1 - p * 0.8) * dt;
+    if (hold) this.dist -= 7.5 * this.perks.reel * (1 - p * 0.8) * (this.beat ? 1.4 : 1) * dt;
     const inZone = this.T > 0.38 && this.T < 0.86 * Lmax;
-    this.S = clamp(this.S - (dt / this.staminaSec) * (inZone ? 1 : 0.35) * (hold ? 1 : 0.6) + (this.T < 0.15 ? dt * 0.015 : 0), 0, 1);
-    if (this.T < 0.12) { this.slackT += dt; if (this.slackT > 2.1) return this.lose('slack'); } else if (this.T > 0.2) this.slackT = Math.max(0, this.slackT - dt * 2);
+    this.S = clamp(this.S - (dt / this.staminaSec) * (inZone ? 1 : 0.35) * (hold ? 1 : 0.6) + (this.T < 0.15 && !this.beat ? dt * 0.015 : 0), 0, 1);
+    if (!this.beat && this.S <= 0) { this.beat = true; this.tele = false; Game.toast('It’s beat! Crank it in!', { color: PAL.good, size: 34, y: 130 }); SFX.play('coin'); }
+    // slack builds while the line is loose (bowing to a jump doesn't count) and drains once it's tight again
+    if (this.T < 0.12 && this.jumpT <= 0 && this.jumpDelay <= 0) { this.slackT += dt; if (this.slackT > 2.1) return this.lose('slack'); } else if (this.T > 0.2) this.slackT = Math.max(0, this.slackT - dt * 2);
     if (this.T > Lmax) { this.snapT += dt; if (this.snapT > 0.28) return this.lose('snap'); } else this.snapT = Math.max(0, this.snapT - dt);
     if (this.T > 0.86 * Lmax && Math.floor(this.t * 6) !== Math.floor((this.t - dt) * 6)) Game.vibrate(15);
     if (this.dist > this.maxDist) return this.lose('spool');
     if (this.jumpT > 0) { this.jumpT -= dt; if (hold) this.jumpHold += dt; if (this.jumpT <= 0) { this.endJump(); if (this.phase === 'over') return; } }
     if (!this.revealed && (this.dist < this.d0 * 0.45 || this.jumpT > 0)) { this.revealed = true; Game.toast(`It's a ${sp.short.toLowerCase()}!`, { color: '#fff', size: 30, y: 120 }); }
-    if (this.taxRisk && !this.shark && this.fightT > 16) { this.shark = { t: 10, a: 0 }; Game.toast('SHARK!', { color: '#dfe6ea', size: 42, y: 130, sub: 'Get it in before the tax man does' }); SFX.play('warn'); }
-    if (this.shark) { this.shark.t -= dt; this.shark.a += dt; if (this.shark.t <= 0) return this.lose('tax'); }
+    if (this.taxRisk && !this.shark && !this.beat && this.fightT > this.sharkAt) { this.shark = { t: 10 + this.staminaSec * 0.15, a: 0 }; Game.toast('SHARK!', { color: '#dfe6ea', size: 42, y: 130, sub: 'Wear it out before the tax man gets it' }); SFX.play('warn'); }
+    if (this.shark) { this.shark.a += dt; if (!this.beat) { this.shark.t -= dt; if (this.shark.t <= 0) return this.lose('tax'); } }   // a beaten fish comes in too fast for it
     SFX.setDrag(this.running ? (hold ? 0.9 : 0.7) : hold ? 0.12 : 0, this.running ? 1 : 0.4);
     this.fightAnim(dt, hold);
     if (this.dist <= 0.5) this.land();
+  }
+  // what the prompt asks for right now: let go (true) or keep reeling. The reel button turns red when you hold anyway.
+  letGoNow() {
+    if (this.phase !== 'fight') return false;
+    return this.jumpT > 0 || this.jumpDelay > 0 || this.risky || this.tele || this.T > 0.86 * this.perks.line;
   }
   startJump() {
     this.jumpT = 1.15; this.jumpHold = 0; this.jumps++;
@@ -114,8 +129,9 @@ class FightScene {
   endJump() {
     this.parts.burst(this.fx, this.waterY(), 26, { color: ['#ffffff', '#cfefff'], angle: -Math.PI / 2, spread: 1.1, min: 100, max: 300, g: 600 });
     SFX.play('splash');
-    if (this.jumpHold > 0.3 && chance(0.7)) { this.lose('jump'); return; }
-    if (this.jumpHold <= 0.3) { this.bows++; this.fl.add(this.fx, this.waterY() - 60, 'Bowed! +40', PAL.sun, 24); SFX.play('coin'); }
+    const tol = 0.5 * this.perks.window;   // holding on a little into the jump is forgiven; quick hands get longer
+    if (this.jumpHold > tol && chance(0.6)) { this.lose('jump'); return; }
+    if (this.jumpHold <= tol) { this.bows++; this.fl.add(this.fx, this.waterY() - 60, 'Bowed! +40', PAL.sun, 24); SFX.play('coin'); }
   }
   land() {
     this.phase = 'landing'; this.landT = 0; this.running = false; SFX.setDrag(0); SFX.play('bigsplash');
@@ -274,10 +290,12 @@ class FightScene {
     // fish stamina
     panel(ctx, 16, 12, 250, 84, { r: 14 });
     text(ctx, this.revealed ? this.sp.name : 'Something big…', 30, 37, { size: 20, weight: 800, color: '#fff', maxW: 222 });
+    // the fish's fight left; once it's beat, the bar shows the line still to crank in
+    const bar = this.beat ? clamp(this.dist / this.d0, 0, 1) : this.S;
     ctx.fillStyle = 'rgba(255,255,255,0.15)'; rr(ctx, 30, 48, 222, 12, 6); ctx.fill();
-    ctx.fillStyle = this.S > 0.5 ? PAL.coral : this.S > 0.2 ? PAL.sun : PAL.good; rr(ctx, 30, 48, 222 * this.S, 12, 6); ctx.fill();
+    ctx.fillStyle = this.beat ? '#6fe0ff' : this.S > 0.5 ? PAL.coral : this.S > 0.2 ? PAL.sun : PAL.good; rr(ctx, 30, 48, 222 * bar, 12, 6); ctx.fill();
     text(ctx, (this.unit === 'ft' ? 'DEPTH ' : 'LINE OUT ') + Math.max(0, Math.round(this.dist)) + ' ' + this.unit, 30, 84, { size: 16, color: '#cfe3ea', weight: 800 });
-    text(ctx, 'FISH', 252, 84, { size: 13, align: 'right', color: '#9fb8c2', weight: 800 });
+    text(ctx, this.beat ? 'BEAT · CRANK IT IN' : 'FISH', 252, 84, { size: 13, align: 'right', color: this.beat ? '#6fe0ff' : '#9fb8c2', weight: 800 });
     if (this.o.timeLeft) { const tl = this.o.timeLeft(); drawTimerPill(ctx, W / 2, 34, tl); }
     // tension meter
     const mx = W - 62, my0 = 96, my1 = 400, mh = my1 - my0, L = this.perks.line, scale = 1.25;
@@ -299,11 +317,14 @@ class FightScene {
     const danger = this.T > 0.86 * L, slack = this.slackT > 0.6;
     if (this.phase === 'turn') { msg = 'TAP TAP TAP! TURN IT!'; col = PAL.sun; }
     else if (this.jumpT > 0) { msg = 'IT JUMPED! LET GO!'; col = PAL.sun; }
-    else if (this.running) { msg = danger ? 'LET GO! IT’S RUNNING' : 'IT’S RUNNING · LET IT GO'; col = danger ? PAL.bad : PAL.warn; }
+    else if (this.jumpDelay > 0) { msg = 'IT’S COMING UP! LET GO!'; col = PAL.sun; }
+    else if (this.running && this.risky) { msg = danger ? 'LET GO! IT’S RUNNING' : 'IT’S RUNNING · LET IT GO'; col = danger ? PAL.bad : PAL.warn; }
+    else if (this.running) { msg = held ? 'KEEP CRANKING!' : 'SMALL RUN · KEEP REELING'; }   // you can crank right through this one
     else if (this.tele) { msg = 'GET READY…'; col = PAL.warn; }
     else if (slack) { msg = 'SLACK! REEL!'; col = '#9fe0ff'; }
     else if (danger) { msg = 'TOO TIGHT!'; col = PAL.bad; }
-    const pw = Math.min(W - 180, 460), px = W / 2 - pw / 2, wrong = held && (this.running || this.jumpT > 0 || this.tele || danger), tapped = this.phase === 'turn' && this.crankFx > 0;
+    else if (this.beat) { msg = held ? 'CRANK IT IN!' : 'IT’S BEAT! HOLD TO CRANK'; }
+    const pw = Math.min(W - 180, 460), px = W / 2 - pw / 2, wrong = held && this.letGoNow(), tapped = this.phase === 'turn' && this.crankFx > 0;
     const lit = held || tapped, dy = lit ? 3 : 0;
     if (lit) {
       const fill = wrong ? PAL.bad : tapped ? PAL.sun : PAL.good;
@@ -315,7 +336,7 @@ class FightScene {
     { const rx = px + 34, ry = H - 44 + dy, a = this.crankA || 0, c = lit ? (wrong ? '#fff' : PAL.ink) : 'rgba(255,255,255,0.7)';
       ctx.strokeStyle = c; ctx.fillStyle = c; ctx.lineWidth = 3; ell(ctx, rx, ry, 13, 13); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + Math.cos(a) * 13, ry + Math.sin(a) * 13); ctx.stroke(); ell(ctx, rx + Math.cos(a) * 13, ry + Math.sin(a) * 13, 4.5, 4.5); ctx.fill(); }
-    const pulse = (this.running || this.jumpT > 0 || this.phase === 'turn') ? 1 + Math.sin(this.t * 14) * 0.04 : 1;
+    const pulse = (this.risky || this.jumpT > 0 || this.jumpDelay > 0 || this.phase === 'turn') ? 1 + Math.sin(this.t * 14) * 0.04 : 1;
     ctx.save(); ctx.translate(W / 2 + 14, H - 43 + dy); ctx.scale(pulse, pulse);
     text(ctx, msg, 0, 0, { size: 26, align: 'center', base: 'middle', color: col, weight: 800, maxW: pw - 86 });
     ctx.restore();

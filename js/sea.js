@@ -141,7 +141,10 @@ class SeaScene {
 
   /* ---------- input ---------- */
   setNotch(n) { if (this.fwc || this.panel) return; const was = this.notch; this.notch = clamp(n, 0, 4); if (was !== this.notch) SFX.play('click'); }
-  pointerDown(p) { if (this.panel) return; this.steer = { id: p.id, x: p.x, y: p.y }; }
+  pointerDown(p) { if (this.panel) return; this.steer = { id: p.id, x: p.x, y: p.y, sx: p.x, sy: p.y, t0: this.t }; }
+  // a finger on the water steers; with the autopilot on, only a hold or a drag takes the wheel (a stray tap from a
+  // phone being passed around doesn't)
+  steerLive() { const s = this.steer; return !!s && (!this.auto || this.t - s.t0 >= 0.25 || dist(s.x, s.y, s.sx, s.sy) > 30); }
   pointerMove(p) { if (this.steer && this.steer.id === p.id) { this.steer.x = p.x; this.steer.y = p.y; } }
   pointerUp(p) { if (this.steer && this.steer.id === p.id) this.steer = null; }
   keyDown(c) {
@@ -164,13 +167,17 @@ class SeaScene {
     // steering
     let rud = 0;
     if (Input.held('ArrowLeft', 'KeyA')) rud -= 1; if (Input.held('ArrowRight', 'KeyD')) rud += 1;
-    if (this.steer && this.view === 'chase') {   // behind the boat: hold left or right of it to turn that way, harder the farther out
+    const live = this.steerLive();
+    if (live && this.view === 'chase') {   // behind the boat: hold left or right of it to turn that way, harder the farther out
       const dx = this.steer.x - Game.W / 2; if (Math.abs(dx) > 14) rud = clamp((dx - Math.sign(dx) * 14) / (Game.W * 0.2), -1, 1);
-    } else if (this.steer) {
+    } else if (live) {
       const [sx, sy] = this.toScreen(this.x, this.y), want = Math.atan2(this.steer.y - sy, this.steer.x - sx);
       if (dist(sx, sy, this.steer.x, this.steer.y) > 24) rud = clamp(angleDiff(this.h, want) * 2.4, -1, 1);
     }
-    if (rud) { if (this.auto) { this.auto = false; Game.toast('Autopilot off', { size: 22, y: 170, color: '#fff' }); } }
+    if (rud) {
+      if (this.auto) { this.auto = false; Game.toast('Autopilot off', { size: 22, y: 170, color: '#fff' }); }
+      (this.c.steered || (this.c.steered = {}))[this.driver] = true;   // this captain has the hang of it: no more steering tip
+    }
     // autopilot
     let cap = 999;
     if (this.auto && this.path && !this.panel) {
@@ -416,7 +423,7 @@ class SeaScene {
     if (id === 'home') { this.saveBoat(); Game.go(new DayEndScene()); return; }
     // kept until someone fishes here, so Back to the boat can hand the same captain the same run (reopenLeg)
     c.leg = { ch: this.driver, spot: id, pts, dist: skipped ? 0 : this.legDist, flags: Object.assign({}, this.flags), lines: skipped ? [] : this.lines.filter((l) => !l.end) };
-    c.spot = id; c.turn = 0; this.dest = null; this.auto = false; this.saveBoat(); Game.go(new TurnIntroScene());
+    c.spot = id; c.turn = 0; c.first = Math.max(0, c.crew.indexOf(this.driver)); this.dest = null; this.auto = false; this.saveBoat(); Game.go(new TurnIntroScene());
   }
   skipTo(id) {
     const [sx, sy] = id === 'home' ? [World.home.x + 10, World.home.dockY + 4] : spotXY(id);
@@ -438,7 +445,7 @@ class SeaScene {
     if (tint[1]) { const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, tint[1]); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
     if (this.v > 200) { const k = (this.v - 200) / 120, g = ctx.createRadialGradient(W / 2, H / 2, H * 0.4, W / 2, H / 2, H * 0.95); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,20,40,${0.28 * k})`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
     this.fl.draw(ctx);
-    if (this.steer && !this.panel) this.drawSteer(ctx);
+    if (this.steerLive() && !this.panel) this.drawSteer(ctx);
     this.drawHud(ctx, W, H, t);
     if (this.panel) {
       if (this.panel.kind === 'chart') this.drawChart(ctx, W, H, t);
@@ -659,16 +666,19 @@ class SeaScene {
         ctx.save(); ctx.translate(ax, ay); ctx.rotate(a); ctx.fillStyle = 'rgba(255,214,90,0.9)'; ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(-10, -13); ctx.lineTo(-4, 0); ctx.lineTo(-10, 13); ctx.closePath(); ctx.fill(); ctx.restore();
       }
     }
+    // each captain gets the steering tip on their first time at the wheel, until they've steered
+    const newCaptain = !(this.c.steered && this.c.steered[this.driver]), chartTip = this.dest ? '' : Game.touch ? ' Tap Chart to pick a spot.' : ' M for the chart.';
     if (this.view === 'chase') {
-      if (this.t > 2 && this.t < 12 && !open && !this.c.legs && !Game.toasts.length) {   // the tip steps aside while a banner is up
+      if (this.t > 2 && this.t < 12 && !open && newCaptain && !Game.toasts.length) {   // the tip steps aside while a banner is up
         const hw = Math.min(600, W - 2 * mmW - 70), a = Math.min(1, (this.t - 2) * 3, (12 - this.t) * 2);
-        const msg = Game.touch ? 'Hold your finger left or right of the boat to steer. Throttle is on the right. Tap Chart to pick a spot.' : 'Hold the mouse left or right of the boat to steer, or ← →. ↑ ↓ or the lever for throttle. M for the chart, V to change the view.';
+        const msg = this.auto ? (Game.touch ? 'The autopilot is driving. Hold or drag on the water to take the wheel.' : 'The autopilot is driving. Hold the mouse on the water, or ← →, to take the wheel.')
+          : Game.touch ? 'Hold your finger left or right of the boat to steer. Throttle is on the right.' + chartTip : 'Hold the mouse left or right of the boat to steer, or ← →. ↑ ↓ or the lever for throttle.' + chartTip + ' V changes the view.';
         ctx.font = fnt(15, 700); const n = wrapText(ctx, msg, hw - 28).length;
         ctx.save(); ctx.globalAlpha = a; panel(ctx, W / 2 - hw / 2, 108, hw, 14 + n * 19, { r: 16 });
         para(ctx, msg, W / 2, 129, hw - 28, { size: 15, align: 'center', color: '#fff', weight: 700, lh: 19 });
         ctx.restore();
       }
-    } else if (this.t < 9 && !open && !this.c.legs) para(ctx, Game.touch ? 'Hold and drag where you want to go. Throttle is on the right. Tap Chart to pick a spot.' : 'Hold the mouse where you want to go, or ← →. ↑ ↓ or the lever for throttle. M for the chart.', 196, H - 110, Math.min(460, W - 420), { size: 16, color: '#fff', weight: 700, stroke: 'rgba(0,0,0,0.5)', sw: 4, lh: 20 });
+    } else if (this.t < 9 && !open && newCaptain && !this.auto) para(ctx, Game.touch ? 'Hold and drag where you want to go. Throttle is on the right.' + chartTip : 'Hold the mouse where you want to go, or ← →. ↑ ↓ or the lever for throttle.' + chartTip, 196, H - 110, Math.min(460, W - 420), { size: 16, color: '#fff', weight: 700, stroke: 'rgba(0,0,0,0.5)', sw: 4, lh: 20 });
     if (GFX.showFps) {
       text(ctx, GFX.readout(this.uses3D(), this.view !== 'chase' ? 'top-down' : null), W / 2, H - 8, { size: 13, align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.6)', sw: 4 });
     }
