@@ -66,6 +66,16 @@ phone has.
 - On 120 Hz screens it draws the 3D at 60 frames a second, which saves battery.
 - The setting that worked is remembered on the device for next time.
 
+On a phone the whole game is drawn smaller (about 0.7x held sideways), so two things make up for it:
+
+- **Small print has a floor.** Text that would come out under about 11 CSS px is drawn bigger instead (`TEXT_FLOOR`
+  in `js/core.js`). Headlines and big numbers aren't touched.
+- **Small buttons take a near miss.** On a touch screen, a tap just outside a small button (pause, the throttle, the
+  chart pins, the fish finder's ▸) still presses it, out to about 48 CSS px. A tap right on a button always wins; two
+  near misses go to the closer one (`UI.hit`).
+
+Held upright, the game shows a small turning phone above it: it plays that way too, just smaller.
+
 ## The spots
 
 | Spot | Game | Where |

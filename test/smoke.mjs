@@ -3,6 +3,7 @@
 // nothing is broken outright:
 //   - it loads with no errors, on a phone (touch) and on a desktop
 //   - a real crew trip by tapping buttons: title → crew pick → briefing → the boat → a turn → results → the boat
+//   - on the phone, a tap just outside a small button (pause, a chart pin) still presses it
 //   - every fishing spot opens and runs a few seconds, with a fish fight at each kind of spot
 //   - a broken or out-of-date save, and a browser that won't save at all, don't take the title screen down
 // Exits 1 on any failure.
@@ -61,6 +62,24 @@ for (const dev of [{ label: 'phone', viewport: { width: 844, height: 390 }, touc
       await page.mouse.move(at.x, at.y); await page.mouse.down(); await page.waitForTimeout(600); await page.mouse.up(); await page.waitForTimeout(100);
       const afterHold = await page.evaluate(() => Game.scene.auto);
       check(afterTap === true && afterHold === false, dev.label + ': a stray tap leaves the autopilot on; a hold takes the wheel (' + afterTap + ', ' + afterHold + ')');
+    }
+    // on a phone a small button answers a tap just outside it: pause, and a pin on the chart
+    if (dev.touch) {
+      const tapAt = async (x, y) => { const pt = await page.evaluate(([x, y]) => ({ x: Game.ox + x * Game.scale, y: Game.oy + y * Game.scale }), [x, y]); await page.touchscreen.tap(pt.x, pt.y); await S.settle(); };
+      const pz = await page.evaluate(() => { Game.toasts = []; const r = UI.byId('pause'); return { x: r.x + r.w / 2, y: r.y + r.h + 6 }; });
+      await tapAt(pz.x, pz.y);
+      const paused = await page.evaluate(() => Game.scene.panel && Game.scene.panel.kind);
+      if (paused === 'pause') await press('resume');
+      await press('chart');
+      const pin = await page.evaluate(() => {
+        const pins = UI.prev.filter((r) => r.id.startsWith('chartpin-')), c = (r) => [r.x + r.w / 2, r.y + r.h / 2];
+        const lonely = pins.map((r) => ({ r, gap: Math.min(...pins.filter((q) => q !== r).map((q) => Math.hypot(c(q)[0] - c(r)[0], c(q)[1] - c(r)[1]))) })).sort((a, b) => b.gap - a.gap)[0].r;
+        return { id: lonely.id.slice(9), x: lonely.x + lonely.w + 8, y: lonely.y + lonely.h / 2 };
+      });
+      await tapAt(pin.x, pin.y);
+      const sel = await page.evaluate(() => Game.scene.sel);
+      check(paused === 'pause' && sel === pin.id, dev.label + ': a tap just outside a small button still presses it (pause: ' + paused + ', chart pin ' + pin.id + ': ' + sel + ')');
+      await press('chartclose');
     }
     // pull up at the nearest charted spot and fish it
     await page.evaluate(() => { const s = Game.scene; s.skipTo('bughunt'); });

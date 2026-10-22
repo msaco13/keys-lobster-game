@@ -650,8 +650,9 @@ class SeaScene {
     if (this.zone && !open) banner(this.v > NO_WAKE ? 'NO WAKE! Throttle down to SLOW' : 'NO WAKE ZONE · ' + this.zone.name, this.v > NO_WAKE ? 'rgba(200,60,20,0.92)' : 'rgba(255,255,255,0.92)', this.v > NO_WAKE ? '#fff' : PAL.ink);
     else if (!open && this.v > 140 && this.shallowAhead() < 2.6) banner('Shallow ahead! Ease off', 'rgba(230,200,120,0.95)', PAL.ink);
     else if (this.stall > 0 && !open) banner('Prop wrapped… ' + this.stall.toFixed(1) + 's', 'rgba(255,255,255,0.92)', PAL.ink);
-    // a pointer to the destination when it's off screen
-    if (xy && !open && this.view === 'chase') {
+    // a pointer to the destination when it's off screen. Behind the boat it says which way to turn, so not while the
+    // autopilot drives: it's already turning, often around an island, and "Turn around" would only tell you to fight it
+    if (xy && !open && !this.auto && this.view === 'chase') {
       const c = Chase.c, rel = angleDiff(Chase.yaw, Math.atan2(xy[1] - c.y, xy[0] - c.x)), half = Math.atan((W / 2 - 40) / c.F);
       if (Math.abs(rel) > half) {
         const side = rel > 0 ? 1 : -1, ax = side > 0 ? W - mmW - 70 : 64, ay = c.hor + 40, pulse = 1 + Math.sin(t * 5) * 0.08;
@@ -659,7 +660,7 @@ class SeaScene {
         ctx.beginPath(); ctx.moveTo(26, 0); ctx.lineTo(-6, -20); ctx.lineTo(0, 0); ctx.lineTo(-6, 20); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
         text(ctx, Math.abs(rel) > 2.4 ? 'Turn around' : side > 0 ? 'Turn right' : 'Turn left', ax, ay + 40, { size: 15, align: 'center', color: PAL.sun, weight: 800, stroke: PAL.ink, sw: 4 });
       }
-    } else if (xy && !open) {
+    } else if (xy && !open && this.view !== 'chase') {
       const [tx, ty] = this.toScreen(xy[0], xy[1]);
       if (tx < 30 || tx > W - 30 || ty < 70 || ty > H - 30) {
         const a = Math.atan2(ty - H / 2, tx - W / 2), r = Math.min(W * 0.42, H * 0.36), ax = W / 2 + Math.cos(a) * r, ay = H / 2 + Math.sin(a) * r;
