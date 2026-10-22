@@ -57,6 +57,8 @@ class SeaScene {
   exit() { SFX.setEngine(0); SFX.setAmbient(0); this.saveBoat(); }
   saveBoat() { this.c.boat = { x: this.x, y: this.y, h: this.h }; Trip.save(); }
   toggleView() { this.view = this.view === 'chase' ? 'top' : 'chase'; Store.set('seaView', this.view); Chase.reset(this); this.steer = null; }
+  // the view behind the boat is drawn in 3D when this device can (sea3d.js), else the classic 2D chase view
+  uses3D() { return this.view === 'chase' && Sea3D.ready(); }
   // where the boat is on screen, for effects that pop off it
   boatScreen() { return this.view === 'chase' ? [Game.W / 2, CAM.BOAT_SY - 20] : this.toScreen(this.x, this.y); }
   say(kind, p = 1) { if (!chance(p) || !SEA_QUIPS[kind]) return; this.quip = { who: pick(this.others), msg: pick(SEA_QUIPS[kind]), t: 2.8 }; }
@@ -388,12 +390,13 @@ class SeaScene {
 
   /* ---------- drawing ---------- */
   draw(ctx) {
-    const W = Game.W, H = Game.H, t = this.t;
-    if (this.view === 'chase') Chase.draw(this, ctx, W, H, t); else this.drawTop(ctx, W, H, t);
+    const W = Game.W, H = Game.H, t = this.t, in3d = this.uses3D();
+    GFX.count(performance.now());
+    if (this.view === 'chase') { if (in3d) Sea3D.draw(this, ctx, W, H, t); else Chase.draw(this, ctx, W, H, t); } else this.drawTop(ctx, W, H, t);
     this.parts.draw(ctx);
-    // the light: morning, midday, afternoon, sunset on the way home
+    // the light: morning, midday, afternoon, sunset on the way home (the 3D sky does its own)
     const legs = this.c.legs || 0;
-    const tint = this.homeRun ? ['rgba(255,120,60,0.2)', 'rgba(40,20,80,0.12)'] : legs === 0 ? ['rgba(255,220,170,0.08)', null] : legs >= 3 ? ['rgba(255,190,110,0.1)', null] : [null, null];
+    const tint = in3d ? [null, null] : this.homeRun ? ['rgba(255,120,60,0.2)', 'rgba(40,20,80,0.12)'] : legs === 0 ? ['rgba(255,220,170,0.08)', null] : legs >= 3 ? ['rgba(255,190,110,0.1)', null] : [null, null];
     if (tint[0]) { ctx.fillStyle = tint[0]; ctx.fillRect(0, 0, W, H); }
     if (tint[1]) { const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, tint[1]); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
     if (this.v > 200) { const k = (this.v - 200) / 120, g = ctx.createRadialGradient(W / 2, H / 2, H * 0.4, W / 2, H / 2, H * 0.95); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,20,40,${0.28 * k})`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
@@ -606,6 +609,10 @@ class SeaScene {
         ctx.restore();
       }
     } else if (this.t < 9 && !open && !this.c.legs) para(ctx, Game.touch ? 'Hold and drag where you want to go. Throttle is on the right. Tap Chart to pick a spot.' : 'Hold the mouse where you want to go, or ← →. ↑ ↓ or the lever for throttle. M for the chart.', 196, H - 110, Math.min(460, W - 420), { size: 16, color: '#fff', weight: 700, stroke: 'rgba(0,0,0,0.5)', sw: 4, lh: 20 });
+    if (GFX.showFps) {
+      const how = this.view !== 'chase' ? 'top-down' : this.uses3D() ? '3D ' + GFX.TIERS[GFX.tier].name + ' · ' + Math.min(GFX.TIERS[GFX.tier].pr, window.devicePixelRatio || 1) + 'x' : 'classic';
+      text(ctx, Math.round(this.uses3D() && Sea3D.fps ? Sea3D.fps : GFX.fps) + ' fps · ' + how, W / 2, H - 8, { size: 13, align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.6)', sw: 4 });
+    }
     if (this.quip && !open) {
       const q = this.quip, qw = Math.min(360, W * 0.42), qx = 14, qy = H - 170;
       ctx.save(); ctx.globalAlpha = Math.min(1, q.t * 3);
@@ -757,7 +764,10 @@ class SeaScene {
     UI.button(ctx, 'music', W / 2 + 5, 294, 125, 50, Music.on ? 'Music: on' : 'Music: off', () => Music.setOn(!Music.on), { style: 'secondary', size: 17 });
     UI.button(ctx, 'endtrip', W / 2 - 130, 360, 125, 50, c.mode === 'crew' ? 'End the trip' : 'Head home', () => (this.panel = { kind: 'pause', confirm: true }), { style: 'coral', size: 17 });
     UI.button(ctx, 'totitle', W / 2 + 5, 360, 125, 50, 'Quit to title', () => { this.saveBoat(); Game.go(new TitleScene()); }, { style: 'ghost', size: 17 });
-    text(ctx, c.mode === 'crew' ? 'Your trip is saved. Resume it from the title screen.' : 'Solo days aren’t saved. Your logbook is.', W / 2, 440, { size: 15, align: 'center', color: '#9fb8c2', weight: 600 });
+    const no3d = Sea3D.state === 'failed' && Sea3D.why !== 'slow';
+    UI.button(ctx, 'gfx', W / 2 - 130, 422, 125, 44, GFX.label(), () => GFX.toggle(), { style: 'secondary', size: 15, disabled: no3d, sub: no3d ? 'no 3D on this device' : GFX.mode === 'classic' ? (GFX.auto ? 'set for speed' : 'lighter look') : 'tap for classic' });
+    UI.button(ctx, 'fps', W / 2 + 5, 422, 125, 44, GFX.showFps ? 'Frame rate: on' : 'Frame rate: off', () => { GFX.showFps = !GFX.showFps; Store.set('gfxFps', GFX.showFps); }, { style: 'ghost', size: 15 });
+    text(ctx, c.mode === 'crew' ? 'Your trip is saved. Resume it from the title screen.' : 'Solo days aren’t saved. Your logbook is.', W / 2, 496, { size: 15, align: 'center', color: '#9fb8c2', weight: 600 });
   }
 }
 function segCross(ax, ay, bx, by, cx, cy, dx, dy) {

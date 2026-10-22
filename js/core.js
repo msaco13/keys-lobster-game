@@ -1045,6 +1045,7 @@ const Game = {
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
     this.canvas.width = Math.round(cw * this.dpr); this.canvas.height = Math.round(ch * this.dpr);
     this.canvas.style.width = cw + 'px'; this.canvas.style.height = ch + 'px';
+    if (typeof Sea3D !== 'undefined') Sea3D.resize();
     if (this.scene && this.scene.resize) this.scene.resize();
   },
   go(scene, instant) {
@@ -1132,8 +1133,11 @@ const Game = {
   },
   draw(dt) {
     const ctx = this.ctx, k = this.dpr;
+    // a scene drawn in 3D (the boat ride) shows through: the WebGL canvas sits under this one
+    const see3d = !!(this.scene && this.scene.uses3D && this.scene.uses3D());
+    if (typeof Sea3D !== 'undefined') Sea3D.show(see3d);
     ctx.setTransform(k, 0, 0, k, 0, 0);
-    ctx.fillStyle = '#041d29'; ctx.fillRect(0, 0, this.cw, this.ch);
+    if (see3d) ctx.clearRect(0, 0, this.cw, this.ch); else { ctx.fillStyle = '#041d29'; ctx.fillRect(0, 0, this.cw, this.ch); }
     let sx = 0, sy = 0;
     if (this.shakeT > 0) { this.shakeT -= dt; const a = this.shakeAmt * (this.reduced ? 0.15 : 1) * Math.min(1, this.shakeT * 4); sx = rand(-a, a); sy = rand(-a, a); }
     ctx.setTransform(k * this.scale, 0, 0, k * this.scale, k * (this.ox + sx * this.scale), k * (this.oy + sy * this.scale));

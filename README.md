@@ -3,9 +3,10 @@
 A lobstering and fishing game set in the Florida Keys, made for one phone passed around a boat.
 Three friends, one boat, the whole Upper Keys to run around in. Whoever brings in the most points is Captain of the Day.
 
-It's plain HTML and JavaScript drawn on a canvas. There's no install, no build step needed to play,
-and no art or audio files: every fish, lobster, boat, island and face is drawn in code, and the steel-drum
-soundtrack is played live by a small synthesizer inside the game (Music on/off is in the pause menu).
+It's plain HTML and JavaScript drawn on a canvas, and the boat ride is real 3D (three.js, bundled in).
+There's no install, no build step needed to play, and no art or audio files: every fish, lobster, boat, island and
+face is made in code, the 3D world included, and the steel-drum soundtrack is played live by a small synthesizer
+inside the game (Music on/off is in the pause menu).
 
 ## Play it
 
@@ -31,8 +32,10 @@ The trip starts at the dock behind the house in Tavernier. The boat is yours to 
 from Long Key to Key Largo: Florida Bay and the Everglades shoreline up top, Hawk Channel, the patch reefs,
 the reef line, and the Gulf Stream out past the drop-off. The far spots are 15 to 20 nautical miles out.
 
-- **The view** rides behind the boat, looking out at the horizon: islands, lighthouses, bridges and other boats stand up
-  as you run at them. **Top-down view** (under the minimap, or V) switches to the old overhead map view, and it's remembered.
+- **The view** rides behind the boat in 3D. The water goes from gin-clear over the sand to cobalt in the Gulf Stream,
+  the way it does in the Keys; the boat rides the chop, banks into turns and throws a wake; and the islands, mangroves,
+  bridges, Alligator Light, other boats, dolphins and birds are all out there. **Top-down view** (under the minimap, or V)
+  switches to the overhead map view, and it's remembered.
 - **Steer** by holding left or right of the boat (or ← →); the farther out you hold, the harder it turns. In the top-down
   view, hold where you want to go. **Throttle** is the lever: STOP, IDLE, SLOW, CRUISE, FULL (or ↑ ↓).
 - **The chart** (Chart button or M) shows every spot you know about. Pick one and **Set course**: the autopilot drives the
@@ -45,6 +48,20 @@ the reef line, and the Gulf Stream out past the drop-off. The far spots are 15 t
 - **Only four spots are on the chart.** The other five you have to find. The chart shows a ? and a rumor
   from the dock; run past it to discover the spot and put it on the chart for good.
 - When the day's spots are done, run home at sunset and tie up at the dock.
+
+## Phones and graphics
+
+The 3D boat ride is built for phones. It needs WebGL 2, which any recent iPhone or Android phone has.
+
+- It draws at a lower resolution than the screen and watches its own frame rate. If a phone is struggling, it lowers
+  the resolution and the number of trees a step at a time. A screen that's capped at 30 frames a second (a phone in
+  low-power mode) isn't mistaken for a slow phone.
+- If a phone still can't keep up, the boat ride switches to the classic 2D view and says so. A phone without WebGL 2
+  gets the classic view straight away. Every other part of the game is 2D and unchanged.
+- **Pause → Graphics** switches between 3D and classic by hand. **Pause → Frame rate** shows the frame rate and the
+  current detail level at the bottom of the screen.
+- On 120 Hz screens it draws the 3D at 60 frames a second, which saves battery.
+- The setting that worked is remembered on the device for next time.
 
 ## The spots
 
@@ -113,11 +130,14 @@ js/bottom.js      bottom fishing (The Ledge, Eagle Wreck)
 js/troll.js       trolling (The Weedline, The Hump)
 js/flats.js       the backcountry (Florida Bay, Channel Five, Flamingo)
 js/world.js       the Upper Keys map: islands, depths, channels, reefs, bridges, route finding
-js/chase.js       the behind-the-boat camera: perspective water, standing scenery, 3D boats
+js/chase.js       the behind-the-boat camera, and the classic 2D view for phones without 3D
+js/sea3d.js       the boat ride in 3D: water, sky, islands, boats, wildlife, and the frame-rate safeguards
+js/vendor/        three.min.js: the parts of three.js the game uses (built by tools/vendor-three.mjs)
 js/sea.js         driving the boat around the map, the chart, discovering spots
 js/screens.js     title, crew pick, hand-offs, results, end of day, logbook, how-to
 js/main.js        boot
 tools/build.mjs   bundles everything into dist/keys-crew.html
+tools/vendor-three.mjs + three-entry.js   rebuild js/vendor/three.min.js (npm run vendor)
 test/             Playwright playtests, fight-balance and session simulations
 ```
 
@@ -131,4 +151,12 @@ npm run test:flow      # plays a whole crew trip by tapping the real buttons, ph
 npm run test:nav       # clicks every way back to the title screen and checks where each button goes
 npm run test:sea       # screenshots around the map, and the autopilot to every spot
 npm run test:balance   # simulates hundreds of fights per species with players of different skill
+npm run test:3d        # screenshots of the 3D boat ride around the map (WebGL forced on, software-rendered)
+npm run test:gfx       # the 3D safeguards: slow phone, 30 fps screen, lost graphics, the Graphics switch
+npm run test:flow3d    # the whole crew trip with the 3D boat ride on
+npm run vendor         # rebuild js/vendor/three.min.js after changing tools/three-entry.js
 ```
+
+`node test/clip.mjs . out.mp4 3d autopilot 16` records a smooth video of the boat ride (needs ffmpeg).
+Headless Chromium renders WebGL in software, so the 3D tests check the picture and the errors, not the speed;
+check the speed on a real phone with Pause → Frame rate.
