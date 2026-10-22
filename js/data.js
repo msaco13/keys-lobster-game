@@ -156,9 +156,9 @@ const SPOT_ORDER = ['bughunt', 'alligator', 'bottom', 'wreck', 'troll', 'hump', 
 const spotMode = (id) => (SPOTS[id] ? SPOTS[id].mode : id);
 // Spots this device has found on the water (the starting four are always on the chart)
 const Charts = {
-  known() { const k = Store.get('charted', []); return new Set(SPOT_ORDER.filter((id) => SPOTS[id].charted || k.includes(id))); },
+  known() { const k = Store.arr('charted'); return new Set(SPOT_ORDER.filter((id) => SPOTS[id].charted || k.includes(id))); },
   isKnown(id) { return this.known().has(id); },
-  add(id) { const k = Store.get('charted', []); if (!k.includes(id)) { k.push(id); Store.set('charted', k); } }
+  add(id) { const k = Store.arr('charted'); if (!k.includes(id)) { k.push(id); Store.set('charted', k); } }
 };
 
 const CAPTIONS = {
@@ -191,7 +191,30 @@ const Trip = {
     this.save();
   },
   save() { if (this.cur && this.cur.mode === 'crew') Store.set('trip', this.cur); },
-  load() { const t = Store.get('trip', null); return t && t.crew && t.scores ? t : null; },
+  // a saved trip comes back only if this version can play it: every angler and spot still exists. Missing pieces
+  // (from older versions) get their defaults; anything unplayable is dropped rather than left to break the title screen.
+  load() {
+    const t = Store.get('trip', null);
+    const ok = t && typeof t === 'object' && Array.isArray(t.crew) && t.crew.length > 0 && t.crew.length <= 3 && t.crew.every((c) => CHARS[c])
+      && (t.spot == null || SPOTS[t.spot]);
+    if (!ok) { if (t != null) this.clear(); return null; }
+    const list = (v) => (Array.isArray(v) ? v : []);
+    t.mode = t.mode === 'solo' ? 'solo' : 'crew';
+    t.plan = ['full', 'half', 'open', 'solo'].includes(t.plan) ? t.plan : t.mode === 'solo' ? 'solo' : 'full';
+    if (typeof t.spotsNeeded !== 'number') t.spotsNeeded = t.plan === 'full' ? 4 : t.plan === 'half' ? 2 : 0;
+    if (!(t.sessionLen > 0)) t.sessionLen = 120;
+    if (!t.weather || typeof t.weather !== 'object' || !t.weather.id) t.weather = rollWeather();
+    t.done = list(t.done).filter((id) => SPOTS[id]); t.found = list(t.found).filter((id) => SPOTS[id]);
+    t.catches = list(t.catches).filter((k) => k && typeof k === 'object'); t.turns = list(t.turns).filter((x) => x && typeof x === 'object');
+    if (!t.scores || typeof t.scores !== 'object') t.scores = {};
+    for (const c of t.crew) if (typeof t.scores[c] !== 'number') t.scores[c] = 0;
+    t.turn = clamp(t.turn | 0, 0, t.crew.length - 1); t.legs = Math.max(0, t.legs | 0);
+    if (t.boat && !(Number.isFinite(t.boat.x) && Number.isFinite(t.boat.y) && Number.isFinite(t.boat.h))) t.boat = null;
+    if (t.bounties != null) t.bounties = list(t.bounties).filter((b) => b && BOUNTY_DEFS[b.id]);
+    if (t.leg && !(typeof t.leg === 'object' && CHARS[t.leg.ch] && typeof t.leg.pts === 'number')) t.leg = null;
+    if (t.legBack && !(typeof t.legBack === 'object' && Array.isArray(t.legBack.lines) && t.legBack.flags)) t.legBack = null;
+    return t;
+  },
   resume() { this.cur = this.load(); return !!this.cur; },
   clear() { Store.del('trip'); },
   get player() { return this.cur.crew[this.cur.turn]; },
@@ -212,7 +235,7 @@ const Trip = {
 };
 
 const Records = {
-  all() { return Store.get('records', {}); },
+  all() { const rec = Store.obj('records'); for (const k in rec) if (!rec[k] || typeof rec[k].w !== 'number') delete rec[k]; return rec; },
   add(catches) {
     const rec = this.all(); let changed = false;
     for (const k of catches) {
@@ -224,7 +247,7 @@ const Records = {
     if (changed) Store.set('records', rec);
   },
   isRecord(key, w) { const r = this.all()[key]; return !r || w > r.w; },
-  trips() { return Store.get('trips', []); },
+  trips() { return Store.arr('trips').filter((t) => t && typeof t === 'object' && Array.isArray(t.crew)); },
   addTrip(t) { const list = this.trips(); list.unshift(t); Store.set('trips', list.slice(0, 12)); }
 };
 

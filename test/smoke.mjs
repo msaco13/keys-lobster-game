@@ -1,0 +1,105 @@
+// Smoke test for the built single-file game (dist/keys-crew.html): the page the players actually get.
+// Runs before every deploy and on every pull request, so it stays quick (about a minute) and checks only that
+// nothing is broken outright:
+//   - it loads with no errors, on a phone (touch) and on a desktop
+//   - a real crew trip by tapping buttons: title → crew pick → briefing → the boat → a turn → results → the boat
+//   - every fishing spot opens and runs a few seconds, with a fish fight at each kind of spot
+//   - a broken or out-of-date save, and a browser that won't save at all, don't take the title screen down
+// Exits 1 on any failure.
+//   node test/smoke.mjs [path/to/keys-crew.html]
+import { chromium } from 'playwright';
+import path from 'path'; import fs from 'fs'; import { fileURLToPath } from 'url';
+const here = path.dirname(fileURLToPath(import.meta.url));
+const file = path.resolve(process.argv[2] || path.join(here, '..', 'dist', 'keys-crew.html'));
+if (!fs.existsSync(file)) { console.error('no such file: ' + file + ' (run npm run build first)'); process.exit(1); }
+const url = 'file://' + file;
+const fails = []; const check = (ok, what) => { console.log((ok ? 'ok   ' : 'FAIL ') + what); if (!ok) fails.push(what); };
+const browser = await chromium.launch();
+
+async function open(o) {
+  const ctx = await browser.newContext({ viewport: o.viewport, deviceScaleFactor: 1, hasTouch: !!o.touch, isMobile: !!o.touch });
+  const page = await ctx.newPage();
+  const errs = [];
+  page.on('pageerror', (e) => errs.push('PAGEERR ' + e.message));
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.g|ERR_|net::|Failed to load resource/i.test(m.text())) errs.push(m.text()); });
+  if (o.init) await page.addInitScript(o.init, o.arg);
+  await page.goto(url);
+  await page.waitForFunction(() => typeof Game !== 'undefined' && Game.scene, null, { timeout: 15000 });
+  await page.waitForTimeout(300);
+  const name = () => page.evaluate(() => Game.scene.constructor.name);
+  const gameErr = () => page.evaluate(() => { const e = Game.error; Game.error = null; return e ? String(e.stack || e).split('\n').slice(0, 3).join(' | ') : null; });
+  const settle = async () => { await page.waitForTimeout(120); await page.waitForFunction(() => Game.fadeDir !== 1 && !Game.next, null, { timeout: 8000 }).catch(() => {}); await page.waitForTimeout(80); };
+  // a real tap or click on a button, by its id, at its spot on screen
+  const press = async (id) => {
+    const pt = await page.evaluate((id) => { const r = UI.byId(id); return r && !r.disabled ? { x: Game.ox + (r.x + r.w / 2) * Game.scale, y: Game.oy + (r.y + r.h / 2) * Game.scale } : null; }, id);
+    if (!pt) throw new Error('no button "' + id + '" on ' + (await name()));
+    if (o.touch) await page.touchscreen.tap(pt.x, pt.y); else await page.mouse.click(pt.x, pt.y);
+    await settle();
+  };
+  // the picture isn't blank: some pixels in the middle of the canvas differ from each other
+  const drawn = () => page.evaluate(() => { const c = document.getElementById('game'), g = c.getContext('2d'), d = g.getImageData(0, Math.floor(c.height / 2), c.width, 1).data; const seen = new Set(); for (let i = 0; i < d.length; i += 4 * 8) seen.add(d[i] + ',' + d[i + 1] + ',' + d[i + 2]); return seen.size; });
+  return { ctx, page, errs, name, gameErr, settle, press, drawn };
+}
+
+for (const dev of [{ label: 'phone', viewport: { width: 844, height: 390 }, touch: true }, { label: 'desktop', viewport: { width: 1280, height: 720 } }]) {
+  const S = await open(Object.assign({ init: () => localStorage.clear() }, dev));
+  const { page, errs, name, gameErr, press, drawn } = S;
+  try {
+    check((await name()) === 'TitleScene' && (await drawn()) > 4, dev.label + ': title screen is up and drawn');
+    // a crew trip, the way a player starts one
+    await press('crew'); check((await name()) === 'CrewSetupScene', dev.label + ': Crew Trip → crew pick');
+    await press('go'); check((await name()) === 'BriefingScene', dev.label + ': Let’s go → the day’s briefing');
+    await press('castoff'); check((await name()) === 'SeaScene', dev.label + ': Cast off → the boat');
+    await page.waitForTimeout(1500);
+    check((await drawn()) > 4 && !(await gameErr()), dev.label + ': the boat ride runs (' + (await page.evaluate(() => (Game.scene.uses3D() ? '3D' : 'classic'))) + ')');
+    // pull up at the nearest charted spot and fish it
+    await page.evaluate(() => { const s = Game.scene; s.skipTo('bughunt'); });
+    await S.settle(); await page.waitForTimeout(300);
+    await page.evaluate(() => Game.scene.finishLeg(true)); await S.settle();
+    check((await name()) === 'TurnIntroScene', dev.label + ': arriving → hand-off');
+    await press('ready'); await page.waitForTimeout(1500);
+    check((await name()) === 'BugHuntScene' && !(await gameErr()), dev.label + ': I’m ready → Bug Hunt runs');
+    await page.evaluate(() => { const s = Game.scene; s.timeLeft = 0.05; });
+    await page.waitForFunction(() => Game.scene.constructor.name === 'ResultsScene', null, { timeout: 15000 }).catch(() => {});
+    await S.settle();
+    check((await name()) === 'ResultsScene', dev.label + ': time’s up → results');
+    await page.evaluate(() => { Game.scene.t = 99; }); await page.waitForTimeout(200);
+    await press('next');
+    check(['TurnIntroScene', 'SeaScene'].includes(await name()) && !(await gameErr()), dev.label + ': results → next angler (' + (await name()) + ')');
+    const saved = await page.evaluate(() => { const t = JSON.parse(localStorage.getItem('keyscrew_trip') || 'null'); return t && t.turns && t.turns.length; });
+    check(saved >= 1, dev.label + ': the trip is saved with the turn on it');
+    // every kind of spot opens, runs, and has a fish fight
+    for (const [cls, spot, fight] of [['BottomScene', 'wreck', { sp: 'amberjack', weight: 30, ctxType: 'reef', depth: 100 }], ['TrollScene', 'troll', { sp: 'mahi', weight: 20, ctxType: 'offshore' }], ['FlatsScene', 'flats', { sp: 'redfish', weight: 8, ctxType: 'flats' }], ['BugHuntScene', 'alligator', null]]) {
+      await page.evaluate(([cls, spot]) => { Game.go(new (eval(cls))({ ch: 'jorge', spot, len: 120, weather: Trip.cur.weather, onEnd: () => {} }), true); }, [cls, spot]);
+      await page.waitForTimeout(1500);
+      let ok = (await name()) === cls && !(await gameErr());
+      if (fight) { await page.evaluate((f) => Game.scene.startFight(f), fight); await page.waitForTimeout(1500); ok = ok && (await page.evaluate(() => !!Game.scene.child)) && !(await gameErr()); }
+      check(ok, dev.label + ': ' + spot + ' runs' + (fight ? ', with a fish fight' : ''));
+    }
+    for (const cls of ['LogbookScene', 'HowToScene', 'TitleScene']) { await page.evaluate((cls) => Game.go(new (eval(cls))(), true), cls); await page.waitForTimeout(500); check((await name()) === cls && !(await gameErr()), dev.label + ': ' + cls + ' opens'); }
+  } catch (e) { check(false, dev.label + ': ' + e.message); }
+  check(errs.length === 0, dev.label + ': no errors' + (errs.length ? ' — ' + errs.slice(0, 5).join(' | ') : ''));
+  await S.ctx.close();
+}
+
+// saves that would have broken the title screen: garbage, an older shape, a trip with a character or spot that's gone
+for (const [label, val] of [['garbage', '{not json'], ['wrong shape', '{"crew":"jorge"}'], ['missing angler', '{"mode":"crew","crew":["nobody"],"done":[],"scores":{}}'], ['old version', '{"mode":"crew","crew":["jorge","jemel"],"spot":null}'], ['bad records', null]]) {
+  const S = await open({ viewport: { width: 960, height: 540 }, arg: [label, val], init: (v) => { localStorage.clear(); if (v[1] != null) localStorage.setItem('keyscrew_trip', v[1]); else { localStorage.setItem('keyscrew_records', '[1,2,3]'); localStorage.setItem('keyscrew_charted', '{"a":1}'); localStorage.setItem('keyscrew_trips', '"x"'); } } });
+  await S.page.evaluate(() => {}).catch(() => {});
+  const st = await S.page.evaluate(() => ({ scene: Game.scene.constructor.name, err: Game.error && String(Game.error) }));
+  const resumes = label === 'old version' ? await S.page.evaluate(() => { const b = UI.byId('resume'); if (!b) return 'no resume button'; b.fn(); return null; }) : null;
+  if (label === 'old version') { await S.settle(); await S.page.waitForTimeout(800); }
+  const after = await S.page.evaluate(() => ({ scene: Game.scene.constructor.name, err: Game.error && String(Game.error) }));
+  check(st.scene === 'TitleScene' && !st.err && !after.err && !resumes && (await S.drawn()) > 4 && S.errs.length === 0, 'save "' + label + '": title still works' + (label === 'old version' ? ' and Resume trip opens ' + after.scene : '') + (st.err || after.err || resumes ? ' (' + (st.err || after.err || resumes) + ')' : '') + (S.errs.length ? ' ' + S.errs[0] : ''));
+  await S.ctx.close();
+}
+{ // a browser that won't save at all (private mode, full storage): plays on and says so once
+  const S = await open({ viewport: { width: 960, height: 540 }, init: () => { localStorage.clear(); Storage.prototype.setItem = function () { throw new Error('QuotaExceededError'); }; } });
+  await S.press('crew'); await S.press('go'); await S.press('castoff'); await S.page.waitForTimeout(400);
+  const st = await S.page.evaluate(() => ({ scene: Game.scene.constructor.name, err: Game.error && String(Game.error), failed: !!Store.failed, toast: Game.toasts.map((t) => t.msg).join('|') }));
+  check(st.scene === 'SeaScene' && !st.err && st.failed && /won’t save/.test(st.toast) && S.errs.length === 0, 'no storage: the trip still starts and the game says it won’t save (' + JSON.stringify(st) + ')');
+  await S.ctx.close();
+}
+await browser.close();
+console.log(fails.length ? 'FAILED: ' + fails.length : 'ALL PASS');
+process.exitCode = fails.length ? 1 : 0;

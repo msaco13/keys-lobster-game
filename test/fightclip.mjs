@@ -75,3 +75,4 @@ if (!DRY) execFileSync('ffmpeg', ['-y', '-v', 'error', '-framerate', String(fps)
 fs.rmSync(frames, { recursive: true, force: true });
 console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'NO ERRORS', '->', outFile, n, 'frames');
 await browser.close();
+process.exitCode = errs.length ? 1 : 0;

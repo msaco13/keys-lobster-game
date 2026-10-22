@@ -86,8 +86,18 @@ function panel(ctx, x, y, w, h, o = {}) {
 /* ---------- storage (per-browser conveniences only) ---------- */
 const Store = {
   get(k, d) { try { const v = window.localStorage.getItem('keyscrew_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
-  set(k, v) { try { window.localStorage.setItem('keyscrew_' + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
-  del(k) { try { window.localStorage.removeItem('keyscrew_' + k); } catch (e) { /* storage unavailable */ } }
+  // false when the browser wouldn't keep it (private mode, storage full): the game says so once instead of claiming it saved
+  set(k, v) {
+    try { window.localStorage.setItem('keyscrew_' + k, JSON.stringify(v)); return true; }
+    catch (e) {
+      if (!this.warned) { this.warned = true; this.warnPending = true; }   // said once the screen settles (Game.frame): a scene change would wipe it
+      this.failed = true; return false;
+    }
+  },
+  del(k) { try { window.localStorage.removeItem('keyscrew_' + k); } catch (e) { /* storage unavailable */ } },
+  // typed reads: a value of the wrong shape (an old version, a hand edit, a bad write) reads as empty instead of breaking a screen
+  arr(k) { const v = this.get(k, []); return Array.isArray(v) ? v : []; },
+  obj(k) { const v = this.get(k, {}); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
 };
 
 /* ---------- audio: everything is synthesized, nothing to download ----------
@@ -1054,7 +1064,7 @@ const Game = {
   },
   switchTo(scene) {
     if (this.scene && this.scene.exit) this.scene.exit();
-    this.scene = scene; UI.reset(); this.toasts = [];
+    this.scene = scene; UI.reset(); this.toasts = []; this.error = null;
     SFX.setDrag(0); SFX.setEngine(0);
     if (scene.enter) scene.enter();
   },
@@ -1126,6 +1136,7 @@ const Game = {
     if (this.fadeDir === 1) { this.fade += dt / 0.22; if (this.fade >= 1) { this.fade = 1; const n = this.next; this.next = null; this.fadeDir = -1; this.safe(() => this.switchTo(n)); } }
     else if (this.fadeDir === -1) { this.fade -= dt / 0.3; if (this.fade <= 0) { this.fade = 0; this.fadeDir = 0; } }
     this.safe(() => this.scene && this.scene.update && this.scene.update(dt));
+    if (Store.warnPending && this.scene && this.fadeDir === 0) { Store.warnPending = false; this.toast('This browser won’t save', { color: PAL.warn, size: 26, y: 260, dur: 4, sub: 'Private browsing or full storage. Your trip and logbook won’t be kept.' }); }
     for (const t of this.toasts) t.t += dt;
     this.toasts = this.toasts.filter((t) => t.t < t.dur);
     this.safe(() => this.draw(dt));
@@ -1143,12 +1154,12 @@ const Game = {
     ctx.setTransform(k * this.scale, 0, 0, k * this.scale, k * (this.ox + sx * this.scale), k * (this.oy + sy * this.scale));
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, this.W, this.H); ctx.clip();
     UI.beginFrame();
-    if (this.scene && this.scene.draw) this.scene.draw(ctx);
+    // a scene that throws while drawing must not take the frame (or the way out) with it
+    ctx.save();
+    try { if (this.scene && this.scene.draw) this.scene.draw(ctx); } catch (err) { if (!this.error) console.error(err); this.error = err; }
+    ctx.restore();
     this.drawToasts(ctx);
-    if (this.error) {
-      ctx.fillStyle = 'rgba(120,0,0,0.85)'; ctx.fillRect(0, this.H - 34, this.W, 34);
-      text(ctx, 'Something broke: ' + String(this.error.message || this.error).slice(0, 120), 12, this.H - 12, { size: 15, color: '#fff' });
-    }
+    if (this.error) this.drawError(ctx);
     if (this.fade > 0) { ctx.fillStyle = `rgba(3,22,32,${this.fade})`; ctx.fillRect(0, 0, this.W, this.H); }
     ctx.restore();
     if (this.portrait && this.touch && this.oy > 40) {
@@ -1156,6 +1167,16 @@ const Game = {
       ctx.font = fnt(16, 700); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,0.75)';
       ctx.fillText('Turn your phone sideways for the full view', this.cw / 2, this.oy / 2);
     }
+  },
+  // the way out when something breaks: back to the title, or (if the title itself can't draw) drop the saved trip
+  drawError(ctx) {
+    const W = this.W, H = this.H, onTitle = typeof TitleScene !== 'undefined' && this.scene instanceof TitleScene;
+    ctx.fillStyle = 'rgba(120,0,0,0.9)'; ctx.fillRect(0, H - 52, W, 52);
+    text(ctx, 'Something broke: ' + String(this.error.message || this.error).slice(0, 90), 14, H - 20, { size: 15, color: '#fff', maxW: W - 250 });
+    UI.button(ctx, 'err-out', W - 222, H - 46, 210, 40, onTitle ? 'Reset saved trip' : 'Back to title', () => {
+      if (onTitle) Trip.clear();
+      this.error = null; this.go(new TitleScene(), true);
+    }, { style: 'secondary', size: 17 });
   },
   drawToasts(ctx) {
     const sc = this.scene; if (sc && (sc.paused || (sc.panel && sc.panel.kind !== 'chart'))) return;   // never on top of a pause menu

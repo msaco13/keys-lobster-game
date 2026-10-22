@@ -111,8 +111,18 @@ function panel(ctx, x, y, w, h, o = {}) {
 /* ---------- storage (per-browser conveniences only) ---------- */
 const Store = {
   get(k, d) { try { const v = window.localStorage.getItem('keyscrew_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
-  set(k, v) { try { window.localStorage.setItem('keyscrew_' + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
-  del(k) { try { window.localStorage.removeItem('keyscrew_' + k); } catch (e) { /* storage unavailable */ } }
+  // false when the browser wouldn't keep it (private mode, storage full): the game says so once instead of claiming it saved
+  set(k, v) {
+    try { window.localStorage.setItem('keyscrew_' + k, JSON.stringify(v)); return true; }
+    catch (e) {
+      if (!this.warned) { this.warned = true; this.warnPending = true; }   // said once the screen settles (Game.frame): a scene change would wipe it
+      this.failed = true; return false;
+    }
+  },
+  del(k) { try { window.localStorage.removeItem('keyscrew_' + k); } catch (e) { /* storage unavailable */ } },
+  // typed reads: a value of the wrong shape (an old version, a hand edit, a bad write) reads as empty instead of breaking a screen
+  arr(k) { const v = this.get(k, []); return Array.isArray(v) ? v : []; },
+  obj(k) { const v = this.get(k, {}); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
 };
 
 /* ---------- audio: everything is synthesized, nothing to download ----------
@@ -1079,7 +1089,7 @@ const Game = {
   },
   switchTo(scene) {
     if (this.scene && this.scene.exit) this.scene.exit();
-    this.scene = scene; UI.reset(); this.toasts = [];
+    this.scene = scene; UI.reset(); this.toasts = []; this.error = null;
     SFX.setDrag(0); SFX.setEngine(0);
     if (scene.enter) scene.enter();
   },
@@ -1151,6 +1161,7 @@ const Game = {
     if (this.fadeDir === 1) { this.fade += dt / 0.22; if (this.fade >= 1) { this.fade = 1; const n = this.next; this.next = null; this.fadeDir = -1; this.safe(() => this.switchTo(n)); } }
     else if (this.fadeDir === -1) { this.fade -= dt / 0.3; if (this.fade <= 0) { this.fade = 0; this.fadeDir = 0; } }
     this.safe(() => this.scene && this.scene.update && this.scene.update(dt));
+    if (Store.warnPending && this.scene && this.fadeDir === 0) { Store.warnPending = false; this.toast('This browser won’t save', { color: PAL.warn, size: 26, y: 260, dur: 4, sub: 'Private browsing or full storage. Your trip and logbook won’t be kept.' }); }
     for (const t of this.toasts) t.t += dt;
     this.toasts = this.toasts.filter((t) => t.t < t.dur);
     this.safe(() => this.draw(dt));
@@ -1168,12 +1179,12 @@ const Game = {
     ctx.setTransform(k * this.scale, 0, 0, k * this.scale, k * (this.ox + sx * this.scale), k * (this.oy + sy * this.scale));
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, this.W, this.H); ctx.clip();
     UI.beginFrame();
-    if (this.scene && this.scene.draw) this.scene.draw(ctx);
+    // a scene that throws while drawing must not take the frame (or the way out) with it
+    ctx.save();
+    try { if (this.scene && this.scene.draw) this.scene.draw(ctx); } catch (err) { if (!this.error) console.error(err); this.error = err; }
+    ctx.restore();
     this.drawToasts(ctx);
-    if (this.error) {
-      ctx.fillStyle = 'rgba(120,0,0,0.85)'; ctx.fillRect(0, this.H - 34, this.W, 34);
-      text(ctx, 'Something broke: ' + String(this.error.message || this.error).slice(0, 120), 12, this.H - 12, { size: 15, color: '#fff' });
-    }
+    if (this.error) this.drawError(ctx);
     if (this.fade > 0) { ctx.fillStyle = `rgba(3,22,32,${this.fade})`; ctx.fillRect(0, 0, this.W, this.H); }
     ctx.restore();
     if (this.portrait && this.touch && this.oy > 40) {
@@ -1181,6 +1192,16 @@ const Game = {
       ctx.font = fnt(16, 700); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,0.75)';
       ctx.fillText('Turn your phone sideways for the full view', this.cw / 2, this.oy / 2);
     }
+  },
+  // the way out when something breaks: back to the title, or (if the title itself can't draw) drop the saved trip
+  drawError(ctx) {
+    const W = this.W, H = this.H, onTitle = typeof TitleScene !== 'undefined' && this.scene instanceof TitleScene;
+    ctx.fillStyle = 'rgba(120,0,0,0.9)'; ctx.fillRect(0, H - 52, W, 52);
+    text(ctx, 'Something broke: ' + String(this.error.message || this.error).slice(0, 90), 14, H - 20, { size: 15, color: '#fff', maxW: W - 250 });
+    UI.button(ctx, 'err-out', W - 222, H - 46, 210, 40, onTitle ? 'Reset saved trip' : 'Back to title', () => {
+      if (onTitle) Trip.clear();
+      this.error = null; this.go(new TitleScene(), true);
+    }, { style: 'secondary', size: 17 });
   },
   drawToasts(ctx) {
     const sc = this.scene; if (sc && (sc.paused || (sc.panel && sc.panel.kind !== 'chart'))) return;   // never on top of a pause menu
@@ -1358,9 +1379,9 @@ const SPOT_ORDER = ['bughunt', 'alligator', 'bottom', 'wreck', 'troll', 'hump', 
 const spotMode = (id) => (SPOTS[id] ? SPOTS[id].mode : id);
 // Spots this device has found on the water (the starting four are always on the chart)
 const Charts = {
-  known() { const k = Store.get('charted', []); return new Set(SPOT_ORDER.filter((id) => SPOTS[id].charted || k.includes(id))); },
+  known() { const k = Store.arr('charted'); return new Set(SPOT_ORDER.filter((id) => SPOTS[id].charted || k.includes(id))); },
   isKnown(id) { return this.known().has(id); },
-  add(id) { const k = Store.get('charted', []); if (!k.includes(id)) { k.push(id); Store.set('charted', k); } }
+  add(id) { const k = Store.arr('charted'); if (!k.includes(id)) { k.push(id); Store.set('charted', k); } }
 };
 
 const CAPTIONS = {
@@ -1393,7 +1414,30 @@ const Trip = {
     this.save();
   },
   save() { if (this.cur && this.cur.mode === 'crew') Store.set('trip', this.cur); },
-  load() { const t = Store.get('trip', null); return t && t.crew && t.scores ? t : null; },
+  // a saved trip comes back only if this version can play it: every angler and spot still exists. Missing pieces
+  // (from older versions) get their defaults; anything unplayable is dropped rather than left to break the title screen.
+  load() {
+    const t = Store.get('trip', null);
+    const ok = t && typeof t === 'object' && Array.isArray(t.crew) && t.crew.length > 0 && t.crew.length <= 3 && t.crew.every((c) => CHARS[c])
+      && (t.spot == null || SPOTS[t.spot]);
+    if (!ok) { if (t != null) this.clear(); return null; }
+    const list = (v) => (Array.isArray(v) ? v : []);
+    t.mode = t.mode === 'solo' ? 'solo' : 'crew';
+    t.plan = ['full', 'half', 'open', 'solo'].includes(t.plan) ? t.plan : t.mode === 'solo' ? 'solo' : 'full';
+    if (typeof t.spotsNeeded !== 'number') t.spotsNeeded = t.plan === 'full' ? 4 : t.plan === 'half' ? 2 : 0;
+    if (!(t.sessionLen > 0)) t.sessionLen = 120;
+    if (!t.weather || typeof t.weather !== 'object' || !t.weather.id) t.weather = rollWeather();
+    t.done = list(t.done).filter((id) => SPOTS[id]); t.found = list(t.found).filter((id) => SPOTS[id]);
+    t.catches = list(t.catches).filter((k) => k && typeof k === 'object'); t.turns = list(t.turns).filter((x) => x && typeof x === 'object');
+    if (!t.scores || typeof t.scores !== 'object') t.scores = {};
+    for (const c of t.crew) if (typeof t.scores[c] !== 'number') t.scores[c] = 0;
+    t.turn = clamp(t.turn | 0, 0, t.crew.length - 1); t.legs = Math.max(0, t.legs | 0);
+    if (t.boat && !(Number.isFinite(t.boat.x) && Number.isFinite(t.boat.y) && Number.isFinite(t.boat.h))) t.boat = null;
+    if (t.bounties != null) t.bounties = list(t.bounties).filter((b) => b && BOUNTY_DEFS[b.id]);
+    if (t.leg && !(typeof t.leg === 'object' && CHARS[t.leg.ch] && typeof t.leg.pts === 'number')) t.leg = null;
+    if (t.legBack && !(typeof t.legBack === 'object' && Array.isArray(t.legBack.lines) && t.legBack.flags)) t.legBack = null;
+    return t;
+  },
   resume() { this.cur = this.load(); return !!this.cur; },
   clear() { Store.del('trip'); },
   get player() { return this.cur.crew[this.cur.turn]; },
@@ -1414,7 +1458,7 @@ const Trip = {
 };
 
 const Records = {
-  all() { return Store.get('records', {}); },
+  all() { const rec = Store.obj('records'); for (const k in rec) if (!rec[k] || typeof rec[k].w !== 'number') delete rec[k]; return rec; },
   add(catches) {
     const rec = this.all(); let changed = false;
     for (const k of catches) {
@@ -1426,7 +1470,7 @@ const Records = {
     if (changed) Store.set('records', rec);
   },
   isRecord(key, w) { const r = this.all()[key]; return !r || w > r.w; },
-  trips() { return Store.get('trips', []); },
+  trips() { return Store.arr('trips').filter((t) => t && typeof t === 'object' && Array.isArray(t.crew)); },
   addTrip(t) { const list = this.trips(); list.unshift(t); Store.set('trips', list.slice(0, 12)); }
 };
 
@@ -3397,9 +3441,10 @@ class FightScene {
 
   update(dt) {
     this.t += dt; this.parts.update(dt); this.fl.update(dt); this.crankFx = Math.max(0, this.crankFx - dt);
-    if (this.o.tick) this.o.tick(dt);
+    if (this.phase !== 'over' && this.holding()) this.crankA = (this.crankA || 0) + dt * 11;   // the reel icon on the prompt turns while you hold
     if (this.phase === 'over') { this.overT += dt; if (this.overT > (this.won ? 7 : 3.5)) this.finish(); return; }
     if (this.phase === 'landing') { this.landT += dt; this.fightAnim(dt, false); if (this.landT > 0.9) this.toOver(); return; }
+    if (this.o.tick) this.o.tick(dt);   // the turn clock runs while the fish fights, not while its card is up
     const hold = this.holding(); this.fightT += dt;
     if (this.phase === 'turn') {
       if (this.turnGrace > 0) this.turnGrace -= dt;
@@ -3633,8 +3678,10 @@ class FightScene {
     const ny = yOf(clamp(this.T, 0, scale));
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(mx - 22, ny); ctx.lineTo(mx - 12, ny - 7); ctx.lineTo(mx - 12, ny + 7); ctx.fill();
     ctx.fillRect(mx - 12, ny - 2, 24, 4);
-    // prompt
-    let msg = 'HOLD TO REEL', col = '#fff';
+    // the prompt doubles as the reel button: it lights up and presses in while you're holding (anywhere on screen,
+    // or Space), so you can always tell your hold is registering. Green is reeling; red is holding when you shouldn't.
+    const held = this.phase !== 'turn' && this.holding();
+    let msg = held ? 'REELING…' : 'HOLD TO REEL', col = '#fff';
     const danger = this.T > 0.86 * L, slack = this.slackT > 0.6;
     if (this.phase === 'turn') { msg = 'TAP TAP TAP! TURN IT!'; col = PAL.sun; }
     else if (this.jumpT > 0) { msg = 'IT JUMPED! LET GO!'; col = PAL.sun; }
@@ -3642,11 +3689,21 @@ class FightScene {
     else if (this.tele) { msg = 'GET READY…'; col = PAL.warn; }
     else if (slack) { msg = 'SLACK! REEL!'; col = '#9fe0ff'; }
     else if (danger) { msg = 'TOO TIGHT!'; col = PAL.bad; }
-    const pw = Math.min(W - 180, 460);
-    panel(ctx, W / 2 - pw / 2, H - 70, pw, 52, { r: 26 });
+    const pw = Math.min(W - 180, 460), px = W / 2 - pw / 2, wrong = held && (this.running || this.jumpT > 0 || this.tele || danger), tapped = this.phase === 'turn' && this.crankFx > 0;
+    const lit = held || tapped, dy = lit ? 3 : 0;
+    if (lit) {
+      const fill = wrong ? PAL.bad : tapped ? PAL.sun : PAL.good;
+      ctx.save(); ctx.shadowColor = fill; ctx.shadowBlur = 18; ctx.fillStyle = fill; rr(ctx, px, H - 70 + dy, pw, 52, 26); ctx.fill(); ctx.restore();
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 3; rr(ctx, px, H - 70 + dy, pw, 52, 26); ctx.stroke();
+      col = wrong ? '#fff' : PAL.ink;
+    } else { ctx.fillStyle = 'rgba(0,0,0,0.3)'; rr(ctx, px, H - 66, pw, 52, 26); ctx.fill(); panel(ctx, px, H - 70, pw, 52, { r: 26 }); }
+    // the reel: its handle goes round while you hold
+    { const rx = px + 34, ry = H - 44 + dy, a = this.crankA || 0, c = lit ? (wrong ? '#fff' : PAL.ink) : 'rgba(255,255,255,0.7)';
+      ctx.strokeStyle = c; ctx.fillStyle = c; ctx.lineWidth = 3; ell(ctx, rx, ry, 13, 13); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + Math.cos(a) * 13, ry + Math.sin(a) * 13); ctx.stroke(); ell(ctx, rx + Math.cos(a) * 13, ry + Math.sin(a) * 13, 4.5, 4.5); ctx.fill(); }
     const pulse = (this.running || this.jumpT > 0 || this.phase === 'turn') ? 1 + Math.sin(this.t * 14) * 0.04 : 1;
-    ctx.save(); ctx.translate(W / 2, H - 43); ctx.scale(pulse, pulse);
-    text(ctx, msg, 0, 0, { size: 26, align: 'center', base: 'middle', color: col, weight: 800, maxW: pw - 30 });
+    ctx.save(); ctx.translate(W / 2 + 14, H - 43 + dy); ctx.scale(pulse, pulse);
+    text(ctx, msg, 0, 0, { size: 26, align: 'center', base: 'middle', color: col, weight: 800, maxW: pw - 86 });
     ctx.restore();
     if (this.phase === 'turn') {
       const bw = Math.min(420, W - 200), bx = W / 2 - bw / 2, by = H - 128;
@@ -3802,14 +3859,14 @@ class SessionBase {
     UI.button(ctx, 'mute', cx - 130, 264, 125, 48, SFX.muted ? 'Sound: off' : 'Sound: on', () => SFX.setMuted(!SFX.muted), { style: 'secondary', size: 17 });
     UI.button(ctx, 'music', cx + 5, 264, 125, 48, Music.on ? 'Music: on' : 'Music: off', () => Music.setOn(!Music.on), { style: 'secondary', size: 17 });
     UI.button(ctx, 'quit', cx - 130, 326, 260, 56, 'End my turn now', () => { this.setPaused(false); this.end('quit'); }, { style: 'coral', size: 20, sub: this.child ? 'Right after this fish' : 'Your catches so far still count' });
-    UI.button(ctx, 'totitle', cx - 130, 398, 260, 52, 'Quit to title', () => (this.quitAsk = true), { style: 'ghost', size: 19, sub: crew ? 'Your trip is saved' : 'Ends your solo day' });
+    UI.button(ctx, 'totitle', cx - 130, 398, 260, 52, 'Quit to title', () => (this.quitAsk = true), { style: 'ghost', size: 19, sub: !crew ? 'Ends your solo day' : Store.failed ? 'This browser isn’t saving' : 'Your trip is saved' });
     GFX.pauseRow(ctx, cx, 464);
   }
   drawQuitAsk(ctx, crew) {
     const W = Game.W, cx = W / 2;
     text(ctx, crew ? 'Leave the trip?' : 'Leave your day?', cx, 150, { display: true, size: 46, align: 'center', color: '#fff', maxW: W - 60 });
     const lines = crew
-      ? ['Your trip is saved. Pick it up with Resume trip on the title screen.', 'This turn won’t count. ' + this.C.name + ' starts it over when you come back.']
+      ? Store.failed ? ['This browser isn’t saving, so the trip ends here.', 'Private browsing or full storage. Scores so far are lost.'] : ['Your trip is saved. Pick it up with Resume trip on the title screen.', 'This turn won’t count. ' + this.C.name + ' starts it over when you come back.']
       : ['Solo days aren’t saved, so your day ends here.', 'This turn won’t count. Bests from earlier turns stay in the logbook.'];
     lines.forEach((l, i) => text(ctx, l, cx, 202 + i * 30, { size: 19, align: 'center', color: '#cfe3ea', weight: 600, maxW: W - 70 }));
     UI.button(ctx, 'quitno', cx - 230, 280, 220, 56, 'Cancel', () => (this.quitAsk = false), { style: 'ghost', size: 20, key: 'Escape' });
@@ -4708,12 +4765,16 @@ class BugHuntScene extends SessionBase {
       label = tw ? 'LET GO' : 'TICKLE'; fill = tw ? PAL.bad : PAL.sun; fg = tw ? '#fff' : PAL.ink;
       prog = this.target.kind === 'lobster' ? this.target.coax : clamp(this.target.probe / 0.8, 0, 1);
     }
-    const pulse = active ? 1 + Math.sin(t * (hot ? 14 : 6)) * (hot ? 0.06 : 0.03) : 1;
-    ctx.save(); ctx.translate(a.x, a.y); ctx.scale(pulse, pulse);
-    ctx.globalAlpha = active ? 1 : 0.5;
+    // held down (a finger on it, or Space): it sinks in a little and gets a bright rim, so you know it's registering
+    const down = this.actionHeld();
+    const pulse = down ? 0.93 : active ? 1 + Math.sin(t * (hot ? 14 : 6)) * (hot ? 0.06 : 0.03) : 1;
+    ctx.save(); ctx.translate(a.x, a.y + (down ? 3 : 0)); ctx.scale(pulse, pulse);
+    ctx.globalAlpha = active || down ? 1 : 0.5;
     if (active) { ctx.fillStyle = rgba(fill.startsWith('#') ? fill : '#ffffff', 0.25); ell(ctx, 0, 0, a.r + 12, a.r + 12); ctx.fill(); }
+    if (down) { ctx.save(); ctx.shadowColor = '#fff'; ctx.shadowBlur = 20; ctx.fillStyle = fill; ell(ctx, 0, 0, a.r, a.r); ctx.fill(); ctx.restore(); }
     ctx.fillStyle = fill; ell(ctx, 0, 0, a.r, a.r); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 3; ctx.stroke();
+    if (down) { ctx.fillStyle = 'rgba(255,255,255,0.22)'; ell(ctx, 0, 0, a.r, a.r); ctx.fill(); }
+    ctx.strokeStyle = down ? '#ffffff' : 'rgba(255,255,255,0.8)'; ctx.lineWidth = down ? 5 : 3; ell(ctx, 0, 0, a.r, a.r); ctx.stroke();
     if (prog != null) {
       ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 7; ell(ctx, 0, 0, a.r + 6, a.r + 6); ctx.stroke();
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 0, a.r + 6, -Math.PI / 2, -Math.PI / 2 + TAU * prog); ctx.stroke();
@@ -4958,6 +5019,7 @@ function btDome(ctx, b, x, y, ry) {  // brain coral, star coral or a lump of rub
   ctx.restore();
 }
 
+const FINDER_SIZES = ['big', 'small', 'off'];
 class BottomScene extends SessionBase {
   constructor(o) {
     super(o);
@@ -4972,6 +5034,7 @@ class BottomScene extends SessionBase {
     this.fish = []; this.chumT = 0; this.chumCd = 0; this.slickQ = []; this.slickT = 0; this.chum = new Particles(); this.wake = new Particles();
     this.drag = null; this.twitch = 0; this.slam = 0; this.move = null; this.moveV = 0; this.engOn = false; this.swingK = 1;
     this.alarmT = 0; this.beepT = 0; this.quietT = 0; this.sonar = []; this.pingT = 0; this.sonarRect = null;
+    this.finder = FINDER_SIZES.includes(Store.get('finder', 'big')) ? Store.get('finder', 'big') : 'big'; this.colWv = this.colTarget();
     this.track = new Array(Math.ceil(BOT.STRIP / 25) + 2).fill(null); this.wps = []; this.hookX = 0;
     this.others = (Trip.cur && Trip.cur.crew ? Trip.cur.crew : CHAR_ORDER).filter((c) => c !== this.ch).slice(0, 2);
     this.buildBottom();
@@ -5004,7 +5067,15 @@ class BottomScene extends SessionBase {
   exit() { SFX.setAmbient(0); this.engine(0); }
 
   /* ---------- layout ---------- */
-  colW() { return clamp(Math.round(Game.W * 0.3), 236, 336); }
+  // the right-hand column: the fish finder over the bait panel. The player sizes the finder (big, small, or tucked
+  // away to a chip over the bait panel) and the column, and the water beside it, follow.
+  colTarget() { return this.finder === 'big' ? clamp(Math.round(Game.W * 0.3), 236, 336) : this.finder === 'small' ? clamp(Math.round(Game.W * 0.2), 204, 236) : clamp(Math.round(Game.W * 0.18), 204, 224); }
+  colW() { return Math.round(this.colWv); }
+  sizeFinder() {
+    this.finder = FINDER_SIZES[(FINDER_SIZES.indexOf(this.finder) + 1) % FINDER_SIZES.length]; Store.set('finder', this.finder);
+    if (this.finder === 'off') this.sonarRect = null;
+    if (this.drag && this.drag.sonar) this.drag = null;
+  }
   colX() { return Game.W - this.colW() - 12; }
   sceneW() { return this.colX() - 6; }
   baitSX() { return this.sceneW() * 0.54; }          // where the line hangs on screen
@@ -5335,6 +5406,7 @@ class BottomScene extends SessionBase {
     this.chum.update(dt); this.wake.update(dt);
     this.twitch = Math.max(0, this.twitch - dt); this.slam = Math.max(0, this.slam - dt);
     this.alarmT = Math.max(0, this.alarmT - dt); this.beepT -= dt;
+    this.colWv = approach(this.colWv, this.colTarget(), 12, dt);
     if (this.chumT > 0) {
       this.chumT -= dt;
       if (chance(dt * 16)) this.chum.add({ x: this.bx - 20 + rand(-10, 10), y: BOT.SURF + 4, vx: rand(4, 18) + this.weather.drift * 10, vy: rand(10, 26), life: 7, size: rand(1.4, 3.2), color: 'rgba(205,175,125,0.6)', drag: 0.15 });
@@ -5719,7 +5791,7 @@ class BottomScene extends SessionBase {
     this.drawTopBar(ctx);
     const cw = this.colW(), cx = this.colX(), sw = this.sceneW(), mid = this.baitSX();
     const baitH = 122, sonH = H - 12 - baitH - 10 - 10;
-    this.drawSonar(ctx, cx, 10, cw, sonH);
+    if (this.finder === 'off') this.drawFinderChip(ctx, cx, 10, cw); else this.drawSonar(ctx, cx, 10, cw, sonH);
     this.drawBaitPanel(ctx, cx, H - 12 - baitH, cw, baitH);
     // moving the boat
     const mw = Math.min(124, sw * 0.27), my = H - 60, m = this.move;
@@ -5748,7 +5820,7 @@ class BottomScene extends SessionBase {
     ctx.restore();
     text(ctx, 'FISH FINDER', x + 14, y + 22, { size: 13, color: '#8fb0bd', weight: 800 });
     if (this.move) text(ctx, ((this.moveV / BOT.SPEED) * 2.6).toFixed(1) + ' kn', x + 14, y + 39, { size: 12, color: '#6f8f9b', weight: 700 });
-    else {   // a color key: what's bait, what's a fish, what's a big one
+    else if (w >= 236) {   // a color key: what's bait, what's a fish, what's a big one
       let lx = x + 14;
       for (const [c, l] of [['#50b9ff', 'bait'], ['#ffe034', 'fish'], ['#ff3b2c', 'big']]) { ctx.fillStyle = c; rr(ctx, lx, y + 31, 7, 7, 2); ctx.fill(); lx += 10; ctx.font = fnt(12, 700); text(ctx, l, lx, y + 39, { size: 12, color: '#8fb0bd', weight: 700 }); lx += ctx.measureText(l).width + 8; }
     }
@@ -5819,7 +5891,9 @@ class BottomScene extends SessionBase {
       ctx.save(); ctx.translate(sx + hw - 22, sy + 16); ctx.fillStyle = 'rgba(0,10,40,0.7)'; rr(ctx, -17, -10, 34, 20, 8); ctx.fill(); drawFish(ctx, 'mutton', 22, { sil: PAL.sun }); ctx.restore();
     }
     // the track: the bottom you've crossed so far, your catches, and where the boat sits on the strip
-    const tx = x + 10, ty = y + h - 46, tw = w - 20, th = 36, [lo, hi] = this.L.track;
+    // the size button, bottom left: big → small → tucked away (or F)
+    UI.button(ctx, 'finder-size', x + 10, y + h - 46, 40, 36, '▸', () => this.sizeFinder(), { style: 'secondary', size: 20, r: 8, key: 'KeyF' });
+    const tx = x + 56, ty = y + h - 46, tw = w - 66, th = 36, [lo, hi] = this.L.track;
     ctx.fillStyle = '#0a1115'; rr(ctx, tx, ty, tw, th, 7); ctx.fill();
     const TX = (wx) => tx + 8 + (wx / BOT.STRIP) * (tw - 16), TY = (ft) => ty + 6 + clamp((ft - lo) / (hi - lo), 0, 1) * (th - 12);
     ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.setLineDash([2, 4]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(tx + 8, ty + th - 8); ctx.lineTo(tx + tw - 8, ty + th - 8); ctx.stroke(); ctx.setLineDash([]);
@@ -5831,6 +5905,19 @@ class BottomScene extends SessionBase {
     ctx.fillStyle = 'rgba(255,200,69,0.18)'; ctx.fillRect(bxp - cone, ty + 3, cone * 2, th - 6);
     ctx.fillStyle = PAL.sun; ctx.beginPath(); ctx.moveTo(bxp - 6, ty + 2); ctx.lineTo(bxp + 6, ty + 2); ctx.lineTo(bxp, ty + 10); ctx.closePath(); ctx.fill();
     ctx.fillRect(bxp - 0.75, ty + 8, 1.5, th - 12);
+  }
+  // the fish finder tucked away: the depth, what's under the boat right now, and the fish alarm. Tap (or F) for it back.
+  drawFinderChip(ctx, x, y, w) {
+    const h = 58, last = this.sonar[this.sonar.length - 1], now = this.sonarMarks(6)[0];
+    this.sonarRect = null;
+    UI.button(ctx, 'finder-size', x, y, w, h, '', () => this.sizeFinder(), { style: 'dark', r: 14, key: 'KeyF' });
+    text(ctx, '◂', x + 18, y + 31, { size: 20, align: 'center', base: 'middle', color: '#cfe3ea', weight: 800 });
+    text(ctx, 'FISH FINDER', x + 34, y + 23, { size: 12, color: '#8fb0bd', weight: 800 });
+    const mark = now && now.s > 0.05 ? (now.s > 0.42 ? ['#ff3b2c', 'big mark ' + Math.round(now.ft) + '′'] : ['#ffe034', 'mark ' + Math.round(now.ft) + '′']) : ['#5d7884', 'no marks'];
+    ctx.fillStyle = mark[0]; ell(ctx, x + 39, y + 39, 4, 4); ctx.fill();
+    text(ctx, mark[1], x + 48, y + 44, { size: 13, color: mark[0] === '#5d7884' ? '#8fb0bd' : '#fff', weight: 700 });
+    text(ctx, (last ? last.bot : this.L.base).toFixed(0) + ' ft', x + w - 12, y + 37, { size: 20, align: 'right', color: '#f4f8fa', weight: 800 });
+    if (this.alarmT > 0 && Math.sin(this.t * 18) > -0.3) { ctx.save(); ctx.translate(x + w - 30, y + h + 16); ctx.fillStyle = 'rgba(0,10,40,0.7)'; rr(ctx, -17, -10, 34, 20, 8); ctx.fill(); drawFish(ctx, 'mutton', 22, { sil: PAL.sun }); ctx.restore(); }
   }
   drawBaitPanel(ctx, x, y, w, h) {
     panel(ctx, x, y, w, h, { r: 16 });
@@ -8311,6 +8398,8 @@ const PATCH_REEFS = [];
   }
   for (const r of PATCH_REEFS) r.seed = rng() * 100;
 })();
+// within a boat's swing of a patch reef's groundable crown: routes keep this much sea room, since the autopilot cuts corners
+function nearReefCrown(x, y) { const s = y - chainY(x); if (s < 1000 || s > 2300) return false; for (const r of PATCH_REEFS) { const dx = (x - r.x) / (r.rx + 70), dy = (y - r.y) / (r.ry + 70); if (dx * dx + dy * dy < 0.2) return true; } return false; }
 function reefK(x, y) { let best = 9; for (const r of PATCH_REEFS) { const dx = (x - r.x) / r.rx; if (Math.abs(dx) > 2) continue; const dy = (y - r.y) / r.ry; const k = dx * dx + dy * dy; if (k < best) best = k; } return best; }
 
 /* ---------- depth ---------- */
@@ -8327,7 +8416,7 @@ function oceanDepth(x, y, s, hw) {
   if (hw === 0 && s < 520) dep = Math.max(dep, 11 - s * 0.008);
   if (Math.abs(x - HOME.x) < 70 && d < 680) dep = Math.max(dep, 8 - Math.abs(x - HOME.x) * 0.04);   // the dredged channel out of Tavernier harbor
   const bump = Math.max(0, 1 - ((s - 2400) / 120) ** 2); if (bump > 0) dep -= 22 * crestK(x) * bump;
-  if (s > 1100 && s < 2200) { const k = reefK(x, y); if (k < 1) dep = Math.min(dep, 3 + 7 * k); }
+  if (s > 1100 && s < 2200) { const k = reefK(x, y); if (k < 1) dep = Math.min(dep, 1.6 + 8.4 * k); }   // a patch reef's crown is shallow enough to run aground on at speed (sea.js: under 2.6 ft)
   const [hx, hy] = HUMP_XY; const dh = dist(x, y, hx, hy); if (dh < 1400) dep = Math.min(dep, 450 + (dh / 900) ** 2 * 1300);
   return dep;
 }
@@ -8607,7 +8696,7 @@ const World = {
     const clear = (ax, ay, bx, by) => {
       const L = Math.hypot(bx - ax, by - ay); if (L < 1) return true;
       const nx = -(by - ay) / L, ny = (bx - ax) / L, n = Math.ceil(L / 12);
-      for (let k = 0; k <= n; k++) { const x = lerp(ax, bx, k / n), y = lerp(ay, by, k / n); if (depthRaw(x, y) < 2.8 || depthRaw(x + nx * 22, y + ny * 22) < 1.6 || depthRaw(x - nx * 22, y - ny * 22) < 1.6) return false; }
+      for (let k = 0; k <= n; k++) { const x = lerp(ax, bx, k / n), y = lerp(ay, by, k / n); if (depthRaw(x, y) < 2.8 || depthRaw(x + nx * 22, y + ny * 22) < 1.6 || depthRaw(x - nx * 22, y - ny * 22) < 1.6 || nearReefCrown(x, y)) return false; }
       const mnx = Math.min(ax, bx) - 70, mxx = Math.max(ax, bx) + 70, mny = Math.min(ay, by) - 70, mxy = Math.max(ay, by) + 70;
       for (const o of obst) { if (o.x < mnx || o.x > mxx || o.y < mny || o.y > mxy) continue; if (segDist(o.x, o.y, ax, ay, bx, by) < o.r + 26) return false; }
       return true;
@@ -9093,7 +9182,7 @@ const Chase = {
       items.push({ z: p.z, f: (g) => this.drawBoat(g, B.x, B.y, B.h, { hull: hexRGB(B.hull), scale: B.big ? 1.15 : 0.85, roll: Math.sin(t * 1.3 + B.x) * 0.03 }, p) });
     }
     if (s.fwc) {
-      const k = easeOut(s.fwc.k), x = s.x - Math.cos(s.h) * lerp(400, 90, k) + Math.cos(s.h + Math.PI / 2) * 70, y = s.y - Math.sin(s.h) * lerp(400, 90, k) + Math.sin(s.h + Math.PI / 2) * 70, p = P(x, y, 0);
+      const [x, y] = s.fwcXY(), p = P(x, y, 0);   // pulls up alongside
       if (p && p.d > 20) items.push({ z: p.z, f: (g) => { this.drawBoat(g, x, y, s.h, { hull: [240, 244, 248], stripe: [30, 80, 170], scale: 0.9 }, p); const lt = P(x, y, 52); if (lt) { const on = Math.floor(t * 8) % 2, r = 4 * lt.s + 2; g.fillStyle = on ? '#4aa0ff' : '#ffffff'; ell(g, lt.x - 8 * lt.s, lt.y, r, r); g.fill(); g.fillStyle = on ? '#ffffff' : '#ff4a4a'; ell(g, lt.x + 8 * lt.s, lt.y, r, r); g.fill(); text(g, 'FWC', lt.x, lt.y - 12 * lt.s - 6, { size: 14, align: 'center', color: '#fff', weight: 800, stroke: '#123a8a', sw: 4 }); } } });
     }
     // birds working the Hump
@@ -13608,7 +13697,7 @@ const GFX = {
   // a frame counter for the on-screen readout (counts whatever is drawn, 2D or 3D)
   meter: { n: 0, t0: 0, last: 0 },
   count(now) {
-    const M = this.meter; if (!M.t0 || now - M.last > 300) { M.t0 = now; M.n = 0; }
+    const M = this.meter; if (!M.t0 || now - M.last > 2500) { M.t0 = now; M.n = 0; }   // a slow phone's long frames still count; a hidden tab resets it (GL)
     M.last = now; M.n++; if (now - M.t0 >= 1000) { this.fps = (M.n * 1000) / (now - M.t0); M.n = 0; M.t0 = now; }
   }
 };
@@ -13758,6 +13847,9 @@ const GL = {
     const r = (this.r = new THREE.WebGLRenderer(Object.assign({ canvas: cv, context: gl }, attrs)));
     r.outputColorSpace = THREE.LinearSRGBColorSpace; r.toneMapping = THREE.NoToneMapping; r.setClearColor(0x9fc8de, 1);
     cv.addEventListener('webglcontextlost', (e) => { e.preventDefault(); console.warn('WebGL context lost: classic view for now'); this.fail('lost'); });
+    // the browser hands the context back (after another tab hogged the GPU, or the phone slept): 3D picks up again.
+    // three.js re-uploads everything on its next render.
+    cv.addEventListener('webglcontextrestored', () => { if (this.why !== 'lost') return; this.state = 'ready'; this.why = ''; this.settle(); });
     this.resize();
   },
   fail(why) {
@@ -13801,9 +13893,11 @@ const GL = {
   // capped at 30, a phone in low-power mode), go back up and stop trying. At the lowest step and still slow, switch to
   // the classic view and say so. The step that works is remembered for next time.
   perf: { t0: 0, n: 0, last: 0, slow: 0, fast: 0, settle: 2, target: 54, drop: null, locked: false },
+  // A paused tab is told apart by the page being hidden (visibilitychange resets the count), not by a long gap: on a
+  // phone drawing 2–4 frames a second every gap is long, and those are exactly the frames that must count as slow.
   tune(now, busy) {
     const P = this.perf;
-    if (busy || !P.last || now - P.last > 250) { P.last = now; P.t0 = now; P.n = 0; return; }
+    if (busy || !P.last || now - P.last > 2500) { P.last = now; P.t0 = now; P.n = 0; return; }
     P.last = now; P.n++;
     if (now - P.t0 < 1000) return;
     const fps = (P.n * 1000) / (now - P.t0); P.n = 0; P.t0 = now; this.fps = fps;
@@ -13820,6 +13914,10 @@ const GL = {
       P.slow = Math.max(0, P.slow - 1);
       if (fps > P.target + 4 && ++P.fast >= 15 && !P.locked && GFX.tier < 3) { P.fast = 0; P.drop = null; GFX.setTier(GFX.tier + 1); this.applyTier(); P.settle = 2; P.locked = true; }
     }
+  },
+  watchVisibility() {
+    if (this.watching) return; this.watching = true;
+    document.addEventListener('visibilitychange', () => { this.perf.last = 0; GFX.meter.t0 = 0; });
   },
   // textures more than one scene uses, made once
   textures() {
@@ -13851,6 +13949,7 @@ const GL = {
     return T;
   }
 };
+GL.watchVisibility();
 
 /* ---------- the boat and the crew, as merged meshes ---------- */
 const Models = {
@@ -14639,7 +14738,7 @@ const Sea3D = {
     });
     const F = this.fwcBoat; F.visible = !!s.fwc;
     if (s.fwc) {
-      const k = easeOut(s.fwc.k), x = s.x - Math.cos(s.h) * lerp(400, 90, k) + Math.cos(s.h + Math.PI / 2) * 70, y = s.y - Math.sin(s.h) * lerp(400, 90, k) + Math.sin(s.h + Math.PI / 2) * 70;
+      const [x, y] = s.fwcXY();   // pulls up alongside (sea.js)
       F.position.set(x, this.waveH(x, y) - 1, y); F.rotation.set(0, -s.h, 0.04); const on = Math.floor(t * 8) % 2;
       this.fwcLights[0].material.color.setHex(on ? 0x2f7bff : 0x9fc4ff); this.fwcLights[1].material.color.setHex(on ? 0xffffff : 0xff3b3b);
       this.fwcAt = [x, y];
@@ -15235,6 +15334,13 @@ const SEA_QUIPS = {
 };
 function runDriver() { const c = Trip.cur; return c.mode === 'crew' ? c.crew[(c.legs || 0) % c.crew.length] : c.crew[0]; }
 function spotAllowed(id, c = Trip.cur) { if (!c) return false; if (c.mode === 'solo') return true; return !c.done.includes(id) && c.done.length < c.spotsNeeded; }
+// where the chart puts the ? for an uncharted spot: near it but not on it, and always close enough that
+// driving to the ? finds the spot (found within r + 300, see updateWorld)
+function rumorXY(id) {
+  const [x, y] = spotXY(id), dx = (hash2(id.length, 3) - 0.5) * 1400, dy = (hash2(3, id.length) - 0.5) * 900;
+  const L = Math.hypot(dx, dy), cap = 0.55 * (SPOTS[id].r + 300), k = L > cap ? cap / L : 1;
+  return [x + dx * k, y + dy * k];
+}
 function spotsLeft() { const c = Trip.cur; return c.mode === 'crew' && c.done.length >= c.spotsNeeded; }
 
 class SeaScene {
@@ -15260,18 +15366,34 @@ class SeaScene {
     this.boats = []; this.spawnBoats();
     this.inSpot = null; this.atHome = false;
     this.view = Store.get('seaView', 'chase') === 'top' ? 'top' : 'chase';
+    // a run picked back up: from the hand-off (Back to the boat) it keeps its distance and its record; from the title
+    // the boat also keeps its course and autopilot
+    const L = c.legBack || (b && b.run);
+    if (L && typeof L === 'object' && Array.isArray(L.lines)) { this.legDist = +L.dist || 0; Object.assign(this.flags, L.flags || {}); this.lines = L.lines.slice(); }
+    if (c.legBack) { this.reopened = true; c.legBack = null; }
+    if (b && !this.homeRun && b.home) this.homeRun = true;
+    if (b && (b.dest === 'home' || (b.dest && SPOTS[b.dest] && spotAllowed(b.dest, c)))) { this.dest = b.dest; this.wantAuto = !!b.auto; }
+    if (this.homeRun) this.dest = 'home';
   }
   enter() {
     Music.play(this.homeRun ? 'sunset' : 'run'); SFX.setAmbient(0.7, false);
     const C = CHARS[this.driver];
     if (this.homeRun) Game.toast('Heading home', { color: PAL.sun, size: 40, y: 150, sub: 'Captain ' + C.name + ', take us back to the dock in Tavernier' });
+    else if (this.reopened) Game.toast('Captain ' + C.name, { color: PAL.sun, size: 40, y: 150, sub: 'Still your run. Pick a spot on the chart.' });
     else if (!this.c.legs) Game.toast('Cast off!', { color: PAL.sun, size: 44, y: 150, sub: 'Captain ' + C.name + ' at the wheel. Idle out of the canal.' });
     else Game.toast('Captain ' + C.name, { color: PAL.sun, size: 40, y: 150, sub: spotsLeft() ? '' : 'Pick the next spot on the chart, or go exploring' });
     if (this.dest) this.planRoute();
+    if (this.wantAuto && this.route) { this.auto = true; this.notch = 3; }
+    this.wantAuto = false;
     Chase.reset(this);
   }
   exit() { SFX.setEngine(0); SFX.setAmbient(0); this.saveBoat(); }
-  saveBoat() { this.c.boat = { x: this.x, y: this.y, h: this.h }; Trip.save(); }
+  // where the boat is and the run so far, so quitting mid-run and resuming from the title picks it all back up
+  saveBoat() {
+    const run = this.done ? null : { dist: this.legDist, flags: Object.assign({}, this.flags), lines: this.lines.filter((l) => !l.end) };
+    this.c.boat = { x: this.x, y: this.y, h: this.h, dest: this.dest || null, auto: !!this.auto, home: !!this.homeRun, run };
+    Trip.save();
+  }
   toggleView() { this.view = this.view === 'chase' ? 'top' : 'chase'; Store.set('seaView', this.view); Chase.reset(this); this.steer = null; }
   // the view behind the boat is drawn in 3D when this device can (sea3d.js), else the classic 2D chase view
   uses3D() { return this.view === 'chase' && Sea3D.ready(); }
@@ -15384,7 +15506,7 @@ class SeaScene {
       let bend = 0; { let h0 = Math.atan2(P[bi + 1][1] - P[bi][1], P[bi + 1][0] - P[bi][0]); const [, , j] = along(300); for (let i = bi + 1; i <= j && i < N; i++) { const h1 = Math.atan2(P[i + 1][1] - P[i][1], P[i + 1][0] - P[i][0]); bend = Math.max(bend, Math.abs(angleDiff(h0, h1))); h0 = h1; } }
       if (bend > 0.5 || Math.abs(off) > 0.5) cap = NOTCH[2].v; if (bend > 1.1 || Math.abs(off) > 1.1) cap = NOTCH[1].v;
       if (World.inZone(this.x, this.y) || World.inZone(this.x + Math.cos(this.h) * 200, this.y + Math.sin(this.h) * 200)) cap = Math.min(cap, NOTCH[2].v);
-      if (World.gridDepth(this.x + Math.cos(this.h) * 160, this.y + Math.sin(this.h) * 160) < 5) cap = Math.min(cap, 130);
+      if (World.gridDepth(this.x + Math.cos(this.h) * 160, this.y + Math.sin(this.h) * 160) < 5 || this.shallowAhead() < 2.6) cap = Math.min(cap, 130);   // off plane over a reef crown it would clip
       const end = P[N], left = dist(this.x, this.y, end[0], end[1]);
       if (left < 260) cap = Math.min(cap, NOTCH[2].v);
       if (left < 70 || (bi === N - 1 && bt > 0.98)) { this.auto = false; this.notch = 0; Game.toast('Arrived', { size: 30, y: 160, color: PAL.good }); }
@@ -15480,10 +15602,10 @@ class SeaScene {
   }
   runAground() {
     this.stuck = 2.6; this.v = 0; this.flags.aground++;
-    const d = World.depth(this.x, this.y), bay = this.y < chainY(this.x);
+    const bay = this.y < chainY(this.x), bx = this.x + Math.cos(this.h) * 46, by = this.y + Math.sin(this.h) * 46, reef = !bay && nearReefCrown(bx, by);
     const [px, py] = this.boatScreen();
     this.parts.burst(px, py + 10, 20, { color: bay ? 'rgba(140,110,70,0.7)' : 'rgba(230,210,160,0.8)', min: 30, max: 120, life: 1.2, drag: 1.5 });
-    Game.toast('Ran aground!', { color: PAL.coral, size: 40, y: 170, sub: d < 4 && !bay && this.y - chainY(this.x) > 1100 ? 'That’s a patch reef. Brown water means shallow.' : 'Too fast over the flats. Go slow over light water.' });
+    Game.toast('Ran aground!', { color: PAL.coral, size: 40, y: 170, sub: reef ? 'That’s a patch reef. Brown water means shallow.' : 'Too fast over the flats. Go slow over light water.' });
     SFX.play('bigsplash'); Game.shake(9, 0.5); Game.vibrate(150); this.say('aground');
     if (this.flags.aground === 1) this.lines.push({ label: 'Ran aground', pts: -25 });
     this.x -= Math.cos(this.h) * 20; this.y -= Math.sin(this.h) * 20;
@@ -15581,11 +15703,22 @@ class SeaScene {
     this.foam = this.foam.filter((f) => f.t < f.life);
   }
 
+  // the shallowest water the bow reaches in the next 1.6 s at this speed: the same depth and the same 2.6 ft that
+  // run the boat aground (move), so the banner shows exactly when holding course would ground you. Checked 10x a second.
+  shallowAhead() {
+    if (this.t < (this.shallowT || 0)) return this.shallowD;
+    this.shallowT = this.t + 0.1;
+    const ca = Math.cos(this.h), sa = Math.sin(this.h), reach = 46 + Math.max(120, this.v * 1.6);
+    let m = 99; for (let d = 46; d <= reach; d += 20) { const dd = World.depth(this.x + ca * d, this.y + sa * d); if (dd > 0 && dd < m) m = dd; }
+    return (this.shallowD = m);
+  }
+
   /* ---------- arriving ---------- */
   arrive(id) {
     this.auto = false; this.notch = 0; this.v = 0;
-    if (this.legDist > UNITS_PER_NM * 1.5) this.lines.push({ label: 'Ran ' + (this.legDist / UNITS_PER_NM).toFixed(1) + ' nm', pts: Math.min(100, Math.round(this.legDist / UNITS_PER_NM) * 5) });
-    if (!this.flags.aground && !this.flags.fwc && !this.flags.bumps && this.legDist > UNITS_PER_NM * 3) this.lines.push({ label: 'Clean run · no bumps, no tickets', pts: 50 });
+    this.lines = this.lines.filter((l) => !l.end);   // arriving again after Back to the boat: the end-of-run lines are counted fresh
+    if (this.legDist > UNITS_PER_NM * 1.5) this.lines.push({ label: 'Ran ' + (this.legDist / UNITS_PER_NM).toFixed(1) + ' nm', pts: Math.min(100, Math.round(this.legDist / UNITS_PER_NM) * 5), end: true });
+    if (!this.flags.aground && !this.flags.fwc && !this.flags.bumps && this.legDist > UNITS_PER_NM * 3) this.lines.push({ label: 'Clean run · no bumps, no tickets', pts: 50, end: true });
     this.total = this.lines.reduce((a, l) => a + l.pts, 0);
     this.panel = { kind: 'summary', id, t: 0 };
     SFX.play(this.total > 0 ? 'catch' : 'click'); this.say('arrive', 0.6);
@@ -15596,12 +15729,15 @@ class SeaScene {
     if (pts) { c.scores[this.driver] = (c.scores[this.driver] || 0) + pts; c.turns.push({ ch: this.driver, spot: 'run:' + id, total: pts, n: 0 }); }
     c.legs = (c.legs || 0) + 1;
     if (id === 'home') { this.saveBoat(); Game.go(new DayEndScene()); return; }
-    c.spot = id; c.turn = 0; this.saveBoat(); Game.go(new TurnIntroScene());
+    // kept until someone fishes here, so Back to the boat can hand the same captain the same run (reopenLeg)
+    c.leg = { ch: this.driver, spot: id, pts, dist: skipped ? 0 : this.legDist, flags: Object.assign({}, this.flags), lines: skipped ? [] : this.lines.filter((l) => !l.end) };
+    c.spot = id; c.turn = 0; this.dest = null; this.auto = false; this.saveBoat(); Game.go(new TurnIntroScene());
   }
   skipTo(id) {
     const [sx, sy] = id === 'home' ? [World.home.x + 10, World.home.dockY + 4] : spotXY(id);
     this.x = sx + (id === 'home' ? 0 : -60); this.y = sy + (id === 'home' ? 0 : 30); this.cam.x = this.x; this.cam.y = this.y;
     this.lines = []; this.total = 0; this.trail = []; this.foam = []; this.panel = { kind: 'summary', id, t: 0, skipped: true };
+    this.auto = false; this.saveBoat();
   }
 
   /* ---------- drawing ---------- */
@@ -15617,6 +15753,7 @@ class SeaScene {
     if (tint[1]) { const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, tint[1]); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
     if (this.v > 200) { const k = (this.v - 200) / 120, g = ctx.createRadialGradient(W / 2, H / 2, H * 0.4, W / 2, H / 2, H * 0.95); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,20,40,${0.28 * k})`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
     this.fl.draw(ctx);
+    if (this.steer && !this.panel) this.drawSteer(ctx);
     this.drawHud(ctx, W, H, t);
     if (this.panel) {
       if (this.panel.kind === 'chart') this.drawChart(ctx, W, H, t);
@@ -15732,8 +15869,30 @@ class SeaScene {
       if (up > 0.95 && chance(0.3)) this.foam.push(this.foamBlob(x, y, 0, 0, 5, 0.6));
     }
   }
+  // a finger (or the mouse) held on the water to steer: a ring where it is and an arrow for how hard the wheel is over,
+  // so it's plain the boat has heard you
+  drawSteer(ctx) {
+    const s = this.steer, r = this.rudder || 0;
+    if (this.view === 'top') {
+      const [bx, by] = this.toScreen(this.x, this.y);
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(s.x, s.y); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.16)'; ell(ctx, s.x, s.y, 26, 26); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 3; ell(ctx, s.x, s.y, 26, 26); ctx.stroke();
+    if (Math.abs(r) > 0.06) {
+      const d = Math.sign(r), len = 16 + Math.abs(r) * 30, x0 = s.x + d * 34;
+      ctx.fillStyle = PAL.sun; ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x0, s.y - 7); ctx.lineTo(x0 + d * len, s.y - 7); ctx.lineTo(x0 + d * len, s.y - 13); ctx.lineTo(x0 + d * (len + 14), s.y); ctx.lineTo(x0 + d * len, s.y + 13); ctx.lineTo(x0 + d * len, s.y + 7); ctx.lineTo(x0, s.y + 7); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+  }
+  // where the FWC boat is while it pulls you over: it comes up from astern and stops alongside, to starboard.
+  // One place, so the top-down, chase and 3D views all put it in the same spot.
+  fwcXY() {
+    const k = easeOut(this.fwc.k), back = lerp(420, -10, k), ca = Math.cos(this.h), sa = Math.sin(this.h);
+    return [this.x - ca * back - sa * 85, this.y - sa * back + ca * 85];
+  }
   drawFwc(ctx, t) {
-    const k = easeOut(this.fwc.k), x = this.x - Math.cos(this.h) * lerp(400, 90, k) + Math.cos(this.h + Math.PI / 2) * 60, y = this.y - Math.sin(this.h) * lerp(400, 90, k) + Math.sin(this.h + Math.PI / 2) * 60;
+    const [x, y] = this.fwcXY();
     drawFwcBoatTop(ctx, x, y, 0.5, this.h, { t });
     text(ctx, 'FWC', x, y + 34, { size: 14, align: 'center', color: '#fff', weight: 800, stroke: '#123a8a', sw: 4 });
   }
@@ -15797,7 +15956,7 @@ class SeaScene {
     // banners
     const banner = (msg, fill, col) => { panel(ctx, W / 2 - 170, 66, 340, 34, { r: 17, fill, line: 'rgba(0,0,0,0.1)' }); text(ctx, msg, W / 2, 88, { size: 15, align: 'center', color: col, weight: 800 }); };
     if (this.zone && !open) banner(this.v > NO_WAKE ? 'NO WAKE! Throttle down to SLOW' : 'NO WAKE ZONE · ' + this.zone.name, this.v > NO_WAKE ? 'rgba(200,60,20,0.92)' : 'rgba(255,255,255,0.92)', this.v > NO_WAKE ? '#fff' : PAL.ink);
-    else if (!open && World.gridDepth(this.x + Math.cos(this.h) * 120, this.y + Math.sin(this.h) * 120) < 4 && this.v > 110) banner('Shallow ahead! Ease off', 'rgba(230,200,120,0.95)', PAL.ink);
+    else if (!open && this.v > 140 && this.shallowAhead() < 2.6) banner('Shallow ahead! Ease off', 'rgba(230,200,120,0.95)', PAL.ink);
     else if (this.stall > 0 && !open) banner('Prop wrapped… ' + this.stall.toFixed(1) + 's', 'rgba(255,255,255,0.92)', PAL.ink);
     // a pointer to the destination when it's off screen
     if (xy && !open && this.view === 'chase') {
@@ -15882,8 +16041,7 @@ class SeaScene {
       UI.region('chartpin-' + id, X - 22, Y - 22, 44, 44, () => { this.sel = id; SFX.play('tick'); });
     };
     for (const id of SPOT_ORDER) {
-      const known = Charts.isKnown(id); let [x, y] = spotXY(id);
-      if (!known) { x += (hash2(id.length, 3) - 0.5) * 1400; y += (hash2(3, id.length) - 0.5) * 900; }
+      const known = Charts.isKnown(id), [x, y] = known ? spotXY(id) : rumorXY(id);
       pin(id, x, y, known);
     }
     const hx = M.X(World.home.x), hy = M.Y(World.home.dockY);
@@ -15980,7 +16138,7 @@ class SeaScene {
     UI.button(ctx, 'endtrip', W / 2 - 130, 360, 125, 50, c.mode === 'crew' ? 'End the trip' : 'Head home', () => (this.panel = { kind: 'pause', confirm: true }), { style: 'coral', size: 17 });
     UI.button(ctx, 'totitle', W / 2 + 5, 360, 125, 50, 'Quit to title', () => { this.saveBoat(); Game.go(new TitleScene()); }, { style: 'ghost', size: 17 });
     GFX.pauseRow(ctx, W / 2, 422);
-    text(ctx, c.mode === 'crew' ? 'Your trip is saved. Resume it from the title screen.' : 'Solo days aren’t saved. Your logbook is.', W / 2, 496, { size: 15, align: 'center', color: '#9fb8c2', weight: 600 });
+    text(ctx, c.mode !== 'crew' ? 'Solo days aren’t saved. Your logbook is.' : Store.failed ? 'This browser isn’t saving, so the trip ends if you leave.' : 'Your trip is saved. Resume it from the title screen.', W / 2, 496, { size: 15, align: 'center', color: '#9fb8c2', weight: 600 });
   }
 }
 function segCross(ax, ay, bx, by, cx, cy, dx, dy) {
@@ -16018,6 +16176,7 @@ function advanceTrip() {
   const c = Trip.cur, kind = tripNext(c);
   if (kind === 'turn') c.turn++;
   else { if (!c.done.includes(c.spot)) c.done.push(c.spot); c.turn = 0; c.spot = null; }
+  c.leg = null;   // someone fished here, so the run that got the boat here is settled
   Trip.save();
   return kind;
 }
@@ -16525,6 +16684,28 @@ class BriefingScene {
 }
 
 /* ================= TURN HAND-OFF ================= */
+// Back to the boat before anyone fishes: the run that got here isn't finished after all. The same captain keeps the
+// wheel, the run's points come back off the board, and the next arrival pays for the whole run, start to finish.
+function reopenLeg(c) {
+  const L = c.leg; c.leg = null;
+  if (!L || L.spot !== c.spot) return;
+  if (L.pts) {
+    c.scores[L.ch] = (c.scores[L.ch] || 0) - L.pts;
+    for (let i = c.turns.length - 1; i >= 0; i--) if (c.turns[i].spot === 'run:' + L.spot && c.turns[i].ch === L.ch) { c.turns.splice(i, 1); break; }
+  }
+  c.legs = Math.max(0, (c.legs || 0) - 1);
+  c.legBack = { dist: L.dist || 0, flags: L.flags || {}, lines: Array.isArray(L.lines) ? L.lines : [] };
+}
+// a solo day isn't saved, so going to the title from the middle of one asks first. Drawn last, over everything.
+function askLeaveSolo(ctx, stay, leave) {
+  const W = Game.W, H = Game.H, y = Math.round(H / 2 - 70);
+  ctx.fillStyle = 'rgba(4,22,34,0.86)'; ctx.fillRect(0, 0, W, H);
+  UI.region('ask-cover', 0, 0, W, H, null, { key: 'Enter|Space' });   // nothing under it reacts while it's up
+  text(ctx, 'Leave your solo day?', W / 2, y, { display: true, size: 38, align: 'center', color: '#fff', maxW: W - 40 });
+  text(ctx, 'Solo days aren’t saved. Your catches stay in the logbook.', W / 2, y + 36, { size: 18, align: 'center', color: '#cfe3ea', weight: 600, maxW: W - 40 });
+  UI.button(ctx, 'ask-stay', W / 2 - 230, y + 70, 220, 56, 'Keep fishing', stay, { style: 'primary', size: 20, key: 'Escape' });
+  UI.button(ctx, 'ask-leave', W / 2 + 10, y + 70, 220, 56, 'Leave', leave, { style: 'ghost', size: 20 });
+}
 class TurnIntroScene {
   // who and where are fixed when the hand-off opens, so it still draws while fading out after Back to the boat clears the spot
   constructor() {
@@ -16566,8 +16747,9 @@ class TurnIntroScene {
     // before anyone has fished this spot the captain can still pick another one; after that, everyone fishes it.
     // Esc goes back a step: to the boat while that's open, otherwise out to the title (a crew trip stays saved).
     const canLeave = c.mode !== 'crew' || this.turn === 0;
-    UI.button(ctx, 'menu', 20, 18, 96, 40, 'Title', () => Game.go(new TitleScene()), { style: 'ghost', size: 17, key: canLeave ? undefined : 'Escape' });
-    if (canLeave) UI.button(ctx, 'chart', 20, H - 64, 170, 46, 'Back to the boat', () => { c.spot = null; c.turn = 0; Trip.save(); Game.go(new SeaScene()); }, { style: 'ghost', size: 17, key: 'Escape' });
+    UI.button(ctx, 'menu', 20, 18, 96, 40, 'Title', () => (c.mode === 'crew' ? Game.go(new TitleScene()) : (this.ask = true)), { style: 'ghost', size: 17, key: canLeave ? undefined : 'Escape' });
+    if (canLeave) UI.button(ctx, 'chart', 20, H - 64, 170, 46, 'Back to the boat', () => { reopenLeg(c); c.spot = null; c.turn = 0; Trip.save(); Game.go(new SeaScene()); }, { style: 'ghost', size: 17, key: 'Escape' });
+    if (this.ask) askLeaveSolo(ctx, () => (this.ask = false), () => Game.go(new TitleScene()));
   }
 }
 
@@ -16707,7 +16889,7 @@ class ResultsScene {
       const nw = Math.min(320, lw - 110), k = easeBack(clamp((this.t - this.doneAt) / 0.3, 0, 1));
       ctx.save(); ctx.globalAlpha = clamp(k, 0, 1); ctx.translate(0, (1 - k) * 16);
       UI.button(ctx, 'next', 30, H - 70, nw, 56, this.nextLabel(), () => this.leave(), { style: 'primary', size: 21, key: 'Enter|Space' });
-      UI.button(ctx, 'title', 40 + nw, H - 66, 100, 48, 'Title', () => this.leave(true), { style: 'ghost', size: 17 });
+      UI.button(ctx, 'title', 40 + nw, H - 66, 100, 48, 'Title', () => (this.c.mode === 'crew' ? this.leave(true) : (this.ask = true)), { style: 'ghost', size: 17 });
       ctx.restore();
     } else UI.region('skip', 0, 0, W, H, () => { this.t = 99; });
     const cx = W - L.cardW - 24;
@@ -16722,6 +16904,7 @@ class ResultsScene {
       text(ctx, 'Next time.', cx + L.cardW / 2, 290, { display: true, size: 28, align: 'center', color: '#fff' });
     }
     this.parts.draw(ctx); this.fl.draw(ctx);
+    if (this.ask) askLeaveSolo(ctx, () => (this.ask = false), () => this.leave(true));
   }
 }
 
@@ -16824,7 +17007,7 @@ const LOG_INK = '#2a2418', LOG_BROWN = '#7a5a2a', LOG_RED = '#b8401f';
 class LogbookScene {
   constructor() {
     this.t = 0; this.scroll = 0; this.target = 0; this.vel = 0; this.drag = null; this.maxScroll = 0;
-    this.rec = Records.all(); this.trips = Records.trips(); this.known = Charts.known(); this.found = new Set(Store.get('charted', []));
+    this.rec = Records.all(); this.trips = Records.trips(); this.known = Charts.known(); this.found = new Set(Store.arr('charted'));
     this.onWheel = (e) => { this.vel = 0; this.target = clamp(this.target + e.deltaY * (e.deltaMode === 1 ? 30 : 0.9), 0, this.maxScroll); };
   }
   enter() { window.addEventListener('wheel', this.onWheel, { passive: true }); Music.play('title'); }
@@ -16973,7 +17156,7 @@ const HOWTO = [
   { title: 'The trip', art: 'boat', lines: ['Crew Trip: pass one phone around. The captain drives the boat to a spot, then everyone fishes it.', 'Bigger fish and bigger bugs score more. Trophies, slams and clean releases add bonuses.', 'Every day has three bounties, like a mahi over 20\u00a0lb. The first one to finish a bounty takes its bonus.', 'Full day is four spots, half day is two. Then run home at sunset. Most points is Captain of the Day.'] },
   { title: 'Running the boat', art: 'boat', lines: ['Hold and drag where you want the boat to go (or ← →). The throttle is on the right: STOP, IDLE, SLOW, CRUISE, FULL.', 'Open the Chart to pick a spot. Set course and the autopilot drives, and you can take over any time.', 'Watch the depth. Light water is shallow: slow down or you run aground. No-wake zones mean SLOW or FWC pulls you over.', 'Only four spots are charted. Find the rest by exploring: run past a ? on the chart to discover it.'] },
   { title: 'Bug Hunt', art: 'lobster', lines: ['Swim down and look for antennae poking out of holes. Not every hole has a bug in it.', 'Hold on the hole (or the TICKLE button) to coax the bug out. When it twitches, let go or it backs in.', 'When it walks out, click or tap the bug to swing your net. If it crouches, it’s about to tail-flip backward.', 'Pro move: put the net down behind it, and it flips right in. Gauge every bug: past the 3" gauge and no eggs.'] },
-  { title: 'Bottom fishing', art: 'grouper', lines: ['Watch the fish finder on the right. Arches are fish (red means big), blue speckle is bait.', 'Drag up or down (or on the fish finder) to drop your bait to the marks. Squid for snapper, pinfish for grouper and jacks.', 'Small twitches are nibbles. Wait. When the rod slams down, tap to set the hook.', 'Nothing on the finder? Tap Move ◀ ▶ to idle along the ledge or the wreck until it lights up.'] },
+  { title: 'Bottom fishing', art: 'grouper', lines: ['Watch the fish finder on the right. Arches are fish (red means big), blue speckle is bait.', 'Drag up or down (or on the fish finder) to drop your bait to the marks. Squid for snapper, pinfish for grouper and jacks.', 'Small twitches are nibbles. Wait. When the rod slams down, tap to set the hook.', 'Nothing on the finder? Tap Move ◀ ▶ to idle along the ledge or the wreck until it lights up.', 'The ▸ under the finder (or F) makes it smaller, then tucks it away. Tap it again to bring it back.'] },
   { title: 'Trolling', art: 'mahi', lines: ['Drag up and down to steer. Your lures follow the path the boat took.', 'Frigate birds and weed lines mean mahi. Diving terns and bait balls mean tuna.', 'The fish are out there, but you have to find them. Read the birds and the weed.', 'Trap floats wrap your prop and foul your lures. Tripletail like to hide under them.'] },
   { title: 'The backcountry', art: 'bonefish', lines: ['Your buddy poles the skiff (◀ ▶ at the bottom right) and calls fish by the clock: 12 is straight ahead.', 'Look for tails, wakes, mud puffs and rolling tarpon. Press and hold where you want the fly, then let go to cast.', 'Land it a few feet in front of the fish. Too close, behind it, or the line across its back, and it spooks.', 'Tap to strip in the fish’s rhythm. When it eats, tap to set. At the bridge, the tide carries your fly.'] },
   { title: 'Fighting a fish', art: 'fight', lines: ['Hold to reel. Keep the drag needle in the green.', 'When it runs, let go. Holding on a hard run snaps the line.', 'When it jumps, let go. That’s bowing to the fish, and it earns a bonus.', 'Too much slack and it spits the hook. Take too long and a shark might take it.'] }

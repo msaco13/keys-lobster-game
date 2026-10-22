@@ -22,3 +22,4 @@ const url = await page.evaluate(() => {
 fs.writeFileSync(out, Buffer.from(url.split(',')[1], 'base64'));
 console.log(errs.length ? errs.join('\n') : 'ok');
 await browser.close();
+process.exitCode = errs.length ? 1 : 0;

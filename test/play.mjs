@@ -57,3 +57,4 @@ await page.evaluate(()=>{ Game.scene.page=1; }); await page.waitForTimeout(200);
 await go('new SoloSetupScene()'); await shot('solo');
 console.log(errs.length ? 'ERRORS:\n'+errs.join('\n') : 'NO ERRORS');
 await browser.close(); srv.close();
+process.exitCode = errs.length ? 1 : 0;

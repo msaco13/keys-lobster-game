@@ -147,3 +147,4 @@ if (what === 'sim' || what === 'all') {
 }
 console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'no errors');
 await browser.close();
+process.exitCode = errs.length ? 1 : 0;

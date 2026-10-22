@@ -40,7 +40,7 @@ const GFX = {
   // a frame counter for the on-screen readout (counts whatever is drawn, 2D or 3D)
   meter: { n: 0, t0: 0, last: 0 },
   count(now) {
-    const M = this.meter; if (!M.t0 || now - M.last > 300) { M.t0 = now; M.n = 0; }
+    const M = this.meter; if (!M.t0 || now - M.last > 2500) { M.t0 = now; M.n = 0; }   // a slow phone's long frames still count; a hidden tab resets it (GL)
     M.last = now; M.n++; if (now - M.t0 >= 1000) { this.fps = (M.n * 1000) / (now - M.t0); M.n = 0; M.t0 = now; }
   }
 };
@@ -190,6 +190,9 @@ const GL = {
     const r = (this.r = new THREE.WebGLRenderer(Object.assign({ canvas: cv, context: gl }, attrs)));
     r.outputColorSpace = THREE.LinearSRGBColorSpace; r.toneMapping = THREE.NoToneMapping; r.setClearColor(0x9fc8de, 1);
     cv.addEventListener('webglcontextlost', (e) => { e.preventDefault(); console.warn('WebGL context lost: classic view for now'); this.fail('lost'); });
+    // the browser hands the context back (after another tab hogged the GPU, or the phone slept): 3D picks up again.
+    // three.js re-uploads everything on its next render.
+    cv.addEventListener('webglcontextrestored', () => { if (this.why !== 'lost') return; this.state = 'ready'; this.why = ''; this.settle(); });
     this.resize();
   },
   fail(why) {
@@ -233,9 +236,11 @@ const GL = {
   // capped at 30, a phone in low-power mode), go back up and stop trying. At the lowest step and still slow, switch to
   // the classic view and say so. The step that works is remembered for next time.
   perf: { t0: 0, n: 0, last: 0, slow: 0, fast: 0, settle: 2, target: 54, drop: null, locked: false },
+  // A paused tab is told apart by the page being hidden (visibilitychange resets the count), not by a long gap: on a
+  // phone drawing 2–4 frames a second every gap is long, and those are exactly the frames that must count as slow.
   tune(now, busy) {
     const P = this.perf;
-    if (busy || !P.last || now - P.last > 250) { P.last = now; P.t0 = now; P.n = 0; return; }
+    if (busy || !P.last || now - P.last > 2500) { P.last = now; P.t0 = now; P.n = 0; return; }
     P.last = now; P.n++;
     if (now - P.t0 < 1000) return;
     const fps = (P.n * 1000) / (now - P.t0); P.n = 0; P.t0 = now; this.fps = fps;
@@ -252,6 +257,10 @@ const GL = {
       P.slow = Math.max(0, P.slow - 1);
       if (fps > P.target + 4 && ++P.fast >= 15 && !P.locked && GFX.tier < 3) { P.fast = 0; P.drop = null; GFX.setTier(GFX.tier + 1); this.applyTier(); P.settle = 2; P.locked = true; }
     }
+  },
+  watchVisibility() {
+    if (this.watching) return; this.watching = true;
+    document.addEventListener('visibilitychange', () => { this.perf.last = 0; GFX.meter.t0 = 0; });
   },
   // textures more than one scene uses, made once
   textures() {
@@ -283,6 +292,7 @@ const GL = {
     return T;
   }
 };
+GL.watchVisibility();
 
 /* ---------- the boat and the crew, as merged meshes ---------- */
 const Models = {

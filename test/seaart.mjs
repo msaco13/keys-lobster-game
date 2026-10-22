@@ -213,3 +213,4 @@ console.log('ms per call:'); for (const [k, v] of Object.entries(perf)) console.
 for (const [k, url] of Object.entries(sheets)) { const f = path.join(out, `seaart-${k}.png`); fs.writeFileSync(f, Buffer.from(url.split(',')[1], 'base64')); console.log(f); }
 console.log(errs.length ? errs.join('\n') : 'ok');
 await browser.close();
+process.exitCode = errs.length ? 1 : 0;

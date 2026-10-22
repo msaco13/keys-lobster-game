@@ -94,14 +94,14 @@ class SessionBase {
     UI.button(ctx, 'mute', cx - 130, 264, 125, 48, SFX.muted ? 'Sound: off' : 'Sound: on', () => SFX.setMuted(!SFX.muted), { style: 'secondary', size: 17 });
     UI.button(ctx, 'music', cx + 5, 264, 125, 48, Music.on ? 'Music: on' : 'Music: off', () => Music.setOn(!Music.on), { style: 'secondary', size: 17 });
     UI.button(ctx, 'quit', cx - 130, 326, 260, 56, 'End my turn now', () => { this.setPaused(false); this.end('quit'); }, { style: 'coral', size: 20, sub: this.child ? 'Right after this fish' : 'Your catches so far still count' });
-    UI.button(ctx, 'totitle', cx - 130, 398, 260, 52, 'Quit to title', () => (this.quitAsk = true), { style: 'ghost', size: 19, sub: crew ? 'Your trip is saved' : 'Ends your solo day' });
+    UI.button(ctx, 'totitle', cx - 130, 398, 260, 52, 'Quit to title', () => (this.quitAsk = true), { style: 'ghost', size: 19, sub: !crew ? 'Ends your solo day' : Store.failed ? 'This browser isn’t saving' : 'Your trip is saved' });
     GFX.pauseRow(ctx, cx, 464);
   }
   drawQuitAsk(ctx, crew) {
     const W = Game.W, cx = W / 2;
     text(ctx, crew ? 'Leave the trip?' : 'Leave your day?', cx, 150, { display: true, size: 46, align: 'center', color: '#fff', maxW: W - 60 });
     const lines = crew
-      ? ['Your trip is saved. Pick it up with Resume trip on the title screen.', 'This turn won’t count. ' + this.C.name + ' starts it over when you come back.']
+      ? Store.failed ? ['This browser isn’t saving, so the trip ends here.', 'Private browsing or full storage. Scores so far are lost.'] : ['Your trip is saved. Pick it up with Resume trip on the title screen.', 'This turn won’t count. ' + this.C.name + ' starts it over when you come back.']
       : ['Solo days aren’t saved, so your day ends here.', 'This turn won’t count. Bests from earlier turns stay in the logbook.'];
     lines.forEach((l, i) => text(ctx, l, cx, 202 + i * 30, { size: 19, align: 'center', color: '#cfe3ea', weight: 600, maxW: W - 70 }));
     UI.button(ctx, 'quitno', cx - 230, 280, 220, 56, 'Cancel', () => (this.quitAsk = false), { style: 'ghost', size: 20, key: 'Escape' });

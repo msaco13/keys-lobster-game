@@ -89,3 +89,4 @@ for (const [k, v] of Object.entries(res)) {
 }
 console.log(errs.length ? errs.join('\n') : 'no page errors');
 await browser.close();
+process.exitCode = errs.length ? 1 : 0;

@@ -81,3 +81,4 @@ for (const spot of ['bottom', 'wreck']) for (const end of ['XMIN', 'XMAX']) {
 }
 console.log(errs.length ? errs.join('\n') : 'no errors');
 await browser.close();
+process.exitCode = errs.length ? 1 : 0;

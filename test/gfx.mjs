@@ -47,6 +47,19 @@ const open = async () => {
   check(errs.length === 0, 'no errors ' + errs.join(' | '));
   await page.close();
 }
+{ // a very slow device (2–3 frames a second): every gap between frames is long, and it still counts as slow
+  const { page, errs } = await open();
+  const r = await page.evaluate(() => feed(2.5, 30));
+  check(r.state === 'failed', 'at 2.5 fps it gives up on 3D (' + r.state + ', tier ' + r.tier + ')');
+  check(errs.length === 0, 'no errors ' + errs.join(' | '));
+  await page.close();
+}
+{ // a hidden tab (switching apps) doesn't count against the device
+  const { page } = await open();
+  const r = await page.evaluate(() => { feed(60, 3); document.dispatchEvent(new Event('visibilitychange')); return { last: GL.perf.last, state: GL.state }; });
+  check(r.last === 0 && r.state === 'ready', 'hiding the page restarts the count (' + JSON.stringify(r) + ')');
+  await page.close();
+}
 { // a fast device climbs a step
   const { page } = await open();
   const r = await page.evaluate(() => feed(60, 22));
@@ -55,9 +68,13 @@ const open = async () => {
 }
 { // the WebGL context gets lost (the browser reclaims the GPU): classic view, no crash
   const { page, errs } = await open();
-  await page.evaluate(() => GL.r.getContext().getExtension('WEBGL_lose_context').loseContext()); await page.waitForTimeout(1200);
+  await page.evaluate(() => { window.lc = GL.r.getContext().getExtension('WEBGL_lose_context'); window.lc.loseContext(); }); await page.waitForTimeout(1200);
   const st = await page.evaluate(() => ({ state: GL.state, why: GL.why, uses: Game.scene.uses3D(), err: Game.error && String(Game.error) }));
   check(st.state === 'failed' && st.why === 'lost' && !st.uses && !st.err, 'context lost: classic view (' + JSON.stringify(st) + ')');
+  // and when the browser gives it back, 3D picks up again
+  await page.evaluate(() => window.lc.restoreContext()); await page.waitForTimeout(2500);
+  const st2 = await page.evaluate(() => ({ state: GL.state, uses: Game.scene.uses3D(), shown: GL.cv.style.display, err: Game.error && String(Game.error) }));
+  check(st2.state === 'ready' && st2.uses && st2.shown === 'block' && !st2.err, 'context restored: 3D again (' + JSON.stringify(st2) + ')');
   check(errs.filter((e) => !/CONTEXT_LOST|context lost/i.test(e)).length === 0, 'no errors ' + errs.join(' | '));
   await page.close();
 }
@@ -90,3 +107,4 @@ const open = async () => {
 }
 console.log(fails.length ? 'FAILED: ' + fails.length : 'ALL PASS');
 await browser.close();
+process.exitCode = fails.length ? 1 : 0;

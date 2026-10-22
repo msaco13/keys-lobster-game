@@ -1,5 +1,6 @@
 # Publishes the game to GitHub Pages on every push to main:
 # https://msaco13.github.io/keys-lobster-game/
+# The built page has to pass the smoke test (test/smoke.mjs) first; if it fails, the live game stays as it was.
 name: Publish the game
 
 on:
@@ -24,12 +25,21 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the single-file game
+        run: node tools/build.mjs
+      - name: Smoke test it before it goes live
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+          node test/smoke.mjs dist/keys-crew.html
       - uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Build the single-file game
+      - name: Stage the site
         run: |
-          node tools/build.mjs
           mkdir -p _site
           cp dist/keys-crew.html _site/index.html
           touch _site/.nojekyll

@@ -117,6 +117,8 @@ const PATCH_REEFS = [];
   }
   for (const r of PATCH_REEFS) r.seed = rng() * 100;
 })();
+// within a boat's swing of a patch reef's groundable crown: routes keep this much sea room, since the autopilot cuts corners
+function nearReefCrown(x, y) { const s = y - chainY(x); if (s < 1000 || s > 2300) return false; for (const r of PATCH_REEFS) { const dx = (x - r.x) / (r.rx + 70), dy = (y - r.y) / (r.ry + 70); if (dx * dx + dy * dy < 0.2) return true; } return false; }
 function reefK(x, y) { let best = 9; for (const r of PATCH_REEFS) { const dx = (x - r.x) / r.rx; if (Math.abs(dx) > 2) continue; const dy = (y - r.y) / r.ry; const k = dx * dx + dy * dy; if (k < best) best = k; } return best; }
 
 /* ---------- depth ---------- */
@@ -133,7 +135,7 @@ function oceanDepth(x, y, s, hw) {
   if (hw === 0 && s < 520) dep = Math.max(dep, 11 - s * 0.008);
   if (Math.abs(x - HOME.x) < 70 && d < 680) dep = Math.max(dep, 8 - Math.abs(x - HOME.x) * 0.04);   // the dredged channel out of Tavernier harbor
   const bump = Math.max(0, 1 - ((s - 2400) / 120) ** 2); if (bump > 0) dep -= 22 * crestK(x) * bump;
-  if (s > 1100 && s < 2200) { const k = reefK(x, y); if (k < 1) dep = Math.min(dep, 3 + 7 * k); }
+  if (s > 1100 && s < 2200) { const k = reefK(x, y); if (k < 1) dep = Math.min(dep, 1.6 + 8.4 * k); }   // a patch reef's crown is shallow enough to run aground on at speed (sea.js: under 2.6 ft)
   const [hx, hy] = HUMP_XY; const dh = dist(x, y, hx, hy); if (dh < 1400) dep = Math.min(dep, 450 + (dh / 900) ** 2 * 1300);
   return dep;
 }
@@ -413,7 +415,7 @@ const World = {
     const clear = (ax, ay, bx, by) => {
       const L = Math.hypot(bx - ax, by - ay); if (L < 1) return true;
       const nx = -(by - ay) / L, ny = (bx - ax) / L, n = Math.ceil(L / 12);
-      for (let k = 0; k <= n; k++) { const x = lerp(ax, bx, k / n), y = lerp(ay, by, k / n); if (depthRaw(x, y) < 2.8 || depthRaw(x + nx * 22, y + ny * 22) < 1.6 || depthRaw(x - nx * 22, y - ny * 22) < 1.6) return false; }
+      for (let k = 0; k <= n; k++) { const x = lerp(ax, bx, k / n), y = lerp(ay, by, k / n); if (depthRaw(x, y) < 2.8 || depthRaw(x + nx * 22, y + ny * 22) < 1.6 || depthRaw(x - nx * 22, y - ny * 22) < 1.6 || nearReefCrown(x, y)) return false; }
       const mnx = Math.min(ax, bx) - 70, mxx = Math.max(ax, bx) + 70, mny = Math.min(ay, by) - 70, mxy = Math.max(ay, by) + 70;
       for (const o of obst) { if (o.x < mnx || o.x > mxx || o.y < mny || o.y > mxy) continue; if (segDist(o.x, o.y, ax, ay, bx, by) < o.r + 26) return false; }
       return true;

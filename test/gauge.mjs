@@ -13,3 +13,4 @@ for (const [w,h] of [[960,540],[844,390]]) {
   await page.close();
 }
 console.log(errs.length? errs.join('\n'):'no errors'); await browser.close();
+process.exitCode = errs.length ? 1 : 0;

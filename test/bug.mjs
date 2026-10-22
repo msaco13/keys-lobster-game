@@ -66,3 +66,4 @@ await page.evaluate(() => { const s = Game.scene; s.diver.x = s.goliath.x + 160;
 await page.evaluate(() => { const s = Game.scene; s.diver.x = 2400; s.diver.y = 400; s.startShark(); }); await page.waitForTimeout(1200); await shot('reef-shark');
 console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'NO ERRORS');
 await browser.close();
+process.exitCode = errs.length ? 1 : 0;
