@@ -18,7 +18,7 @@ await page.evaluate(([scenario]) => {
   World.build(); Trip.start({ mode: 'crew', crew: ['michael', 'jorge', 'jemel'], plan: 'full', sessionLen: 120 });
   Trip.cur.weather = { id: 'light', name: 'Light chop', wind: '5–10 kts', vis: 1, drift: 0.3, aim: 1, tag: '#Light' };
   if (scenario === 'sunset') { Trip.cur.legs = 3; Trip.cur.boat = { x: 7600, y: wy(7600, 1500), h: -2.4 }; }
-  Game.go(new SeaScene(scenario === 'sunset' ? { home: true } : {}), true);
+  Game.go(new SeaScene(scenario === 'sunset' ? { home: true } : {}), true); if (Game.scene.panel && Game.scene.panel.kind === 'captain') Game.scene.takeWheel();
   SFX.muted = true; Game._frame = Game.frame; Game.frame = () => {};   // we drive the frames from here
   if (typeof GL !== 'undefined') GL.tune = () => {};               // and the speed tuner would just see a slow machine
   window.__clip = { t: 0, scenario };

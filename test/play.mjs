@@ -13,7 +13,7 @@ const go = async (expr, wait=700) => { await page.evaluate(`Game.go(${expr}, tru
 await shot('title');
 await go('new CrewSetupScene()'); await shot('crew');
 await page.evaluate(()=>{ Trip.start({mode:'crew', crew:['michael','jorge','jemel'], plan:'full', sessionLen:120}); Trip.cur.weather = {id:'glass',name:'Glass calm',wind:'0–5 kts',vis:1.25,drift:0,aim:0.75,tag:'#Glass'}; });
-await go('new SeaScene()', 1500); await shot('sea');
+await go('new SeaScene()', 1500); await page.evaluate(()=>{ if (Game.scene.panel && Game.scene.panel.kind === 'captain') Game.scene.takeWheel(); }); await shot('sea');
 await page.evaluate(()=>{ Game.scene.openChart(); Game.scene.sel='bughunt'; }); await page.waitForTimeout(300); await shot('chart-sel');
 await page.evaluate(()=>{ Trip.cur.spot='bughunt'; Trip.cur.turn=0; }); await go('new TurnIntroScene()'); await shot('turn');
 // bug hunt
@@ -49,7 +49,7 @@ await page.mouse.move(600,250); await page.mouse.down(); await page.waitForTimeo
 await page.evaluate(()=>{ const s=Game.scene; s.startFight({sp:'tarpon', weight:110, ctxType:'flats', rock:0}); s.child.revealed=true; s.child.dist=30; }); await page.waitForTimeout(500); await shot('fight-flats');
 // results / day end / logbook / howto
 await page.evaluate(()=>{ const c1=makeCatch('mahi',29.4,'jemel','troll'); const c2=makeCatch('blackfin',17,'jorge','troll'); Trip.record('jemel','troll',{catches:[c1],total:c1.pts,lines:[]}); Trip.record('jorge','troll',{catches:[c2],total:c2.pts,lines:[]}); const l=makeCatch('lobster',3.4,'michael','bughunt'); l.cl=4.9; Trip.record('michael','bughunt',{catches:[l],total:l.pts,lines:[]}); });
-await go('new SeaScene()'); await page.evaluate(()=>{ Game.scene.openChart(); }); await page.waitForTimeout(300); await shot('chart-scores');
+await go('new SeaScene()'); await page.evaluate(()=>{ if (Game.scene.panel && Game.scene.panel.kind === 'captain') Game.scene.takeWheel(); Game.scene.openChart(); }); await page.waitForTimeout(300); await shot('chart-scores');
 await go('new DayEndScene()', 1500); await shot('dayend');
 await go('new LogbookScene()'); await shot('logbook');
 await go('new HowToScene()'); await shot('howto');

@@ -11,7 +11,7 @@ const open = async () => {
   const errs = []; page.on('pageerror', (e) => errs.push('PAGEERR ' + e.message)); page.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
   await page.addInitScript(() => { localStorage.clear(); localStorage.setItem('keyscrew_gfx', JSON.stringify('3d')); localStorage.setItem('keyscrew_gfxTier', JSON.stringify(2)); });
   await page.goto('file://' + root + '/index.html'); await page.waitForTimeout(700);
-  await page.evaluate(() => { World.build(); Trip.start({ mode: 'crew', crew: ['michael', 'jorge', 'jemel'], plan: 'full', sessionLen: 120 }); Game.go(new SeaScene(), true); });
+  await page.evaluate(() => { World.build(); Trip.start({ mode: 'crew', crew: ['michael', 'jorge', 'jemel'], plan: 'full', sessionLen: 120 }); Game.go(new SeaScene(), true); if (Game.scene.panel && Game.scene.panel.kind === 'captain') Game.scene.takeWheel(); });
   await page.waitForFunction(() => GL.state === 'ready' && Sea3D.boatOf === Game.scene, null, { timeout: 30000 });
   // from here on, act like an ordinary player's 'auto' setting, and feed the tuner frames at a given rate
   await page.evaluate(() => { GFX.mode = 'auto'; window.feed = (fps, secs) => { const P = GL.perf; let t = (P.last || performance.now()) + 1; P.last = t; for (let i = 0; i < fps * secs; i++) { t += 1000 / fps; GL.tune(t, false); } return { tier: GFX.tier, state: GL.state, target: GL.perf.target }; }; });

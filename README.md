@@ -33,6 +33,8 @@ The trip starts at the dock behind the house in Tavernier. The boat is yours to 
 from Long Key to Key Largo: Florida Bay and the Everglades shoreline up top, Hawk Channel, the patch reefs,
 the reef line, and the Gulf Stream out past the drop-off. The far spots are 15 to 20 nautical miles out.
 
+- **A new captain gets the phone first.** On a crew trip each run opens on a card: hand the phone to the captain, who
+  taps **Take the wheel**. (When the captain is the one who fished last, it skips the card: they're already holding it.)
 - **The view** rides behind the boat in 3D. The water goes from gin-clear over the sand to cobalt in the Gulf Stream,
   the way it does in the Keys; the boat rides the chop, banks into turns and throws a wake; and the islands, mangroves,
   bridges, Alligator Light, other boats, dolphins and birds are all out there. **Top-down view** (under the minimap, or V)
@@ -40,15 +42,19 @@ the reef line, and the Gulf Stream out past the drop-off. The far spots are 15 t
 - **Steer** by holding left or right of the boat (or ← →); the farther out you hold, the harder it turns. In the top-down
   view, hold where you want to go. **Throttle** is the lever: STOP, IDLE, SLOW, CRUISE, FULL (or ↑ ↓).
 - **The chart** (Chart button or M) shows every spot you know about. Pick one and **Set course**: the autopilot drives the
-  channels for you, and you can grab the wheel any time. **Skip the ride** if you just want to fish.
+  channels for you, and you can grab the wheel any time. **Skip the ride** if you just want to fish: it goes straight to
+  the hand-off, with no captain's points.
 - **Read the water.** The depth sounder is top-center. Light water is shallow: run it fast and you go aground.
   Florida Bay is a maze of mud banks; follow the marked channels.
-- **No-wake zones** (the harbor, under the bridges, Flamingo) mean SLOW. FWC warns you once, then pulls you over.
+- **No-wake zones** (the harbor, under the bridges, Flamingo) mean SLOW. The panel at the top turns white and says so;
+  go too fast and a red banner warns you. FWC warns you once, then pulls you over.
 - Dodge trap floats and channel markers, thread the bridge spans, catch air off other boats' wakes,
   let dolphins ride the bow, and slow down for manatees. It all adds up to captain's points.
 - **Only four spots are on the chart.** The other five you have to find. The chart shows a ? and a rumor
   from the dock; run past it to discover the spot and put it on the chart for good.
-- When the day's spots are done, run home at sunset and tie up at the dock.
+- When the day's spots are done, run home at sunset and tie up at the dock. The end of the day names the Captain of
+  the Day (or the tie).
+- Casting off a new crew trip while one is saved asks first, and says whose trip it is and how far along.
 
 ## Phones and graphics
 

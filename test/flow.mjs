@@ -24,12 +24,16 @@ await shot('title');
 await click('crew'); await shot('crew');
 await click('card1'); await click('half'); await click('len90'); await shot('crew-2');   // drop Jorge, half day, 90s
 await click('go'); await page.waitForTimeout(900); await expect('BriefingScene', 'the briefing'); await shot('briefing');
-await click('castoff'); await page.waitForTimeout(800); await expect('SeaScene', 'after cast off'); await shot('sea-dock');
+await click('castoff'); await page.waitForTimeout(800); await expect('SeaScene', 'after cast off');
+// a new captain gets the phone handed over first (the captain who fished last already has it)
+const wheel = async (label) => { if (await page.evaluate(() => !!UI.byId('wheel'))) { await shot('captain-' + label); await click('wheel'); return true; } return false; };
+if (!(await wheel('cast-off'))) errs.push('no captain hand-off at cast off');
+await shot('sea-dock');
 for (const sp of ['bughunt', 'flats']) {
+  await wheel(sp);
   await click('chart'); await shot('chart-' + sp);
   await click('chartpin-' + sp); await shot('chart-sel-' + sp);
-  await click('skipride'); await page.waitForTimeout(500); await shot('summary-' + sp);
-  await click('letsfish'); await page.waitForTimeout(800); await expect('TurnIntroScene', 'arrived at ' + sp);
+  await click('skipride'); await page.waitForTimeout(800); await expect('TurnIntroScene', 'skipped the ride straight to ' + sp);
   for (let turn = 0; turn < 2; turn++) {
     await shot(`intro-${sp}-${turn}`);
     await click('ready'); await page.waitForTimeout(1200); console.log(' session:', await scene());
@@ -44,10 +48,10 @@ for (const sp of ['bughunt', 'flats']) {
   }
   await expect('SeaScene', 'back on the boat');
 }
-await shot('sea-home-run');
+await wheel('home'); await shot('sea-home-run');
 console.log('home run:', await page.evaluate(() => Game.scene.homeRun));
 await click('chart'); await click('chartpin-home'); await shot('chart-home');
-await click('skiphome'); await page.waitForTimeout(500); await click('letsfish'); await page.waitForTimeout(1500);
+await click('skiphome'); await page.waitForTimeout(1500);
 await expect('DayEndScene', 'end of day'); await shot('end');
 await click('log'); await expect('LogbookScene', 'logbook'); await shot('logbook');
 console.log('boat ride drawn in:', await page.evaluate(() => (GL.state === 'ready' ? '3D' : 'classic (' + (GL.why || GFX.mode) + ')')));

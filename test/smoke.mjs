@@ -2,7 +2,8 @@
 // Runs before every deploy and on every pull request, so it stays quick (about a minute) and checks only that
 // nothing is broken outright:
 //   - it loads with no errors, on a phone (touch) and on a desktop
-//   - a real crew trip by tapping buttons: title → crew pick → briefing → the boat → a turn → results → the boat
+//   - a real crew trip by tapping buttons: title → crew pick → briefing → the captain's hand-off → the boat → a turn
+//     → results → the boat
 //   - on the phone, a tap just outside a small button (pause, a chart pin) still presses it
 //   - every fishing spot opens and runs a few seconds, with a fish fight at each kind of spot
 //   - a broken or out-of-date save, and a browser that won't save at all, don't take the title screen down
@@ -51,6 +52,8 @@ for (const dev of [{ label: 'phone', viewport: { width: 844, height: 390 }, touc
     await press('crew'); check((await name()) === 'CrewSetupScene', dev.label + ': Crew Trip → crew pick');
     await press('go'); check((await name()) === 'BriefingScene', dev.label + ': Let’s go → the day’s briefing');
     await press('castoff'); check((await name()) === 'SeaScene', dev.label + ': Cast off → the boat');
+    const handoff = await page.evaluate(() => !!UI.byId('wheel')); await press('wheel');
+    check(handoff && !(await page.evaluate(() => Game.scene.panel)), dev.label + ': the captain gets the phone, then takes the wheel');
     await page.waitForTimeout(1500);
     check((await drawn()) > 4 && !(await gameErr()), dev.label + ': the boat ride runs (' + (await page.evaluate(() => (Game.scene.uses3D() ? '3D' : 'classic'))) + ')');
     // with the autopilot driving, a quick tap on the water leaves it on; holding takes the wheel
@@ -103,7 +106,7 @@ for (const dev of [{ label: 'phone', viewport: { width: 844, height: 390 }, touc
     const saved = await page.evaluate(() => { const t = JSON.parse(localStorage.getItem('keyscrew_trip') || 'null'); return t && t.turns && t.turns.length; });
     check(saved >= 1, dev.label + ': the trip is saved with the turn on it');
     // the second leg's captain (the next angler) brings the boat to the next spot and fishes it first
-    const order = await page.evaluate(() => { const c = Trip.cur; c.spot = null; c.turn = 0; c.legs = 1; Game.go(new SeaScene(), true); const S = Game.scene; S.panel = { kind: 'summary', id: 'bottom', t: 0, skipped: true }; S.finishLeg(true);
+    const order = await page.evaluate(() => { const c = Trip.cur; c.spot = null; c.turn = 0; c.legs = 1; Game.go(new SeaScene(), true); const S = Game.scene; S.skipTo('bottom');
       return { captain: S.driver, first: Trip.angler(c, 0), order: c.crew.map((_, i) => Trip.angler(c, i)), crew: c.crew.slice() }; });
     await S.settle();
     check(order.captain === order.crew[1] && order.first === order.captain && new Set(order.order).size === order.crew.length && (await page.evaluate(() => Game.scene.ch)) === order.captain, dev.label + ': the captain fishes the spot first, then the rest in turn (' + order.order.join(' → ') + ')');

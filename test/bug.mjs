@@ -35,10 +35,24 @@ p = await toCss(miss.x, miss.y); await page.mouse.click(p.x, p.y); await page.wa
 await page.waitForTimeout(400); console.log('after miss:', JSON.stringify(await page.evaluate(() => Game.scene.out && { st: Game.scene.out.state, misses: Game.scene.out.misses })));
 // pro move: set the net behind it, then make it flip
 await page.waitForTimeout(800);
-await page.evaluate(() => { const s = Game.scene; if (!s.out) { const den = s.dens.find((d) => d.kind === 'lobster' && d.state === 'in'); s.diver.x = den.x + den.dir * 150; s.diver.y = den.y - 30; s.emerge(den); } });
-await page.waitForTimeout(1600);
-// (the diver hovers over the bug, so the spot behind its tail is in reach of the net)
-const pro = await page.evaluate(() => { const s = Game.scene, o = s.out; if (!o) return null; o.lob.temper = 'skittish'; o.state = 'idle'; o.idleT = 9; o.vx = 0; o.home = null; s.diver.x = o.x; s.diver.y = o.y - 70; s.diver.facing = -o.dir; s.net.cool = 0; s.cam = Math.max(0, s.diver.x - Game.W * 0.45); return { x: o.x - o.dir * 80 - s.cam, y: o.y - s.camY }; });
+// (if the missed bug has gone, by running home or flipping away, call out another: a calm one, since a wary one can
+// bolt before the net is set)
+for (let i = 0; i < 3; i++) {
+  await page.evaluate(() => { const s = Game.scene; if (!s.out) { const den = s.dens.find((d) => d.kind === 'lobster' && d.state === 'in'); den.lob.temper = 'calm'; s.diver.x = den.x + den.dir * 150; s.diver.y = den.y - 30; s.emerge(den); } });
+  await page.waitForTimeout(1600);
+  if (await page.evaluate(() => !!Game.scene.out)) break;
+}
+// (the bug is moved onto open sand, where nothing stands between it and the net behind its tail: a net set on a rock
+// can't catch it, and a flip stops at the rock face. The diver hovers over it, so that spot is in reach of the net.)
+const pro = await page.evaluate(() => {
+  const s = Game.scene, o = s.out; if (!o) return null;
+  const open = (x) => { for (let k = -30; k <= 120; k += 5) { const xx = x - o.dir * k; if (s.groundAt(xx) < s.baseFloor(xx) - 2) return false; } return !s.dens.some((d) => Math.abs(d.x - x) < 150); };
+  let x = o.x; for (let i = 1; i < 120 && !open(x); i++) x = clamp(o.x + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * 30, 200, s.WW - 200);
+  o.x = x; o.y = s.baseFloor(x) - 9;
+  o.lob.temper = 'skittish'; o.state = 'idle'; o.idleT = 9; o.vx = 0; o.home = null; s.diver.x = o.x; s.diver.y = o.y - 70; s.diver.facing = -o.dir; s.net.cool = 0;
+  s.cam = clamp(s.diver.x - Game.W * 0.45, 0, s.WW - Game.W); s.camY = Math.max(0, Math.min(s.maxCamY(), s.diver.y - Game.H * 0.5));
+  return { x: o.x - o.dir * 80 - s.cam, y: o.y - s.camY };
+});
 if (pro) {
   p = await toCss(pro.x, pro.y); await page.mouse.click(p.x, p.y); await page.waitForTimeout(260);
   await page.evaluate(() => { const o = Game.scene.out; if (o) { o.state = 'crouch'; o.ct = 0.05; } });
