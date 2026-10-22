@@ -25,6 +25,7 @@ const errs = []; page.on('pageerror', (e) => errs.push(e.message)); page.on('con
 await page.addInitScript((m) => { localStorage.clear(); localStorage.setItem('keyscrew_gfx', JSON.stringify(m === '3d' ? '3d' : 'classic')); localStorage.setItem('keyscrew_gfxTier', JSON.stringify(3)); }, mode);
 await page.goto('file://' + path.resolve(root) + '/index.html'); await page.waitForTimeout(800);
 await page.evaluate(() => {
+  World.build();   // the map normally builds in the background on timers, rolling the same dice as the fight
   SFX.muted = true; Game._frame = Game.frame; Game.frame = () => {};   // we drive the frames from here
   if (typeof GL !== 'undefined') GL.tune = () => {};                // and the speed tuner would just see a slow machine
   const draw = Game.draw;   // drawing rolls its own dice, so the 3D extras (spray, bubbles) don't change how the fight goes
