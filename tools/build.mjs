@@ -6,7 +6,8 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const scripts = [...html.matchAll(/<script src="(js\/[^"]+)"><\/script>\n?/g)];
 const bundle = scripts.map((m) => `/* ---- ${m[1]} ---- */\n` + fs.readFileSync(path.join(root, m[1]), 'utf8')).join('\n');
-html = html.replace(scripts.map((m) => m[0]).join(''), `<script>\n${bundle}\n</script>\n`);
+// a function, so `$&` and friends inside the scripts (the minified three.js has some) are left alone
+html = html.replace(scripts.map((m) => m[0]).join(''), () => `<script>\n${bundle}\n</script>\n`);
 if (html.includes('src="js/')) throw new Error('script tags were not all inlined');
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
 fs.writeFileSync(path.join(root, 'dist/keys-crew.html'), html);
