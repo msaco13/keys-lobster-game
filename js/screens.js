@@ -6,7 +6,7 @@ const SCENE_FOR = { bughunt: () => BugHuntScene, bottom: () => BottomScene, trol
 const WATER_F = [72, 72, 75, 78, 82, 85, 87, 88, 87, 84, 79, 75];
 
 function launchTurn() {
-  const c = Trip.cur, spot = c.spot, ch = c.mode === 'crew' ? c.crew[c.turn] : c.crew[0];
+  const c = Trip.cur, spot = c.spot, ch = c.mode === 'crew' ? Trip.angler(c, c.turn) : c.crew[0];
   const S = SCENE_FOR[spotMode(spot)]();
   Game.go(new S({ ch, spot, len: c.sessionLen, weather: c.weather, onEnd: (res) => {
     Trip.record(ch, spot, res);
@@ -559,7 +559,7 @@ function askLeaveSolo(ctx, stay, leave) {
 class TurnIntroScene {
   // who and where are fixed when the hand-off opens, so it still draws while fading out after Back to the boat clears the spot
   constructor() {
-    const c = (this.c = Trip.cur); this.t = 0; this.spot = c.spot; this.turn = c.turn; this.ch = c.mode === 'crew' ? c.crew[c.turn] : c.crew[0];
+    const c = (this.c = Trip.cur); this.t = 0; this.spot = c.spot; this.turn = c.turn; this.ch = c.mode === 'crew' ? Trip.angler(c, c.turn) : c.crew[0];
     this.paid = Bounties.sync();   // a spot found on the way here pays its bounty, if the boat didn't already
   }
   enter() { Music.play('title'); if (this.paid.length) bountyToast(this.paid); }
@@ -611,7 +611,7 @@ class ResultsScene {
   constructor(ch, spot, res, next) {
     this.ch = ch; this.spot = spot; this.res = res; this.t = 0; this.parts = new Particles(); this.fl = new Floaters(); this.shown = 0; this.caption = res.best ? captionFor(res.best, Trip.cur.weather) : null; this.comments = randi(1, 9);
     const c = (this.c = Trip.cur); this.advanced = !!next; this.nextKind = next || tripNext(c);   // this.c: still drawable if the trip is cleared under us
-    this.nextUp = this.nextKind === 'turn' ? c.crew[this.advanced ? c.turn : c.turn + 1] : null;
+    this.nextUp = this.nextKind === 'turn' ? Trip.angler(c, this.advanced ? c.turn : c.turn + 1) : null;
     // which lines get a badge: match each catch line to its catch, in order
     const pool = (res.catches || []).slice();
     this.badges = res.lines.map((l) => {
@@ -1009,7 +1009,7 @@ const HOWTO = [
   { title: 'Bottom fishing', art: 'grouper', lines: ['Watch the fish finder on the right. Arches are fish (red means big), blue speckle is bait.', 'Drag up or down (or on the fish finder) to drop your bait to the marks. Squid for snapper, pinfish for grouper and jacks.', 'Small twitches are nibbles. Wait. When the rod slams down, tap to set the hook.', 'Nothing on the finder? Tap Move ◀ ▶ to idle along the ledge or the wreck until it lights up.', 'The ▸ under the finder (or F) makes it smaller, then tucks it away. Tap it again to bring it back.'] },
   { title: 'Trolling', art: 'mahi', lines: ['Drag up and down to steer. Your lures follow the path the boat took.', 'Frigate birds and weed lines mean mahi. Diving terns and bait balls mean tuna.', 'The fish are out there, but you have to find them. Read the birds and the weed.', 'Trap floats wrap your prop and foul your lures. Tripletail like to hide under them.'] },
   { title: 'The backcountry', art: 'bonefish', lines: ['Your buddy poles the skiff (◀ ▶ at the bottom right) and calls fish by the clock: 12 is straight ahead.', 'Look for tails, wakes, mud puffs and rolling tarpon. Press and hold where you want the fly, then let go to cast.', 'Land it a few feet in front of the fish. Too close, behind it, or the line across its back, and it spooks.', 'Tap to strip in the fish’s rhythm. When it eats, tap to set. At the bridge, the tide carries your fly.'] },
-  { title: 'Fighting a fish', art: 'fight', lines: ['Hold to reel. Keep the drag needle in the green.', 'When it runs, let go. Holding on a hard run snaps the line.', 'When it jumps, let go. That’s bowing to the fish, and it earns a bonus.', 'Too much slack and it spits the hook. Take too long and a shark might take it.'] }
+  { title: 'Fighting a fish', art: 'fight', lines: ['Hold to reel. Keep the drag needle in the green. The bar at the bottom lights up while you reel.', 'On a hard run it says LET IT GO: holding snaps the line. On a small run, keep cranking.', 'IT’S COMING UP means a jump: let go and bow to the fish. That earns a bonus.', 'Too much slack and it spits the hook. Wear it out before a shark shows up; once it’s beat, crank it in.'] }
 ];
 class HowToScene {
   constructor() { this.t = 0; this.page = 0; }

@@ -370,7 +370,7 @@ class BugHuntScene extends SessionBase {
       if (chance(dt * 18)) SFX.play('tickle');
       const T = temperOf(target.lob);
       if (target.twitch > 0) { target.badHold += dt; if (target.badHold > T.window * this.perks.window) this.spook(target); }
-      else target.coax += dt * T.coax * this.perks.coax;
+      else target.coax += dt * T.coax * this.perks.coax * this.perks.bite;
       target.nextTwitch -= dt;
       // the warning: the antennae go stiff and shiver for a moment before the twitch
       if (target.nextTwitch <= 0 && target.tense <= 0 && target.twitch <= 0) { target.tense = T.tell; SFX.tone(1500, 0.03, { type: 'square', vol: 0.03 }); SFX.tone(1500, 0.03, { type: 'square', vol: 0.03, delay: 0.09 }); }
@@ -484,7 +484,7 @@ class BugHuntScene extends SessionBase {
     this.parts.burst(d.x, d.y, 24, { kind: 'bubble', min: 40, max: 160, life: 1.2 });
     if (this.bag.length) {
       const lost = this.bag.pop();
-      if (lost.cl > GAUGE_IN && !lost.eggs) this.score -= Math.round(lost.w * 100) * (lost.gold ? 3 : 1);
+      if (lost.cl > GAUGE_IN && !lost.eggs) this.score -= Math.round(lost.w * SPECIES.lobster.mult) * (lost.gold ? 3 : 1);
       this.addLine('The shark swiped a bug from your bag', 0);
       Game.toast('CHOMP!', { color: PAL.bad, size: 58, y: 150, dur: 2.2, sub: 'The shark swiped a bug from your bag!' });
     } else {
@@ -574,7 +574,7 @@ class BugHuntScene extends SessionBase {
     if (keep) {
       this.bag.push(lob); SFX.play('coin');
       this.fl.add(this.diver.x - this.cam, this.diver.y - this.camY - 50, 'In the bag ' + this.bag.length + '/' + BH.BAG, '#fff', 22);
-      if (legal) { this.score += Math.round(lob.w * 100) * (lob.gold ? 3 : 1); this.say(lob.cl >= 4.4 ? 'big' : 'nice', lob.cl >= 4.4 ? 1 : 0.6); }
+      if (legal) { this.score += Math.round(lob.w * SPECIES.lobster.mult) * (lob.gold ? 3 : 1); this.say(lob.cl >= 4.4 ? 'big' : 'nice', lob.cl >= 4.4 ? 1 : 0.6); }
       else this.say('short', 0.75);
       if (this.bag.length >= BH.BAG) this.end('limit');
     } else {
@@ -591,7 +591,7 @@ class BugHuntScene extends SessionBase {
       else if (lob.cl <= GAUGE_IN) { lines.push({ label: tag + ' · short! FWC fine', pts: -250, bad: true }); fines++; }
       else {
         const extras = lob.cl >= 4.4 ? [{ label: 'Big boy bonus', pts: 100 }] : [];
-        if (lob.gold) extras.push({ label: 'Golden bug ×3', pts: Math.round(lob.w * 100) * 2 });
+        if (lob.gold) extras.push({ label: 'Golden bug ×3', pts: Math.round(lob.w * SPECIES.lobster.mult) * 2 });
         const c = makeCatch('lobster', lob.w, this.ch, this.spot, extras); c.cl = lob.cl; c.gold = !!lob.gold; catches.push(c);
         lines.push({ label: tag + ' · ' + fmtLb(lob.w) + (lob.gold ? ' · GOLDEN' : ''), pts: c.pts, key: 'lobster', trophy: c.trophy });
       }

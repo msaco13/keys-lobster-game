@@ -2,6 +2,7 @@
 
 A lobstering and fishing game set in the Florida Keys, made for one phone passed around a boat.
 Three friends, one boat, the whole Upper Keys to run around in. Whoever brings in the most points is Captain of the Day.
+The captain who drives to a spot fishes it first, then the rest of the crew, so the first shot at the day's bounties moves around.
 
 It's plain HTML and JavaScript drawn on a canvas, and the boat ride and the fish fights are real 3D (three.js, bundled in).
 There's no install, no build step needed to play, and no art or audio files: every fish, lobster, boat, island and
@@ -111,8 +112,11 @@ mud puffs and rolling tarpon. Press and hold where you want the fly, let go to c
 and set the hook when it eats. At Channel Five the tide carries your fly past the pilings; at Flamingo, snook hug the
 mangrove roots and reds and drum tail on the mud. Tarpon, bonefish and permit is a Grand Slam.
 
-**The fight** (all fishing spots). Hold to reel and keep the drag needle in the green. Let go when the fish runs
-or jumps. Too much slack and it spits the hook. Fight too long and a shark might tax you. In 3D the camera sits right
+**The fight** (all fishing spots). Hold to reel and keep the drag needle in the green. The bar at the bottom lights up
+while you're reeling and tells you what to do: on a strong run (one that would push the drag into the red) it says LET
+IT GO; on a small run you can KEEP CRANKING. Before a jump it says IT'S COMING UP: let go and bow to the fish. Too much
+slack and it spits the hook. Once the fish is beat it stops running, comes in fast (CRANK IT IN), and a shark can't take
+it; a shark only shows up in a long fight, and you beat it by wearing the fish out. In 3D the camera sits right
 at the waterline, half in and half out: the boat and the angler working the rod above, and below, the fish on the line
 over the reef, the wreck, the grass flats or the Everglades mud, with the light rippling on the bottom.
 

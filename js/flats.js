@@ -609,7 +609,7 @@ class FlatsScene extends SessionBase {
   noticeFly(f, dt) {
     const L = this.lure, hx = f.x + Math.cos(f.hd) * f.len * 0.4, hy = f.y + Math.sin(f.hd) * f.len * 0.4;
     const d = dist(L.x, L.y, hx, hy), front = Math.cos(angleDiff(f.hd, Math.atan2(L.y - hy, L.x - hx)));
-    const k = f.brain === 'hold' ? 2.2 : f.brain === 'school' ? 2 : 1.5;
+    const k = (f.brain === 'hold' ? 2.2 : f.brain === 'school' ? 2 : 1.5) * this.perks.bite;
     if (d < f.sp.notice * 0.8 && front > 0.3 && chance(dt * k)) this.startFollow(f, 0.3, 'It found the fly');
   }
   startFollow(f, interest, msg) {
@@ -795,7 +795,7 @@ class FlatsScene extends SessionBase {
       const iv = this.t - f.lastStrip, ideal = f.sp.strip; f.lastStrip = this.t;
       if (iv < ideal * 0.55) { f.interest -= 0.14; this.fl.add(f.x, f.y - 24, 'Too fast', PAL.warn, 17); }
       else if (iv > ideal * 2.2) { f.interest += 0.06; this.fl.add(f.x, f.y - 24, 'Slow…', '#cfe3ea', 17); }
-      else { f.interest += 0.24; this.fl.add(f.x, f.y - 24, 'Good strip', PAL.good, 17); }
+      else { f.interest += 0.24 * this.perks.bite; this.fl.add(f.x, f.y - 24, 'Good strip', PAL.good, 17); }
     }
     this.checkFlyAtBoat();
   }
@@ -832,7 +832,7 @@ class FlatsScene extends SessionBase {
     if (!r.ok) return;
     this.landed.add(r.catch.key);
     const has = (...k) => k.every((x) => this.landed.has(x));
-    if (!this.slamDone.grand && has('tarpon', 'bonefish', 'permit')) { this.slamDone.grand = true; this.addLine('GRAND SLAM · tarpon, bonefish, permit', 1500); Game.toast('GRAND SLAM!', { color: PAL.sun, size: 56, y: 160, dur: 2.6, sub: 'Tarpon, bonefish and permit in one day' }); SFX.play('slam'); }
+    if (!this.slamDone.grand && has('tarpon', 'bonefish', 'permit')) { this.slamDone.grand = true; this.addLine('GRAND SLAM · tarpon, bonefish, permit', 800); Game.toast('GRAND SLAM!', { color: PAL.sun, size: 56, y: 160, dur: 2.6, sub: 'Tarpon, bonefish and permit in one day' }); SFX.play('slam'); }
     if (!this.slamDone.back && has('snook', 'redfish', 'trout')) { this.slamDone.back = true; this.addLine('Backcountry slam · snook, redfish, trout', 600); Game.toast('BACKCOUNTRY SLAM!', { color: PAL.sun, size: 46, y: 160, dur: 2.4, sub: 'Snook, redfish and trout' }); SFX.play('slam'); }
   }
 

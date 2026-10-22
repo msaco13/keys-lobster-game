@@ -1235,8 +1235,8 @@ const CHARS = {
     rash: { base: '#2a2622', camo: ['#6a4529', '#8d5f37', '#3d3b33'] },
     shorts: { base: '#f3f3ef', stripes: ['#2b8fdc', '#1b5ea8', '#63bef2'] },
     gloves: '#1d4f8a', expr: 'smile',
-    perks: { breath: 1.35, window: 1.3, bite: 1, trophy: 1, reel: 1, line: 1, coax: 1.2 },
-    perkText: ['Big lungs: 35% more breath on dives', 'Quick hands: wider hook-set and net timing']
+    perks: { breath: 1.35, window: 1.3, bite: 1, trophy: 1, reel: 1, line: 1, coax: 1 },
+    perkText: ['Big lungs: 35% more breath on dives', 'Quick hands: more time on hook-sets, jumps and bugs']
   },
   jorge: {
     id: 'jorge', name: 'Jorge', title: 'Lucky Shades', color: '#ffc845',
@@ -1248,7 +1248,7 @@ const CHARS = {
     shorts: { base: '#36475c', stripes: ['#4f6580'] },
     gloves: '#2a2d33', expr: 'open',
     perks: { breath: 1, window: 1, bite: 1.3, trophy: 1.2, reel: 1, line: 1, coax: 1 },
-    perkText: ['Lucky shades: fish bite 30% sooner', 'Trophy magnet: better odds at a big one']
+    perkText: ['Lucky shades: fish bite and bugs come out 30% sooner', 'Trophy magnet: better odds at a big one']
   },
   jemel: {
     id: 'jemel', name: 'Jemel', title: 'Big Game', color: '#42d3c4',
@@ -1259,8 +1259,8 @@ const CHARS = {
     rash: { base: '#f0f3f5', camo: null, sleeve: 'mahi' },
     shorts: { base: '#3b2a24', stripes: ['#6c5646'] },
     gloves: '#2a2d33', expr: 'grin',
-    perks: { breath: 1, window: 1, bite: 1, trophy: 1, reel: 1.25, line: 1.12, coax: 1 },
-    perkText: ['Heavy hands: reel 25% faster', 'Strong line: 12% more pull before it snaps']
+    perks: { breath: 1, window: 1, bite: 1, trophy: 1, reel: 1.12, line: 1.12, coax: 1 },
+    perkText: ['Heavy hands: reel 12% faster', 'Strong line: 12% more pull before it snaps']
   }
 };
 const CHAR_ORDER = ['michael', 'jorge', 'jemel'];
@@ -1296,7 +1296,7 @@ const SPECIES = {
   barracuda: { name: 'Barracuda', short: 'Cuda', min: 5, max: 35, mult: 6, pow: 0.8, stam: 8, jump: 0.5 },
   // the backcountry and the bridges
   bonefish: { name: 'Bonefish', short: 'Bonefish', min: 3, max: 11, mult: 100, release: true, pow: 0.9, stam: 8, spook: 30, notice: 92, strip: 0.6, speed: 42, vis: 0.38 },
-  permit: { name: 'Permit', short: 'Permit', min: 8, max: 40, mult: 55, release: true, pow: 0.85, stam: 12, spook: 36, notice: 74, strip: 1.15, speed: 36, vis: 0.55 },
+  permit: { name: 'Permit', short: 'Permit', min: 8, max: 40, mult: 35, release: true, pow: 0.85, stam: 12, spook: 36, notice: 74, strip: 1.15, speed: 36, vis: 0.55 },
   tarpon: { name: 'Tarpon', short: 'Tarpon', min: 40, max: 160, mult: 7, release: true, pow: 0.95, stam: 16, jump: 0.9, spook: 24, notice: 112, strip: 0.45, speed: 30, vis: 0.62 },
   redfish: { name: 'Redfish', short: 'Redfish', min: 4, max: 16, mult: 38, release: true, pow: 0.6, stam: 8, spook: 20, notice: 92, strip: 0.65, speed: 24, vis: 0.66 },
   snook: { name: 'Snook', short: 'Snook', min: 4, max: 22, mult: 36, release: true, pow: 0.7, stam: 8, jump: 0.25, rock: 0.6, spook: 22, notice: 92, strip: 0.4, speed: 20, vis: 0.56 },
@@ -1304,7 +1304,7 @@ const SPECIES = {
   jack: { name: 'Jack Crevalle', short: 'Jack', min: 3, max: 35, mult: 20, release: true, pow: 0.85, stam: 12, spook: 26, notice: 110, strip: 0.35, speed: 40, vis: 0.6 },
   ladyfish: { name: 'Ladyfish', short: 'Ladyfish', min: 0.5, max: 4, mult: 60, release: true, pow: 0.4, stam: 5, jump: 0.8, spook: 18, notice: 96, strip: 0.3, speed: 34, vis: 0.56 },
   blackdrum: { name: 'Black Drum', short: 'Black Drum', min: 5, max: 60, mult: 14, release: true, pow: 0.75, stam: 11, spook: 22, notice: 80, strip: 0.9, speed: 16, vis: 0.6 },
-  lobster: { name: 'Spiny Lobster', short: 'Lobster', min: 0.6, max: 7, mult: 100 }
+  lobster: { name: 'Spiny Lobster', short: 'Lobster', min: 0.6, max: 7, mult: 150 }
 };
 const SPECIES_ORDER = ['lobster',
   'whitegrunt', 'lane', 'yellowtail', 'mangrove', 'mutton', 'hogfish', 'trigger', 'redgrouper', 'blackgrouper', 'cubera', 'amberjack', 'cobia', 'pompano', 'goliath',
@@ -1431,16 +1431,20 @@ const Trip = {
     t.catches = list(t.catches).filter((k) => k && typeof k === 'object'); t.turns = list(t.turns).filter((x) => x && typeof x === 'object');
     if (!t.scores || typeof t.scores !== 'object') t.scores = {};
     for (const c of t.crew) if (typeof t.scores[c] !== 'number') t.scores[c] = 0;
-    t.turn = clamp(t.turn | 0, 0, t.crew.length - 1); t.legs = Math.max(0, t.legs | 0);
+    t.turn = clamp(t.turn | 0, 0, t.crew.length - 1); t.first = clamp(t.first | 0, 0, t.crew.length - 1); t.legs = Math.max(0, t.legs | 0);
     if (t.boat && !(Number.isFinite(t.boat.x) && Number.isFinite(t.boat.y) && Number.isFinite(t.boat.h))) t.boat = null;
     if (t.bounties != null) t.bounties = list(t.bounties).filter((b) => b && BOUNTY_DEFS[b.id]);
+    if (t.steered != null && (typeof t.steered !== 'object' || Array.isArray(t.steered))) t.steered = {};
     if (t.leg && !(typeof t.leg === 'object' && CHARS[t.leg.ch] && typeof t.leg.pts === 'number')) t.leg = null;
     if (t.legBack && !(typeof t.legBack === 'object' && Array.isArray(t.legBack.lines) && t.legBack.flags)) t.legBack = null;
     return t;
   },
   resume() { this.cur = this.load(); return !!this.cur; },
   clear() { Store.del('trip'); },
-  get player() { return this.cur.crew[this.cur.turn]; },
+  get player() { return this.angler(this.cur, this.cur.turn); },
+  // who fishes turn i at this spot: the captain who brought the boat here goes first, then the rest in crew order,
+  // so the first shot at the day's bounties moves around the crew instead of always going to the same angler
+  angler(c, i) { const n = c.crew.length; return c.crew[(((c.first | 0) + i) % n + n) % n]; },
   record(ch, spot, res) {
     const c = this.cur;
     Records.add(res.catches);          // first: marks personal bests (k.pb) and first-ever catches (k.isNew)
@@ -3387,7 +3391,9 @@ function drawLighthouseSide(ctx, x, y, s, o = {}) {
 /* ---- js/fight.js ---- */
 'use strict';
 /* Keys Crew — the fish fight. Shared by bottom fishing, trolling and the flats.
-   Hold to reel. Let go when it runs. Bow when it jumps. Turn grouper off the reef. */
+   Hold to reel. Let go when a run is strong enough to push the drag into the red (small fish you can crank right
+   through). Bow when it jumps: there's a "coming up" cue first. Turn grouper off the reef. Once the fish is beaten it
+   stops running and comes in fast, and a shark can't take it. */
 
 const LOSS_TEXT = {
   snap: ['SNAP!', 'Too much pressure while it was running. Let go on the runs.'],
@@ -3419,7 +3425,9 @@ class FightScene {
     this.running = false; this.runT = 0; this.runStr = 1; this.restT = rand(0.9, 1.6); this.tele = false;
     this.jumpT = 0; this.jumpDelay = 0; this.jumpHold = 0; this.jumps = 0; this.bows = 0; this.jumpX = 0;
     this.slackT = 0; this.snapT = 0; this.revealed = false;
-    this.taxRisk = this.kind !== 'flats' && chance(0.22); this.shark = null;
+    // a shark shows up in some offshore and reef fights; the longer this fish fights, the later it comes and the more time it gives
+    this.taxRisk = this.kind !== 'flats' && chance(0.22); this.shark = null; this.sharkAt = Math.max(16, this.staminaSec * 0.75);
+    this.beat = false; this.risky = false;
     this.parts = new Particles(); this.fl = new Floaters();
     this.overT = 0; this.won = false; this.reason = null; this.catch = null; this.landT = 0; this.crankFx = 0;
     this.fx = 0; this.fy = 0; this.fang = 0;
@@ -3458,40 +3466,51 @@ class FightScene {
       this.fightAnim(dt, hold);
       return;
     }
-    const S = this.S, life = 0.45 + 0.55 * S, sp = this.sp;
+    const S = this.S, life = 0.45 + 0.55 * S, sp = this.sp, Lmax = this.perks.line;
+    // would holding on through a run of this strength push the drag past the green? (only then does the prompt say let go)
+    const riskyAt = (str) => 0.3 + this.pw * str * life * 1.05 > 0.86 * Lmax;
     if (this.running) {
       this.runT -= dt;
       if (this.jumpDelay > 0) { this.jumpDelay -= dt; if (this.jumpDelay <= 0) this.startJump(); }
-      if (this.runT <= 0) { this.running = false; this.restT = rand(1.1, 2.6) * (1.25 - this.pw * 0.45) * (1 + (1 - S) * 0.8); }
-    } else {
+      if (this.runT <= 0 || (this.beat && this.jumpT <= 0 && this.jumpDelay <= 0)) { this.running = false; this.jumpDelay = 0; this.restT = rand(1.1, 2.6) * (1.25 - this.pw * 0.45) * (1 + (1 - S) * 0.8); }
+    } else if (!this.beat) {   // a beaten fish doesn't run any more
       this.restT -= dt;
-      if (this.restT <= 0.5 && !this.tele) { this.tele = true; SFX.play('tick'); }
+      if (this.restT <= 0.5 && !this.tele && riskyAt(1)) { this.tele = true; SFX.play('tick'); }
       if (this.restT <= 0) {
         this.running = true; this.tele = false;
         this.runT = rand(0.8, 2.0) * (0.55 + this.pw) * (0.5 + 0.5 * S); this.runStr = rand(0.88, 1.1);
-        if (sp.jump && this.jumps < 5 && chance(sp.jump * (0.4 + 0.6 * S))) this.jumpDelay = rand(0.15, 0.45);
+        // a jump gets a cue first ("IT'S COMING UP!"), long enough to react to
+        if (sp.jump && this.jumps < 5 && chance(sp.jump * (0.4 + 0.6 * S))) { this.jumpDelay = rand(0.45, 0.7); this.runT = Math.max(this.runT, this.jumpDelay + 0.4); SFX.play('tick'); }
       }
     }
+    this.risky = this.running && riskyAt(this.runStr);
     let p = this.pw * (this.running ? this.runStr : 0.33) * life;
     if (this.jumpT > 0) p *= 0.4;
-    const Lmax = this.perks.line;
+    if (this.beat) p *= 0.5;
     const target = hold ? 0.3 + p * 1.05 : p * 0.5;
     this.T = approach(this.T, target + Math.sin(this.t * 13) * 0.02 * p, hold && this.running ? 6 : 4, dt);
     if (this.running) this.dist += 9.5 * this.pw * p * dt * (hold ? 0.45 : 1);
-    if (hold) this.dist -= 7.5 * this.perks.reel * (1 - p * 0.8) * dt;
+    if (hold) this.dist -= 7.5 * this.perks.reel * (1 - p * 0.8) * (this.beat ? 1.4 : 1) * dt;
     const inZone = this.T > 0.38 && this.T < 0.86 * Lmax;
-    this.S = clamp(this.S - (dt / this.staminaSec) * (inZone ? 1 : 0.35) * (hold ? 1 : 0.6) + (this.T < 0.15 ? dt * 0.015 : 0), 0, 1);
-    if (this.T < 0.12) { this.slackT += dt; if (this.slackT > 2.1) return this.lose('slack'); } else if (this.T > 0.2) this.slackT = Math.max(0, this.slackT - dt * 2);
+    this.S = clamp(this.S - (dt / this.staminaSec) * (inZone ? 1 : 0.35) * (hold ? 1 : 0.6) + (this.T < 0.15 && !this.beat ? dt * 0.015 : 0), 0, 1);
+    if (!this.beat && this.S <= 0) { this.beat = true; this.tele = false; Game.toast('It’s beat! Crank it in!', { color: PAL.good, size: 34, y: 130 }); SFX.play('coin'); }
+    // slack builds while the line is loose (bowing to a jump doesn't count) and drains once it's tight again
+    if (this.T < 0.12 && this.jumpT <= 0 && this.jumpDelay <= 0) { this.slackT += dt; if (this.slackT > 2.1) return this.lose('slack'); } else if (this.T > 0.2) this.slackT = Math.max(0, this.slackT - dt * 2);
     if (this.T > Lmax) { this.snapT += dt; if (this.snapT > 0.28) return this.lose('snap'); } else this.snapT = Math.max(0, this.snapT - dt);
     if (this.T > 0.86 * Lmax && Math.floor(this.t * 6) !== Math.floor((this.t - dt) * 6)) Game.vibrate(15);
     if (this.dist > this.maxDist) return this.lose('spool');
     if (this.jumpT > 0) { this.jumpT -= dt; if (hold) this.jumpHold += dt; if (this.jumpT <= 0) { this.endJump(); if (this.phase === 'over') return; } }
     if (!this.revealed && (this.dist < this.d0 * 0.45 || this.jumpT > 0)) { this.revealed = true; Game.toast(`It's a ${sp.short.toLowerCase()}!`, { color: '#fff', size: 30, y: 120 }); }
-    if (this.taxRisk && !this.shark && this.fightT > 16) { this.shark = { t: 10, a: 0 }; Game.toast('SHARK!', { color: '#dfe6ea', size: 42, y: 130, sub: 'Get it in before the tax man does' }); SFX.play('warn'); }
-    if (this.shark) { this.shark.t -= dt; this.shark.a += dt; if (this.shark.t <= 0) return this.lose('tax'); }
+    if (this.taxRisk && !this.shark && !this.beat && this.fightT > this.sharkAt) { this.shark = { t: 10 + this.staminaSec * 0.15, a: 0 }; Game.toast('SHARK!', { color: '#dfe6ea', size: 42, y: 130, sub: 'Wear it out before the tax man gets it' }); SFX.play('warn'); }
+    if (this.shark) { this.shark.a += dt; if (!this.beat) { this.shark.t -= dt; if (this.shark.t <= 0) return this.lose('tax'); } }   // a beaten fish comes in too fast for it
     SFX.setDrag(this.running ? (hold ? 0.9 : 0.7) : hold ? 0.12 : 0, this.running ? 1 : 0.4);
     this.fightAnim(dt, hold);
     if (this.dist <= 0.5) this.land();
+  }
+  // what the prompt asks for right now: let go (true) or keep reeling. The reel button turns red when you hold anyway.
+  letGoNow() {
+    if (this.phase !== 'fight') return false;
+    return this.jumpT > 0 || this.jumpDelay > 0 || this.risky || this.tele || this.T > 0.86 * this.perks.line;
   }
   startJump() {
     this.jumpT = 1.15; this.jumpHold = 0; this.jumps++;
@@ -3501,8 +3520,9 @@ class FightScene {
   endJump() {
     this.parts.burst(this.fx, this.waterY(), 26, { color: ['#ffffff', '#cfefff'], angle: -Math.PI / 2, spread: 1.1, min: 100, max: 300, g: 600 });
     SFX.play('splash');
-    if (this.jumpHold > 0.3 && chance(0.7)) { this.lose('jump'); return; }
-    if (this.jumpHold <= 0.3) { this.bows++; this.fl.add(this.fx, this.waterY() - 60, 'Bowed! +40', PAL.sun, 24); SFX.play('coin'); }
+    const tol = 0.5 * this.perks.window;   // holding on a little into the jump is forgiven; quick hands get longer
+    if (this.jumpHold > tol && chance(0.6)) { this.lose('jump'); return; }
+    if (this.jumpHold <= tol) { this.bows++; this.fl.add(this.fx, this.waterY() - 60, 'Bowed! +40', PAL.sun, 24); SFX.play('coin'); }
   }
   land() {
     this.phase = 'landing'; this.landT = 0; this.running = false; SFX.setDrag(0); SFX.play('bigsplash');
@@ -3661,10 +3681,12 @@ class FightScene {
     // fish stamina
     panel(ctx, 16, 12, 250, 84, { r: 14 });
     text(ctx, this.revealed ? this.sp.name : 'Something big…', 30, 37, { size: 20, weight: 800, color: '#fff', maxW: 222 });
+    // the fish's fight left; once it's beat, the bar shows the line still to crank in
+    const bar = this.beat ? clamp(this.dist / this.d0, 0, 1) : this.S;
     ctx.fillStyle = 'rgba(255,255,255,0.15)'; rr(ctx, 30, 48, 222, 12, 6); ctx.fill();
-    ctx.fillStyle = this.S > 0.5 ? PAL.coral : this.S > 0.2 ? PAL.sun : PAL.good; rr(ctx, 30, 48, 222 * this.S, 12, 6); ctx.fill();
+    ctx.fillStyle = this.beat ? '#6fe0ff' : this.S > 0.5 ? PAL.coral : this.S > 0.2 ? PAL.sun : PAL.good; rr(ctx, 30, 48, 222 * bar, 12, 6); ctx.fill();
     text(ctx, (this.unit === 'ft' ? 'DEPTH ' : 'LINE OUT ') + Math.max(0, Math.round(this.dist)) + ' ' + this.unit, 30, 84, { size: 16, color: '#cfe3ea', weight: 800 });
-    text(ctx, 'FISH', 252, 84, { size: 13, align: 'right', color: '#9fb8c2', weight: 800 });
+    text(ctx, this.beat ? 'BEAT · CRANK IT IN' : 'FISH', 252, 84, { size: 13, align: 'right', color: this.beat ? '#6fe0ff' : '#9fb8c2', weight: 800 });
     if (this.o.timeLeft) { const tl = this.o.timeLeft(); drawTimerPill(ctx, W / 2, 34, tl); }
     // tension meter
     const mx = W - 62, my0 = 96, my1 = 400, mh = my1 - my0, L = this.perks.line, scale = 1.25;
@@ -3686,11 +3708,14 @@ class FightScene {
     const danger = this.T > 0.86 * L, slack = this.slackT > 0.6;
     if (this.phase === 'turn') { msg = 'TAP TAP TAP! TURN IT!'; col = PAL.sun; }
     else if (this.jumpT > 0) { msg = 'IT JUMPED! LET GO!'; col = PAL.sun; }
-    else if (this.running) { msg = danger ? 'LET GO! IT’S RUNNING' : 'IT’S RUNNING · LET IT GO'; col = danger ? PAL.bad : PAL.warn; }
+    else if (this.jumpDelay > 0) { msg = 'IT’S COMING UP! LET GO!'; col = PAL.sun; }
+    else if (this.running && this.risky) { msg = danger ? 'LET GO! IT’S RUNNING' : 'IT’S RUNNING · LET IT GO'; col = danger ? PAL.bad : PAL.warn; }
+    else if (this.running) { msg = held ? 'KEEP CRANKING!' : 'SMALL RUN · KEEP REELING'; }   // you can crank right through this one
     else if (this.tele) { msg = 'GET READY…'; col = PAL.warn; }
     else if (slack) { msg = 'SLACK! REEL!'; col = '#9fe0ff'; }
     else if (danger) { msg = 'TOO TIGHT!'; col = PAL.bad; }
-    const pw = Math.min(W - 180, 460), px = W / 2 - pw / 2, wrong = held && (this.running || this.jumpT > 0 || this.tele || danger), tapped = this.phase === 'turn' && this.crankFx > 0;
+    else if (this.beat) { msg = held ? 'CRANK IT IN!' : 'IT’S BEAT! HOLD TO CRANK'; }
+    const pw = Math.min(W - 180, 460), px = W / 2 - pw / 2, wrong = held && this.letGoNow(), tapped = this.phase === 'turn' && this.crankFx > 0;
     const lit = held || tapped, dy = lit ? 3 : 0;
     if (lit) {
       const fill = wrong ? PAL.bad : tapped ? PAL.sun : PAL.good;
@@ -3702,7 +3727,7 @@ class FightScene {
     { const rx = px + 34, ry = H - 44 + dy, a = this.crankA || 0, c = lit ? (wrong ? '#fff' : PAL.ink) : 'rgba(255,255,255,0.7)';
       ctx.strokeStyle = c; ctx.fillStyle = c; ctx.lineWidth = 3; ell(ctx, rx, ry, 13, 13); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + Math.cos(a) * 13, ry + Math.sin(a) * 13); ctx.stroke(); ell(ctx, rx + Math.cos(a) * 13, ry + Math.sin(a) * 13, 4.5, 4.5); ctx.fill(); }
-    const pulse = (this.running || this.jumpT > 0 || this.phase === 'turn') ? 1 + Math.sin(this.t * 14) * 0.04 : 1;
+    const pulse = (this.risky || this.jumpT > 0 || this.jumpDelay > 0 || this.phase === 'turn') ? 1 + Math.sin(this.t * 14) * 0.04 : 1;
     ctx.save(); ctx.translate(W / 2 + 14, H - 43 + dy); ctx.scale(pulse, pulse);
     text(ctx, msg, 0, 0, { size: 26, align: 'center', base: 'middle', color: col, weight: 800, maxW: pw - 86 });
     ctx.restore();
@@ -4258,7 +4283,7 @@ class BugHuntScene extends SessionBase {
       if (chance(dt * 18)) SFX.play('tickle');
       const T = temperOf(target.lob);
       if (target.twitch > 0) { target.badHold += dt; if (target.badHold > T.window * this.perks.window) this.spook(target); }
-      else target.coax += dt * T.coax * this.perks.coax;
+      else target.coax += dt * T.coax * this.perks.coax * this.perks.bite;
       target.nextTwitch -= dt;
       // the warning: the antennae go stiff and shiver for a moment before the twitch
       if (target.nextTwitch <= 0 && target.tense <= 0 && target.twitch <= 0) { target.tense = T.tell; SFX.tone(1500, 0.03, { type: 'square', vol: 0.03 }); SFX.tone(1500, 0.03, { type: 'square', vol: 0.03, delay: 0.09 }); }
@@ -4372,7 +4397,7 @@ class BugHuntScene extends SessionBase {
     this.parts.burst(d.x, d.y, 24, { kind: 'bubble', min: 40, max: 160, life: 1.2 });
     if (this.bag.length) {
       const lost = this.bag.pop();
-      if (lost.cl > GAUGE_IN && !lost.eggs) this.score -= Math.round(lost.w * 100) * (lost.gold ? 3 : 1);
+      if (lost.cl > GAUGE_IN && !lost.eggs) this.score -= Math.round(lost.w * SPECIES.lobster.mult) * (lost.gold ? 3 : 1);
       this.addLine('The shark swiped a bug from your bag', 0);
       Game.toast('CHOMP!', { color: PAL.bad, size: 58, y: 150, dur: 2.2, sub: 'The shark swiped a bug from your bag!' });
     } else {
@@ -4462,7 +4487,7 @@ class BugHuntScene extends SessionBase {
     if (keep) {
       this.bag.push(lob); SFX.play('coin');
       this.fl.add(this.diver.x - this.cam, this.diver.y - this.camY - 50, 'In the bag ' + this.bag.length + '/' + BH.BAG, '#fff', 22);
-      if (legal) { this.score += Math.round(lob.w * 100) * (lob.gold ? 3 : 1); this.say(lob.cl >= 4.4 ? 'big' : 'nice', lob.cl >= 4.4 ? 1 : 0.6); }
+      if (legal) { this.score += Math.round(lob.w * SPECIES.lobster.mult) * (lob.gold ? 3 : 1); this.say(lob.cl >= 4.4 ? 'big' : 'nice', lob.cl >= 4.4 ? 1 : 0.6); }
       else this.say('short', 0.75);
       if (this.bag.length >= BH.BAG) this.end('limit');
     } else {
@@ -4479,7 +4504,7 @@ class BugHuntScene extends SessionBase {
       else if (lob.cl <= GAUGE_IN) { lines.push({ label: tag + ' · short! FWC fine', pts: -250, bad: true }); fines++; }
       else {
         const extras = lob.cl >= 4.4 ? [{ label: 'Big boy bonus', pts: 100 }] : [];
-        if (lob.gold) extras.push({ label: 'Golden bug ×3', pts: Math.round(lob.w * 100) * 2 });
+        if (lob.gold) extras.push({ label: 'Golden bug ×3', pts: Math.round(lob.w * SPECIES.lobster.mult) * 2 });
         const c = makeCatch('lobster', lob.w, this.ch, this.spot, extras); c.cl = lob.cl; c.gold = !!lob.gold; catches.push(c);
         lines.push({ label: tag + ' · ' + fmtLb(lob.w) + (lob.gold ? ' · GOLDEN' : ''), pts: c.pts, key: 'lobster', trophy: c.trophy });
       }
@@ -7767,7 +7792,7 @@ class FlatsScene extends SessionBase {
   noticeFly(f, dt) {
     const L = this.lure, hx = f.x + Math.cos(f.hd) * f.len * 0.4, hy = f.y + Math.sin(f.hd) * f.len * 0.4;
     const d = dist(L.x, L.y, hx, hy), front = Math.cos(angleDiff(f.hd, Math.atan2(L.y - hy, L.x - hx)));
-    const k = f.brain === 'hold' ? 2.2 : f.brain === 'school' ? 2 : 1.5;
+    const k = (f.brain === 'hold' ? 2.2 : f.brain === 'school' ? 2 : 1.5) * this.perks.bite;
     if (d < f.sp.notice * 0.8 && front > 0.3 && chance(dt * k)) this.startFollow(f, 0.3, 'It found the fly');
   }
   startFollow(f, interest, msg) {
@@ -7953,7 +7978,7 @@ class FlatsScene extends SessionBase {
       const iv = this.t - f.lastStrip, ideal = f.sp.strip; f.lastStrip = this.t;
       if (iv < ideal * 0.55) { f.interest -= 0.14; this.fl.add(f.x, f.y - 24, 'Too fast', PAL.warn, 17); }
       else if (iv > ideal * 2.2) { f.interest += 0.06; this.fl.add(f.x, f.y - 24, 'Slow…', '#cfe3ea', 17); }
-      else { f.interest += 0.24; this.fl.add(f.x, f.y - 24, 'Good strip', PAL.good, 17); }
+      else { f.interest += 0.24 * this.perks.bite; this.fl.add(f.x, f.y - 24, 'Good strip', PAL.good, 17); }
     }
     this.checkFlyAtBoat();
   }
@@ -7990,7 +8015,7 @@ class FlatsScene extends SessionBase {
     if (!r.ok) return;
     this.landed.add(r.catch.key);
     const has = (...k) => k.every((x) => this.landed.has(x));
-    if (!this.slamDone.grand && has('tarpon', 'bonefish', 'permit')) { this.slamDone.grand = true; this.addLine('GRAND SLAM · tarpon, bonefish, permit', 1500); Game.toast('GRAND SLAM!', { color: PAL.sun, size: 56, y: 160, dur: 2.6, sub: 'Tarpon, bonefish and permit in one day' }); SFX.play('slam'); }
+    if (!this.slamDone.grand && has('tarpon', 'bonefish', 'permit')) { this.slamDone.grand = true; this.addLine('GRAND SLAM · tarpon, bonefish, permit', 800); Game.toast('GRAND SLAM!', { color: PAL.sun, size: 56, y: 160, dur: 2.6, sub: 'Tarpon, bonefish and permit in one day' }); SFX.play('slam'); }
     if (!this.slamDone.back && has('snook', 'redfish', 'trout')) { this.slamDone.back = true; this.addLine('Backcountry slam · snook, redfish, trout', 600); Game.toast('BACKCOUNTRY SLAM!', { color: PAL.sun, size: 46, y: 160, dur: 2.4, sub: 'Snook, redfish and trout' }); SFX.play('slam'); }
   }
 
@@ -15604,7 +15629,10 @@ class SeaScene {
 
   /* ---------- input ---------- */
   setNotch(n) { if (this.fwc || this.panel) return; const was = this.notch; this.notch = clamp(n, 0, 4); if (was !== this.notch) SFX.play('click'); }
-  pointerDown(p) { if (this.panel) return; this.steer = { id: p.id, x: p.x, y: p.y }; }
+  pointerDown(p) { if (this.panel) return; this.steer = { id: p.id, x: p.x, y: p.y, sx: p.x, sy: p.y, t0: this.t }; }
+  // a finger on the water steers; with the autopilot on, only a hold or a drag takes the wheel (a stray tap from a
+  // phone being passed around doesn't)
+  steerLive() { const s = this.steer; return !!s && (!this.auto || this.t - s.t0 >= 0.25 || dist(s.x, s.y, s.sx, s.sy) > 30); }
   pointerMove(p) { if (this.steer && this.steer.id === p.id) { this.steer.x = p.x; this.steer.y = p.y; } }
   pointerUp(p) { if (this.steer && this.steer.id === p.id) this.steer = null; }
   keyDown(c) {
@@ -15627,13 +15655,17 @@ class SeaScene {
     // steering
     let rud = 0;
     if (Input.held('ArrowLeft', 'KeyA')) rud -= 1; if (Input.held('ArrowRight', 'KeyD')) rud += 1;
-    if (this.steer && this.view === 'chase') {   // behind the boat: hold left or right of it to turn that way, harder the farther out
+    const live = this.steerLive();
+    if (live && this.view === 'chase') {   // behind the boat: hold left or right of it to turn that way, harder the farther out
       const dx = this.steer.x - Game.W / 2; if (Math.abs(dx) > 14) rud = clamp((dx - Math.sign(dx) * 14) / (Game.W * 0.2), -1, 1);
-    } else if (this.steer) {
+    } else if (live) {
       const [sx, sy] = this.toScreen(this.x, this.y), want = Math.atan2(this.steer.y - sy, this.steer.x - sx);
       if (dist(sx, sy, this.steer.x, this.steer.y) > 24) rud = clamp(angleDiff(this.h, want) * 2.4, -1, 1);
     }
-    if (rud) { if (this.auto) { this.auto = false; Game.toast('Autopilot off', { size: 22, y: 170, color: '#fff' }); } }
+    if (rud) {
+      if (this.auto) { this.auto = false; Game.toast('Autopilot off', { size: 22, y: 170, color: '#fff' }); }
+      (this.c.steered || (this.c.steered = {}))[this.driver] = true;   // this captain has the hang of it: no more steering tip
+    }
     // autopilot
     let cap = 999;
     if (this.auto && this.path && !this.panel) {
@@ -15879,7 +15911,7 @@ class SeaScene {
     if (id === 'home') { this.saveBoat(); Game.go(new DayEndScene()); return; }
     // kept until someone fishes here, so Back to the boat can hand the same captain the same run (reopenLeg)
     c.leg = { ch: this.driver, spot: id, pts, dist: skipped ? 0 : this.legDist, flags: Object.assign({}, this.flags), lines: skipped ? [] : this.lines.filter((l) => !l.end) };
-    c.spot = id; c.turn = 0; this.dest = null; this.auto = false; this.saveBoat(); Game.go(new TurnIntroScene());
+    c.spot = id; c.turn = 0; c.first = Math.max(0, c.crew.indexOf(this.driver)); this.dest = null; this.auto = false; this.saveBoat(); Game.go(new TurnIntroScene());
   }
   skipTo(id) {
     const [sx, sy] = id === 'home' ? [World.home.x + 10, World.home.dockY + 4] : spotXY(id);
@@ -15901,7 +15933,7 @@ class SeaScene {
     if (tint[1]) { const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, tint[1]); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
     if (this.v > 200) { const k = (this.v - 200) / 120, g = ctx.createRadialGradient(W / 2, H / 2, H * 0.4, W / 2, H / 2, H * 0.95); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,20,40,${0.28 * k})`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
     this.fl.draw(ctx);
-    if (this.steer && !this.panel) this.drawSteer(ctx);
+    if (this.steerLive() && !this.panel) this.drawSteer(ctx);
     this.drawHud(ctx, W, H, t);
     if (this.panel) {
       if (this.panel.kind === 'chart') this.drawChart(ctx, W, H, t);
@@ -16122,16 +16154,19 @@ class SeaScene {
         ctx.save(); ctx.translate(ax, ay); ctx.rotate(a); ctx.fillStyle = 'rgba(255,214,90,0.9)'; ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(-10, -13); ctx.lineTo(-4, 0); ctx.lineTo(-10, 13); ctx.closePath(); ctx.fill(); ctx.restore();
       }
     }
+    // each captain gets the steering tip on their first time at the wheel, until they've steered
+    const newCaptain = !(this.c.steered && this.c.steered[this.driver]), chartTip = this.dest ? '' : Game.touch ? ' Tap Chart to pick a spot.' : ' M for the chart.';
     if (this.view === 'chase') {
-      if (this.t > 2 && this.t < 12 && !open && !this.c.legs && !Game.toasts.length) {   // the tip steps aside while a banner is up
+      if (this.t > 2 && this.t < 12 && !open && newCaptain && !Game.toasts.length) {   // the tip steps aside while a banner is up
         const hw = Math.min(600, W - 2 * mmW - 70), a = Math.min(1, (this.t - 2) * 3, (12 - this.t) * 2);
-        const msg = Game.touch ? 'Hold your finger left or right of the boat to steer. Throttle is on the right. Tap Chart to pick a spot.' : 'Hold the mouse left or right of the boat to steer, or ← →. ↑ ↓ or the lever for throttle. M for the chart, V to change the view.';
+        const msg = this.auto ? (Game.touch ? 'The autopilot is driving. Hold or drag on the water to take the wheel.' : 'The autopilot is driving. Hold the mouse on the water, or ← →, to take the wheel.')
+          : Game.touch ? 'Hold your finger left or right of the boat to steer. Throttle is on the right.' + chartTip : 'Hold the mouse left or right of the boat to steer, or ← →. ↑ ↓ or the lever for throttle.' + chartTip + ' V changes the view.';
         ctx.font = fnt(15, 700); const n = wrapText(ctx, msg, hw - 28).length;
         ctx.save(); ctx.globalAlpha = a; panel(ctx, W / 2 - hw / 2, 108, hw, 14 + n * 19, { r: 16 });
         para(ctx, msg, W / 2, 129, hw - 28, { size: 15, align: 'center', color: '#fff', weight: 700, lh: 19 });
         ctx.restore();
       }
-    } else if (this.t < 9 && !open && !this.c.legs) para(ctx, Game.touch ? 'Hold and drag where you want to go. Throttle is on the right. Tap Chart to pick a spot.' : 'Hold the mouse where you want to go, or ← →. ↑ ↓ or the lever for throttle. M for the chart.', 196, H - 110, Math.min(460, W - 420), { size: 16, color: '#fff', weight: 700, stroke: 'rgba(0,0,0,0.5)', sw: 4, lh: 20 });
+    } else if (this.t < 9 && !open && newCaptain && !this.auto) para(ctx, Game.touch ? 'Hold and drag where you want to go. Throttle is on the right.' + chartTip : 'Hold the mouse where you want to go, or ← →. ↑ ↓ or the lever for throttle.' + chartTip, 196, H - 110, Math.min(460, W - 420), { size: 16, color: '#fff', weight: 700, stroke: 'rgba(0,0,0,0.5)', sw: 4, lh: 20 });
     if (GFX.showFps) {
       text(ctx, GFX.readout(this.uses3D(), this.view !== 'chase' ? 'top-down' : null), W / 2, H - 8, { size: 13, align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.6)', sw: 4 });
     }
@@ -16304,7 +16339,7 @@ const SCENE_FOR = { bughunt: () => BugHuntScene, bottom: () => BottomScene, trol
 const WATER_F = [72, 72, 75, 78, 82, 85, 87, 88, 87, 84, 79, 75];
 
 function launchTurn() {
-  const c = Trip.cur, spot = c.spot, ch = c.mode === 'crew' ? c.crew[c.turn] : c.crew[0];
+  const c = Trip.cur, spot = c.spot, ch = c.mode === 'crew' ? Trip.angler(c, c.turn) : c.crew[0];
   const S = SCENE_FOR[spotMode(spot)]();
   Game.go(new S({ ch, spot, len: c.sessionLen, weather: c.weather, onEnd: (res) => {
     Trip.record(ch, spot, res);
@@ -16857,7 +16892,7 @@ function askLeaveSolo(ctx, stay, leave) {
 class TurnIntroScene {
   // who and where are fixed when the hand-off opens, so it still draws while fading out after Back to the boat clears the spot
   constructor() {
-    const c = (this.c = Trip.cur); this.t = 0; this.spot = c.spot; this.turn = c.turn; this.ch = c.mode === 'crew' ? c.crew[c.turn] : c.crew[0];
+    const c = (this.c = Trip.cur); this.t = 0; this.spot = c.spot; this.turn = c.turn; this.ch = c.mode === 'crew' ? Trip.angler(c, c.turn) : c.crew[0];
     this.paid = Bounties.sync();   // a spot found on the way here pays its bounty, if the boat didn't already
   }
   enter() { Music.play('title'); if (this.paid.length) bountyToast(this.paid); }
@@ -16909,7 +16944,7 @@ class ResultsScene {
   constructor(ch, spot, res, next) {
     this.ch = ch; this.spot = spot; this.res = res; this.t = 0; this.parts = new Particles(); this.fl = new Floaters(); this.shown = 0; this.caption = res.best ? captionFor(res.best, Trip.cur.weather) : null; this.comments = randi(1, 9);
     const c = (this.c = Trip.cur); this.advanced = !!next; this.nextKind = next || tripNext(c);   // this.c: still drawable if the trip is cleared under us
-    this.nextUp = this.nextKind === 'turn' ? c.crew[this.advanced ? c.turn : c.turn + 1] : null;
+    this.nextUp = this.nextKind === 'turn' ? Trip.angler(c, this.advanced ? c.turn : c.turn + 1) : null;
     // which lines get a badge: match each catch line to its catch, in order
     const pool = (res.catches || []).slice();
     this.badges = res.lines.map((l) => {
@@ -17307,7 +17342,7 @@ const HOWTO = [
   { title: 'Bottom fishing', art: 'grouper', lines: ['Watch the fish finder on the right. Arches are fish (red means big), blue speckle is bait.', 'Drag up or down (or on the fish finder) to drop your bait to the marks. Squid for snapper, pinfish for grouper and jacks.', 'Small twitches are nibbles. Wait. When the rod slams down, tap to set the hook.', 'Nothing on the finder? Tap Move ◀ ▶ to idle along the ledge or the wreck until it lights up.', 'The ▸ under the finder (or F) makes it smaller, then tucks it away. Tap it again to bring it back.'] },
   { title: 'Trolling', art: 'mahi', lines: ['Drag up and down to steer. Your lures follow the path the boat took.', 'Frigate birds and weed lines mean mahi. Diving terns and bait balls mean tuna.', 'The fish are out there, but you have to find them. Read the birds and the weed.', 'Trap floats wrap your prop and foul your lures. Tripletail like to hide under them.'] },
   { title: 'The backcountry', art: 'bonefish', lines: ['Your buddy poles the skiff (◀ ▶ at the bottom right) and calls fish by the clock: 12 is straight ahead.', 'Look for tails, wakes, mud puffs and rolling tarpon. Press and hold where you want the fly, then let go to cast.', 'Land it a few feet in front of the fish. Too close, behind it, or the line across its back, and it spooks.', 'Tap to strip in the fish’s rhythm. When it eats, tap to set. At the bridge, the tide carries your fly.'] },
-  { title: 'Fighting a fish', art: 'fight', lines: ['Hold to reel. Keep the drag needle in the green.', 'When it runs, let go. Holding on a hard run snaps the line.', 'When it jumps, let go. That’s bowing to the fish, and it earns a bonus.', 'Too much slack and it spits the hook. Take too long and a shark might take it.'] }
+  { title: 'Fighting a fish', art: 'fight', lines: ['Hold to reel. Keep the drag needle in the green. The bar at the bottom lights up while you reel.', 'On a hard run it says LET IT GO: holding snaps the line. On a small run, keep cranking.', 'IT’S COMING UP means a jump: let go and bow to the fish. That earns a bonus.', 'Too much slack and it spits the hook. Wear it out before a shark shows up; once it’s beat, crank it in.'] }
 ];
 class HowToScene {
   constructor() { this.t = 0; this.page = 0; }

@@ -12,8 +12,8 @@ const CHARS = {
     rash: { base: '#2a2622', camo: ['#6a4529', '#8d5f37', '#3d3b33'] },
     shorts: { base: '#f3f3ef', stripes: ['#2b8fdc', '#1b5ea8', '#63bef2'] },
     gloves: '#1d4f8a', expr: 'smile',
-    perks: { breath: 1.35, window: 1.3, bite: 1, trophy: 1, reel: 1, line: 1, coax: 1.2 },
-    perkText: ['Big lungs: 35% more breath on dives', 'Quick hands: wider hook-set and net timing']
+    perks: { breath: 1.35, window: 1.3, bite: 1, trophy: 1, reel: 1, line: 1, coax: 1 },
+    perkText: ['Big lungs: 35% more breath on dives', 'Quick hands: more time on hook-sets, jumps and bugs']
   },
   jorge: {
     id: 'jorge', name: 'Jorge', title: 'Lucky Shades', color: '#ffc845',
@@ -25,7 +25,7 @@ const CHARS = {
     shorts: { base: '#36475c', stripes: ['#4f6580'] },
     gloves: '#2a2d33', expr: 'open',
     perks: { breath: 1, window: 1, bite: 1.3, trophy: 1.2, reel: 1, line: 1, coax: 1 },
-    perkText: ['Lucky shades: fish bite 30% sooner', 'Trophy magnet: better odds at a big one']
+    perkText: ['Lucky shades: fish bite and bugs come out 30% sooner', 'Trophy magnet: better odds at a big one']
   },
   jemel: {
     id: 'jemel', name: 'Jemel', title: 'Big Game', color: '#42d3c4',
@@ -36,8 +36,8 @@ const CHARS = {
     rash: { base: '#f0f3f5', camo: null, sleeve: 'mahi' },
     shorts: { base: '#3b2a24', stripes: ['#6c5646'] },
     gloves: '#2a2d33', expr: 'grin',
-    perks: { breath: 1, window: 1, bite: 1, trophy: 1, reel: 1.25, line: 1.12, coax: 1 },
-    perkText: ['Heavy hands: reel 25% faster', 'Strong line: 12% more pull before it snaps']
+    perks: { breath: 1, window: 1, bite: 1, trophy: 1, reel: 1.12, line: 1.12, coax: 1 },
+    perkText: ['Heavy hands: reel 12% faster', 'Strong line: 12% more pull before it snaps']
   }
 };
 const CHAR_ORDER = ['michael', 'jorge', 'jemel'];
@@ -73,7 +73,7 @@ const SPECIES = {
   barracuda: { name: 'Barracuda', short: 'Cuda', min: 5, max: 35, mult: 6, pow: 0.8, stam: 8, jump: 0.5 },
   // the backcountry and the bridges
   bonefish: { name: 'Bonefish', short: 'Bonefish', min: 3, max: 11, mult: 100, release: true, pow: 0.9, stam: 8, spook: 30, notice: 92, strip: 0.6, speed: 42, vis: 0.38 },
-  permit: { name: 'Permit', short: 'Permit', min: 8, max: 40, mult: 55, release: true, pow: 0.85, stam: 12, spook: 36, notice: 74, strip: 1.15, speed: 36, vis: 0.55 },
+  permit: { name: 'Permit', short: 'Permit', min: 8, max: 40, mult: 35, release: true, pow: 0.85, stam: 12, spook: 36, notice: 74, strip: 1.15, speed: 36, vis: 0.55 },
   tarpon: { name: 'Tarpon', short: 'Tarpon', min: 40, max: 160, mult: 7, release: true, pow: 0.95, stam: 16, jump: 0.9, spook: 24, notice: 112, strip: 0.45, speed: 30, vis: 0.62 },
   redfish: { name: 'Redfish', short: 'Redfish', min: 4, max: 16, mult: 38, release: true, pow: 0.6, stam: 8, spook: 20, notice: 92, strip: 0.65, speed: 24, vis: 0.66 },
   snook: { name: 'Snook', short: 'Snook', min: 4, max: 22, mult: 36, release: true, pow: 0.7, stam: 8, jump: 0.25, rock: 0.6, spook: 22, notice: 92, strip: 0.4, speed: 20, vis: 0.56 },
@@ -81,7 +81,7 @@ const SPECIES = {
   jack: { name: 'Jack Crevalle', short: 'Jack', min: 3, max: 35, mult: 20, release: true, pow: 0.85, stam: 12, spook: 26, notice: 110, strip: 0.35, speed: 40, vis: 0.6 },
   ladyfish: { name: 'Ladyfish', short: 'Ladyfish', min: 0.5, max: 4, mult: 60, release: true, pow: 0.4, stam: 5, jump: 0.8, spook: 18, notice: 96, strip: 0.3, speed: 34, vis: 0.56 },
   blackdrum: { name: 'Black Drum', short: 'Black Drum', min: 5, max: 60, mult: 14, release: true, pow: 0.75, stam: 11, spook: 22, notice: 80, strip: 0.9, speed: 16, vis: 0.6 },
-  lobster: { name: 'Spiny Lobster', short: 'Lobster', min: 0.6, max: 7, mult: 100 }
+  lobster: { name: 'Spiny Lobster', short: 'Lobster', min: 0.6, max: 7, mult: 150 }
 };
 const SPECIES_ORDER = ['lobster',
   'whitegrunt', 'lane', 'yellowtail', 'mangrove', 'mutton', 'hogfish', 'trigger', 'redgrouper', 'blackgrouper', 'cubera', 'amberjack', 'cobia', 'pompano', 'goliath',
@@ -208,16 +208,20 @@ const Trip = {
     t.catches = list(t.catches).filter((k) => k && typeof k === 'object'); t.turns = list(t.turns).filter((x) => x && typeof x === 'object');
     if (!t.scores || typeof t.scores !== 'object') t.scores = {};
     for (const c of t.crew) if (typeof t.scores[c] !== 'number') t.scores[c] = 0;
-    t.turn = clamp(t.turn | 0, 0, t.crew.length - 1); t.legs = Math.max(0, t.legs | 0);
+    t.turn = clamp(t.turn | 0, 0, t.crew.length - 1); t.first = clamp(t.first | 0, 0, t.crew.length - 1); t.legs = Math.max(0, t.legs | 0);
     if (t.boat && !(Number.isFinite(t.boat.x) && Number.isFinite(t.boat.y) && Number.isFinite(t.boat.h))) t.boat = null;
     if (t.bounties != null) t.bounties = list(t.bounties).filter((b) => b && BOUNTY_DEFS[b.id]);
+    if (t.steered != null && (typeof t.steered !== 'object' || Array.isArray(t.steered))) t.steered = {};
     if (t.leg && !(typeof t.leg === 'object' && CHARS[t.leg.ch] && typeof t.leg.pts === 'number')) t.leg = null;
     if (t.legBack && !(typeof t.legBack === 'object' && Array.isArray(t.legBack.lines) && t.legBack.flags)) t.legBack = null;
     return t;
   },
   resume() { this.cur = this.load(); return !!this.cur; },
   clear() { Store.del('trip'); },
-  get player() { return this.cur.crew[this.cur.turn]; },
+  get player() { return this.angler(this.cur, this.cur.turn); },
+  // who fishes turn i at this spot: the captain who brought the boat here goes first, then the rest in crew order,
+  // so the first shot at the day's bounties moves around the crew instead of always going to the same angler
+  angler(c, i) { const n = c.crew.length; return c.crew[(((c.first | 0) + i) % n + n) % n]; },
   record(ch, spot, res) {
     const c = this.cur;
     Records.add(res.catches);          // first: marks personal bests (k.pb) and first-ever catches (k.isNew)
