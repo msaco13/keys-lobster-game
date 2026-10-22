@@ -80,8 +80,13 @@ phone has.
 | Flamingo | Everglades | All the way across Florida Bay (find it) |
 
 **Bug Hunt.** Free-dive for spiny lobster. Look for antennae poking out of holes in the ledges; most holes are empty,
-and some have morays. Hold on a hole (or TICKLE) to coax the bug out, and let go when its antennae twitch or it backs in.
-When it walks out, **click or tap the bug to swing your net**. Lobsters tail-flip backward toward their hole, so watch for
+and some have morays. Hold on a hole (or TICKLE) to coax the bug out. Just before it twitches, its antennae go stiff and
+shake (GET READY): let go then, or it backs in, and hold again after. Get close and a tag under the hole says what kind of bug
+it is: a **calm bug** gives you plenty of warning and is easy to net, a **skittish bug** gives you less, and a **wary old bug**
+(often the big ones, and every golden one) gives you a split second, scuttles fast once it's out, and runs after two misses.
+When it walks out, **tap the bug** (or anywhere near it) to swing your net; if it's too far, you swim over and swing.
+The ? button (or H) shows how to catch one at any time, and it opens by itself on each angler's first dive.
+Lobsters tail-flip backward toward their hole, so watch for
 the crouch, and the pro move is to set the net down behind it and let it flip in. Then gauge it: keep it only if the back of the
 shell sits past the end of the 3" gauge and there are no eggs under the tail. Six per person, and FWC checks your bag at the ramp.
 Watch your air (Alligator Reef is deeper), the jellyfish and the moray holes. Rare golden bugs score triple.
