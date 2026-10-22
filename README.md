@@ -3,7 +3,7 @@
 A lobstering and fishing game set in the Florida Keys, made for one phone passed around a boat.
 Three friends, one boat, the whole Upper Keys to run around in. Whoever brings in the most points is Captain of the Day.
 
-It's plain HTML and JavaScript drawn on a canvas, and the boat ride is real 3D (three.js, bundled in).
+It's plain HTML and JavaScript drawn on a canvas, and the boat ride and the fish fights are real 3D (three.js, bundled in).
 There's no install, no build step needed to play, and no art or audio files: every fish, lobster, boat, island and
 face is made in code, the 3D world included, and the steel-drum soundtrack is played live by a small synthesizer
 inside the game (Music on/off is in the pause menu).
@@ -51,15 +51,17 @@ the reef line, and the Gulf Stream out past the drop-off. The far spots are 15 t
 
 ## Phones and graphics
 
-The 3D boat ride is built for phones. It needs WebGL 2, which any recent iPhone or Android phone has.
+The 3D (the boat ride and the fish fights) is built for phones. It needs WebGL 2, which any recent iPhone or Android
+phone has.
 
 - It draws at a lower resolution than the screen and watches its own frame rate. If a phone is struggling, it lowers
   the resolution and the number of trees a step at a time. A screen that's capped at 30 frames a second (a phone in
   low-power mode) isn't mistaken for a slow phone.
-- If a phone still can't keep up, the boat ride switches to the classic 2D view and says so. A phone without WebGL 2
-  gets the classic view straight away. Every other part of the game is 2D and unchanged.
+- If a phone still can't keep up, the game switches to the classic 2D view and says so, even in the middle of a fight.
+  A phone without WebGL 2 gets the classic view straight away. The menus and the fishing spots themselves (casting,
+  the Bug Hunt) are 2D either way.
 - **Pause → Graphics** switches between 3D and classic by hand. **Pause → Frame rate** shows the frame rate and the
-  current detail level at the bottom of the screen.
+  current detail level at the bottom of the screen. Both are in the pause menu on the boat ride and at every spot.
 - On 120 Hz screens it draws the 3D at 60 frames a second, which saves battery.
 - The setting that worked is remembered on the device for next time.
 
@@ -103,7 +105,9 @@ and set the hook when it eats. At Channel Five the tide carries your fly past th
 mangrove roots and reds and drum tail on the mud. Tarpon, bonefish and permit is a Grand Slam.
 
 **The fight** (all fishing spots). Hold to reel and keep the drag needle in the green. Let go when the fish runs
-or jumps. Too much slack and it spits the hook. Fight too long and a shark might tax you.
+or jumps. Too much slack and it spits the hook. Fight too long and a shark might tax you. In 3D the camera sits right
+at the waterline, half in and half out: the boat and the angler working the rod above, and below, the fish on the line
+over the reef, the wreck, the grass flats or the Everglades mud, with the light rippling on the bottom.
 
 34 species in all, from white grunts to blue marlin. The Logbook keeps your personal best for every one.
 
@@ -131,7 +135,9 @@ js/troll.js       trolling (The Weedline, The Hump)
 js/flats.js       the backcountry (Florida Bay, Channel Five, Flamingo)
 js/world.js       the Upper Keys map: islands, depths, channels, reefs, bridges, route finding
 js/chase.js       the behind-the-boat camera, and the classic 2D view for phones without 3D
-js/sea3d.js       the boat ride in 3D: water, sky, islands, boats, wildlife, and the frame-rate safeguards
+js/gl3d.js        the shared 3D renderer: the frame-rate safeguards and Graphics setting, the boat and crew models
+js/sea3d.js       the boat ride in 3D: water, sky, islands, boats, wildlife
+js/fight3d.js     the fish fight in 3D, drawn from the same fight state as the 2D one
 js/vendor/        three.min.js: the parts of three.js the game uses (built by tools/vendor-three.mjs)
 js/sea.js         driving the boat around the map, the chart, discovering spots
 js/screens.js     title, crew pick, hand-offs, results, end of day, logbook, how-to
@@ -152,11 +158,14 @@ npm run test:nav       # clicks every way back to the title screen and checks wh
 npm run test:sea       # screenshots around the map, and the autopilot to every spot
 npm run test:balance   # simulates hundreds of fights per species with players of different skill
 npm run test:3d        # screenshots of the 3D boat ride around the map (WebGL forced on, software-rendered)
-npm run test:gfx       # the 3D safeguards: slow phone, 30 fps screen, lost graphics, the Graphics switch
-npm run test:flow3d    # the whole crew trip with the 3D boat ride on
+npm run test:gfx       # the 3D safeguards: slow phone, 30 fps screen, lost graphics, the Graphics switch, mid-fight
+npm run test:flow3d    # the whole crew trip with 3D on
+npm run test:fight3d   # screenshots of the 3D fight at every kind of spot: hooked, running, jumping, landed, lost
 npm run vendor         # rebuild js/vendor/three.min.js after changing tools/three-entry.js
 ```
 
 `node test/clip.mjs . out.mp4 3d autopilot 16` records a smooth video of the boat ride (needs ffmpeg).
+`node test/fightclip.mjs . out.mp4 3d offshore,bridge 12` records fish fights played by a bot (the same fight in 3D
+and classic, for a before/after).
 Headless Chromium renders WebGL in software, so the 3D tests check the picture and the errors, not the speed;
 check the speed on a real phone with Pause → Frame rate.

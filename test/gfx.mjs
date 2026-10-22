@@ -61,5 +61,32 @@ const open = async () => {
   check(errs.filter((e) => !/CONTEXT_LOST|context lost/i.test(e)).length === 0, 'no errors ' + errs.join(' | '));
   await page.close();
 }
+{ // the same safeguards in a fish fight: a slow device hands the fight over to the 2D picture mid-fight, and it carries on
+  const { page, errs } = await open();
+  await page.evaluate(() => { Game.go(new TrollScene({ ch: 'jemel', spot: 'troll', len: 120, weather: Trip.cur.weather, onEnd: () => {} }), true); });
+  await page.waitForTimeout(1200);
+  await page.evaluate(() => Game.scene.startFight({ sp: 'mahi', weight: 30, ctxType: 'offshore' }));
+  await page.waitForFunction(() => Game.scene.child && Game.scene.child.in3d && Fight3D.fight === Game.scene.child, null, { timeout: 30000 });
+  check(await page.evaluate(() => Game.scene.uses3D()), 'the fight is drawn in 3D');
+  const r = await page.evaluate(() => feed(12, 20));
+  check(r.state === 'failed', 'at 12 fps mid-fight it gives up on 3D (' + r.state + ')');
+  await page.waitForTimeout(800);
+  const st = await page.evaluate(() => { const f = Game.scene.child, c = document.getElementById('game').getContext('2d').getImageData(400, 300, 1, 1).data; return { in3d: f.in3d, phase: f.phase, alpha: c[3], err: Game.error && String(Game.error) }; });
+  check(!st.in3d && st.alpha === 255 && !st.err, 'the fight carries on in 2D (' + JSON.stringify(st) + ')');
+  check(errs.length === 0, 'no errors ' + errs.join(' | '));
+  await page.close();
+}
+{ // and a lost WebGL context in the middle of a fight
+  const { page, errs } = await open();
+  await page.evaluate(() => { Game.go(new BottomScene({ ch: 'jorge', spot: 'wreck', len: 120, weather: Trip.cur.weather, onEnd: () => {} }), true); });
+  await page.waitForTimeout(1200);
+  await page.evaluate(() => Game.scene.startFight({ sp: 'amberjack', weight: 40, ctxType: 'reef', depth: 100 }));
+  await page.waitForFunction(() => Game.scene.child && Game.scene.child.in3d, null, { timeout: 30000 });
+  await page.evaluate(() => GL.r.getContext().getExtension('WEBGL_lose_context').loseContext()); await page.waitForTimeout(1200);
+  const st = await page.evaluate(() => ({ state: GL.state, in3d: Game.scene.child && Game.scene.child.in3d, err: Game.error && String(Game.error) }));
+  check(st.state === 'failed' && !st.in3d && !st.err, 'context lost mid-fight: 2D fight (' + JSON.stringify(st) + ')');
+  check(errs.filter((e) => !/CONTEXT_LOST|context lost/i.test(e)).length === 0, 'no errors ' + errs.join(' | '));
+  await page.close();
+}
 console.log(fails.length ? 'FAILED: ' + fails.length : 'ALL PASS');
 await browser.close();

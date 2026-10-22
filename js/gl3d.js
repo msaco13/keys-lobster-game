@@ -26,6 +26,17 @@ const GFX = {
     else { this.setMode('classic'); }
   },
   label() { return this.mode === 'classic' || (GL.state === 'failed' && GL.why !== 'slow') ? 'Graphics: classic' : 'Graphics: 3D'; },
+  // the Graphics and Frame rate buttons, a row in the pause menus (the boat ride's and the fishing spots')
+  pauseRow(ctx, cx, y) {
+    const no3d = GL.state === 'failed' && GL.why !== 'slow';
+    UI.button(ctx, 'gfx', cx - 130, y, 125, 44, this.label(), () => this.toggle(), { style: 'secondary', size: 15, disabled: no3d, sub: no3d ? 'no 3D on this device' : this.mode === 'classic' ? (this.auto ? 'set for speed' : 'lighter look') : 'tap for classic' });
+    UI.button(ctx, 'fps', cx + 5, y, 125, 44, this.showFps ? 'Frame rate: on' : 'Frame rate: off', () => { this.showFps = !this.showFps; Store.set('gfxFps', this.showFps); }, { style: 'ghost', size: 15 });
+  },
+  // the on-screen readout: frames a second (once there's a reading), and how it's drawing
+  readout(in3d, how) {
+    const f = in3d && GL.fps ? GL.fps : this.fps;
+    return (f ? Math.round(f) + ' fps' : 'measuring…') + ' · ' + (how || (in3d ? '3D ' + this.TIERS[this.tier].name + ' · ' + Math.min(this.TIERS[this.tier].pr, window.devicePixelRatio || 1) + 'x' : 'classic'));
+  },
   // a frame counter for the on-screen readout (counts whatever is drawn, 2D or 3D)
   meter: { n: 0, t0: 0, last: 0 },
   count(now) {
