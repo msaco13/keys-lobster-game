@@ -12,9 +12,9 @@ const open = async () => {
   await page.addInitScript(() => { localStorage.clear(); localStorage.setItem('keyscrew_gfx', JSON.stringify('3d')); localStorage.setItem('keyscrew_gfxTier', JSON.stringify(2)); });
   await page.goto('file://' + root + '/index.html'); await page.waitForTimeout(700);
   await page.evaluate(() => { World.build(); Trip.start({ mode: 'crew', crew: ['michael', 'jorge', 'jemel'], plan: 'full', sessionLen: 120 }); Game.go(new SeaScene(), true); });
-  await page.waitForFunction(() => Sea3D.state === 'ready' && Sea3D.boatOf === Game.scene, null, { timeout: 30000 });
+  await page.waitForFunction(() => GL.state === 'ready' && Sea3D.boatOf === Game.scene, null, { timeout: 30000 });
   // from here on, act like an ordinary player's 'auto' setting, and feed the tuner frames at a given rate
-  await page.evaluate(() => { GFX.mode = 'auto'; window.feed = (fps, secs) => { const P = Sea3D.perf; let t = (P.last || performance.now()) + 1; P.last = t; for (let i = 0; i < fps * secs; i++) { t += 1000 / fps; Sea3D.tune(t, false); } return { tier: GFX.tier, state: Sea3D.state, target: Sea3D.perf.target }; }; });
+  await page.evaluate(() => { GFX.mode = 'auto'; window.feed = (fps, secs) => { const P = GL.perf; let t = (P.last || performance.now()) + 1; P.last = t; for (let i = 0; i < fps * secs; i++) { t += 1000 / fps; GL.tune(t, false); } return { tier: GFX.tier, state: GL.state, target: GL.perf.target }; }; });
   return { page, errs };
 };
 { // a slow device: steps down, then hands over to the classic view and says so
@@ -55,8 +55,8 @@ const open = async () => {
 }
 { // the WebGL context gets lost (the browser reclaims the GPU): classic view, no crash
   const { page, errs } = await open();
-  await page.evaluate(() => Sea3D.r.getContext().getExtension('WEBGL_lose_context').loseContext()); await page.waitForTimeout(1200);
-  const st = await page.evaluate(() => ({ state: Sea3D.state, why: Sea3D.why, uses: Game.scene.uses3D(), err: Game.error && String(Game.error) }));
+  await page.evaluate(() => GL.r.getContext().getExtension('WEBGL_lose_context').loseContext()); await page.waitForTimeout(1200);
+  const st = await page.evaluate(() => ({ state: GL.state, why: GL.why, uses: Game.scene.uses3D(), err: Game.error && String(Game.error) }));
   check(st.state === 'failed' && st.why === 'lost' && !st.uses && !st.err, 'context lost: classic view (' + JSON.stringify(st) + ')');
   check(errs.filter((e) => !/CONTEXT_LOST|context lost/i.test(e)).length === 0, 'no errors ' + errs.join(' | '));
   await page.close();

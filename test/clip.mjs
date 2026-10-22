@@ -20,7 +20,7 @@ await page.evaluate(([scenario]) => {
   if (scenario === 'sunset') { Trip.cur.legs = 3; Trip.cur.boat = { x: 7600, y: wy(7600, 1500), h: -2.4 }; }
   Game.go(new SeaScene(scenario === 'sunset' ? { home: true } : {}), true);
   SFX.muted = true; Game._frame = Game.frame; Game.frame = () => {};   // we drive the frames from here
-  if (typeof Sea3D !== 'undefined') Sea3D.tune = () => {};               // and the speed tuner would just see a slow machine
+  if (typeof GL !== 'undefined') GL.tune = () => {};               // and the speed tuner would just see a slow machine
   window.__clip = { t: 0, scenario };
 }, [scenario]);
 // what happens when, per scenario
@@ -44,7 +44,7 @@ for (let i = 0; i < total; i++) {
   await page.screenshot({ path: path.join(frames, String(i).padStart(5, '0') + '.png') });
   if (i % fps === 0) process.stdout.write(`${i / fps}s `);
 }
-console.log('\nrendered', total, 'frames', mode, scenario, await page.evaluate(() => (typeof Sea3D !== 'undefined' ? Sea3D.state : 'n/a')));
+console.log('\nrendered', total, 'frames', mode, scenario, await page.evaluate(() => (typeof GL !== 'undefined' ? GL.state : 'n/a')));
 execFileSync('ffmpeg', ['-y', '-v', 'error', '-framerate', String(fps), '-i', path.join(frames, '%05d.png'), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', '-movflags', '+faststart', outFile]);
 fs.rmSync(frames, { recursive: true, force: true });
 console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'NO ERRORS', '->', outFile);

@@ -611,7 +611,7 @@ class SeaScene {
     } else if (this.t < 9 && !open && !this.c.legs) para(ctx, Game.touch ? 'Hold and drag where you want to go. Throttle is on the right. Tap Chart to pick a spot.' : 'Hold the mouse where you want to go, or ← →. ↑ ↓ or the lever for throttle. M for the chart.', 196, H - 110, Math.min(460, W - 420), { size: 16, color: '#fff', weight: 700, stroke: 'rgba(0,0,0,0.5)', sw: 4, lh: 20 });
     if (GFX.showFps) {
       const how = this.view !== 'chase' ? 'top-down' : this.uses3D() ? '3D ' + GFX.TIERS[GFX.tier].name + ' · ' + Math.min(GFX.TIERS[GFX.tier].pr, window.devicePixelRatio || 1) + 'x' : 'classic';
-      text(ctx, Math.round(this.uses3D() && Sea3D.fps ? Sea3D.fps : GFX.fps) + ' fps · ' + how, W / 2, H - 8, { size: 13, align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.6)', sw: 4 });
+      text(ctx, Math.round(this.uses3D() && GL.fps ? GL.fps : GFX.fps) + ' fps · ' + how, W / 2, H - 8, { size: 13, align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.6)', sw: 4 });
     }
     if (this.quip && !open) {
       const q = this.quip, qw = Math.min(360, W * 0.42), qx = 14, qy = H - 170;
@@ -764,7 +764,7 @@ class SeaScene {
     UI.button(ctx, 'music', W / 2 + 5, 294, 125, 50, Music.on ? 'Music: on' : 'Music: off', () => Music.setOn(!Music.on), { style: 'secondary', size: 17 });
     UI.button(ctx, 'endtrip', W / 2 - 130, 360, 125, 50, c.mode === 'crew' ? 'End the trip' : 'Head home', () => (this.panel = { kind: 'pause', confirm: true }), { style: 'coral', size: 17 });
     UI.button(ctx, 'totitle', W / 2 + 5, 360, 125, 50, 'Quit to title', () => { this.saveBoat(); Game.go(new TitleScene()); }, { style: 'ghost', size: 17 });
-    const no3d = Sea3D.state === 'failed' && Sea3D.why !== 'slow';
+    const no3d = GL.state === 'failed' && GL.why !== 'slow';
     UI.button(ctx, 'gfx', W / 2 - 130, 422, 125, 44, GFX.label(), () => GFX.toggle(), { style: 'secondary', size: 15, disabled: no3d, sub: no3d ? 'no 3D on this device' : GFX.mode === 'classic' ? (GFX.auto ? 'set for speed' : 'lighter look') : 'tap for classic' });
     UI.button(ctx, 'fps', W / 2 + 5, 422, 125, 44, GFX.showFps ? 'Frame rate: on' : 'Frame rate: off', () => { GFX.showFps = !GFX.showFps; Store.set('gfxFps', GFX.showFps); }, { style: 'ghost', size: 15 });
     text(ctx, c.mode === 'crew' ? 'Your trip is saved. Resume it from the title screen.' : 'Solo days aren’t saved. Your logbook is.', W / 2, 496, { size: 15, align: 'center', color: '#9fb8c2', weight: 600 });

@@ -48,6 +48,6 @@ await click('chart'); await click('chartpin-home'); await shot('chart-home');
 await click('skiphome'); await page.waitForTimeout(500); await click('letsfish'); await page.waitForTimeout(1500);
 await expect('DayEndScene', 'end of day'); await shot('end');
 await click('log'); await expect('LogbookScene', 'logbook'); await shot('logbook');
-console.log('boat ride drawn in:', await page.evaluate(() => (Sea3D.state === 'ready' ? '3D' : 'classic (' + (Sea3D.why || GFX.mode) + ')')));
+console.log('boat ride drawn in:', await page.evaluate(() => (GL.state === 'ready' ? '3D' : 'classic (' + (GL.why || GFX.mode) + ')')));
 console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'NO ERRORS');
 await browser.close();
