@@ -264,7 +264,7 @@ const Chase = {
       items.push({ z: p.z, f: (g) => this.drawBoat(g, B.x, B.y, B.h, { hull: hexRGB(B.hull), scale: B.big ? 1.15 : 0.85, roll: Math.sin(t * 1.3 + B.x) * 0.03 }, p) });
     }
     if (s.fwc) {
-      const k = easeOut(s.fwc.k), x = s.x - Math.cos(s.h) * lerp(400, 90, k) + Math.cos(s.h + Math.PI / 2) * 70, y = s.y - Math.sin(s.h) * lerp(400, 90, k) + Math.sin(s.h + Math.PI / 2) * 70, p = P(x, y, 0);
+      const k = easeOut(s.fwc.k), back = lerp(420, -10, k), x = s.x - Math.cos(s.h) * back + Math.cos(s.h + Math.PI / 2) * 85, y = s.y - Math.sin(s.h) * back + Math.sin(s.h + Math.PI / 2) * 85, p = P(x, y, 0);   // pulls up alongside
       if (p && p.d > 20) items.push({ z: p.z, f: (g) => { this.drawBoat(g, x, y, s.h, { hull: [240, 244, 248], stripe: [30, 80, 170], scale: 0.9 }, p); const lt = P(x, y, 52); if (lt) { const on = Math.floor(t * 8) % 2, r = 4 * lt.s + 2; g.fillStyle = on ? '#4aa0ff' : '#ffffff'; ell(g, lt.x - 8 * lt.s, lt.y, r, r); g.fill(); g.fillStyle = on ? '#ffffff' : '#ff4a4a'; ell(g, lt.x + 8 * lt.s, lt.y, r, r); g.fill(); text(g, 'FWC', lt.x, lt.y - 12 * lt.s - 6, { size: 14, align: 'center', color: '#fff', weight: 800, stroke: '#123a8a', sw: 4 }); } } });
     }
     // birds working the Hump
