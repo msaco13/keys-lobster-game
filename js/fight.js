@@ -49,7 +49,7 @@ class FightScene {
   keyDown(c) { if (['Space', 'ArrowDown', 'KeyS', 'Enter'].includes(c)) this.tap(); }
   tap() {
     if (this.phase === 'turn') { this.rockBar += 0.05 * this.perks.reel; this.crankFx = 0.15; SFX.play('reel'); }
-    else if (this.phase === 'over' && this.overT > 0.9) this.finish();
+    else if (this.phase === 'over' && this.overT > 0.9 + (this.in3d && !this.won ? 0.6 : 0)) this.finish();
   }
   finish() { if (this.finished) return; this.finished = true; SFX.setDrag(0); this.o.onDone({ ok: this.won, catch: this.catch, reason: this.reason }); }
 
@@ -162,20 +162,27 @@ class FightScene {
     if (this.running && chance(0.3)) this.parts.add({ x: this.fx + rand(-10, 10), y: wy + 2, vy: -rand(20, 60), life: 0.5, size: rand(1.5, 3), color: 'rgba(255,255,255,0.8)', g: 200 });
   }
 
+  // drawn in 3D (fight3d.js) when the device can, else the 2D picture below; the HUD is the same either way
+  uses3D() { return Fight3D.ready(); }
   draw(ctx) {
     const W = Game.W, H = Game.H, wy = this.waterY(), t = this.t;
-    this.drawBackdrop(ctx, W, H, wy, t);
-    const lean = 0.08 + this.T * 0.28;
-    const hand = this.drawRig(ctx, W, H, wy, t, lean);
-    this.drawFishBody(ctx, wy);
-    this.parts.draw(ctx);
-    this.drawLine(ctx, hand, wy);
-    if (this.shark && this.phase !== 'over') {
-      const a = this.shark.a; const sx = this.fx + Math.cos(a * 1.8) * 90, sy = Math.max(wy + 40, this.fy + 30 + Math.sin(a * 1.8) * 30);
-      ctx.save(); ctx.translate(sx, sy); ctx.globalAlpha = 0.75; drawFish(ctx, 'wahoo', 150, { sil: '#20333c', t, flip: Math.sin(a * 1.8) > 0 }); ctx.restore();
+    this.in3d = this.uses3D(); GFX.count(performance.now());
+    if (this.in3d) Fight3D.draw(this, ctx, W, H);
+    else {
+      this.drawBackdrop(ctx, W, H, wy, t);
+      const lean = 0.08 + this.T * 0.28;
+      const hand = this.drawRig(ctx, W, H, wy, t, lean);
+      this.drawFishBody(ctx, wy);
+      this.parts.draw(ctx);
+      this.drawLine(ctx, hand, wy);
+      if (this.shark && this.phase !== 'over') {
+        const a = this.shark.a; const sx = this.fx + Math.cos(a * 1.8) * 90, sy = Math.max(wy + 40, this.fy + 30 + Math.sin(a * 1.8) * 30);
+        ctx.save(); ctx.translate(sx, sy); ctx.globalAlpha = 0.75; drawFish(ctx, 'wahoo', 150, { sil: '#20333c', t, flip: Math.sin(a * 1.8) > 0 }); ctx.restore();
+      }
     }
     this.fl.draw(ctx);
     this.drawHud(ctx, W, H);
+    if (GFX.showFps && this.phase !== 'over') text(ctx, GFX.readout(this.in3d), W / 2, H - 5, { size: 13, align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.6)', sw: 4 });
     if (this.phase === 'over') this.drawOver(ctx, W, H);
   }
   drawBackdrop(ctx, W, H, wy, t) {
@@ -309,15 +316,18 @@ class FightScene {
     }
   }
   drawOver(ctx, W, H) {
-    const k = easeOut(this.overT / 0.35);
+    // in 3D a lost fish is shown getting away (the shark, the snapped line) for a moment before the card comes up
+    const wait = this.in3d && !this.won ? 0.6 : 0, oT = Math.max(0, this.overT - wait);
+    if (wait && oT <= 0) return;
+    const k = easeOut(oT / 0.35);
     ctx.fillStyle = `rgba(4,26,38,${0.72 * k})`; ctx.fillRect(0, 0, W, H);
     if (!this.won) {
       const [title, sub] = LOSS_TEXT[this.reason] || ['Lost it', ''];
-      ctx.save(); ctx.translate(W / 2, H / 2 - 30); ctx.scale(easeBack(Math.min(1, this.overT / 0.3)), easeBack(Math.min(1, this.overT / 0.3)));
+      ctx.save(); ctx.translate(W / 2, H / 2 - 30); ctx.scale(easeBack(Math.min(1, oT / 0.3)), easeBack(Math.min(1, oT / 0.3)));
       text(ctx, title, 0, 0, { display: true, size: 60, align: 'center', base: 'middle', color: PAL.coral, stroke: '#04202d', sw: 10 });
       ctx.restore();
       text(ctx, sub, W / 2, H / 2 + 30, { size: 22, align: 'center', color: '#fff', weight: 600, maxW: W - 80 });
-      if (this.overT > 0.9) text(ctx, Game.touch ? 'Tap to keep fishing' : 'Click or press Space to keep fishing', W / 2, H / 2 + 80, { size: 18, align: 'center', color: '#cfe3ea', weight: 700, alpha: 0.6 + Math.sin(this.t * 4) * 0.3 });
+      if (oT > 0.9) text(ctx, Game.touch ? 'Tap to keep fishing' : 'Click or press Space to keep fishing', W / 2, H / 2 + 80, { size: 18, align: 'center', color: '#cfe3ea', weight: 700, alpha: 0.6 + Math.sin(this.t * 4) * 0.3 });
       return;
     }
     const c = this.catch;

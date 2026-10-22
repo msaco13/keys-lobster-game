@@ -95,6 +95,7 @@ class SessionBase {
     UI.button(ctx, 'music', cx + 5, 264, 125, 48, Music.on ? 'Music: on' : 'Music: off', () => Music.setOn(!Music.on), { style: 'secondary', size: 17 });
     UI.button(ctx, 'quit', cx - 130, 326, 260, 56, 'End my turn now', () => { this.setPaused(false); this.end('quit'); }, { style: 'coral', size: 20, sub: this.child ? 'Right after this fish' : 'Your catches so far still count' });
     UI.button(ctx, 'totitle', cx - 130, 398, 260, 52, 'Quit to title', () => (this.quitAsk = true), { style: 'ghost', size: 19, sub: crew ? 'Your trip is saved' : 'Ends your solo day' });
+    GFX.pauseRow(ctx, cx, 464);
   }
   drawQuitAsk(ctx, crew) {
     const W = Game.W, cx = W / 2;
@@ -106,6 +107,8 @@ class SessionBase {
     UI.button(ctx, 'quitno', cx - 230, 280, 220, 56, 'Cancel', () => (this.quitAsk = false), { style: 'ghost', size: 20, key: 'Escape' });
     UI.button(ctx, 'quityes', cx + 10, 280, 220, 56, 'Quit to title', () => this.quitToTitle(), { style: 'coral', size: 20 });
   }
+  // a fish fight may be drawn in 3D (the WebGL canvas under this one shows through)
+  uses3D() { return !!(this.child && this.child.uses3D && this.child.uses3D()); }
   // during a fish fight the fight draws the whole screen; keep a pause button on it, next to the clock
   drawChildOrNull(ctx) {
     if (!this.child) return false;

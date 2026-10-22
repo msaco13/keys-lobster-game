@@ -12,14 +12,14 @@ await page.addInitScript(() => { localStorage.clear(); localStorage.setItem('key
 await page.goto('file://' + root + '/index.html'); await page.waitForTimeout(1000);
 await page.evaluate(() => { World.build(); Trip.start({ mode: 'crew', crew: ['michael', 'jorge', 'jemel'], plan: 'full', sessionLen: 120 }); Game.go(new SeaScene(), true); });
 await page.waitForTimeout(2500);
-const state = await page.evaluate(() => ({ state: Sea3D.state, why: Sea3D.why, gl: Sea3D.r && Sea3D.r.getContext().getParameter(Sea3D.r.getContext().VERSION), calls: Sea3D.r && Sea3D.r.info.render.calls, tris: Sea3D.r && Sea3D.r.info.render.triangles }));
+const state = await page.evaluate(() => ({ state: GL.state, why: GL.why, gl: GL.r && GL.r.getContext().getParameter(GL.r.getContext().VERSION), calls: GL.r && GL.r.info.render.calls, tris: GL.r && GL.r.info.render.triangles }));
 console.log('3D', JSON.stringify(state));
 let n = 0;
 const shot = async (name) => {
   if (only && !only.includes(name)) return;
   await page.screenshot({ path: `${out}/3d-${String(++n).padStart(2, '0')}-${name}.png` });
   const ge = await page.evaluate(() => (Game.error ? String(Game.error.stack || Game.error) : null)); if (ge) { errs.push(name + ': ' + ge); await page.evaluate(() => { Game.error = null; }); }
-  const info = await page.evaluate(() => Sea3D.r && { calls: Sea3D.r.info.render.calls, tris: Sea3D.r.info.render.triangles, state: Sea3D.state });
+  const info = await page.evaluate(() => GL.r && { calls: GL.r.info.render.calls, tris: GL.r.info.render.triangles, state: GL.state });
   console.log(name, JSON.stringify(info));
 };
 // put the boat somewhere: x along the chain, s off it, heading, speed, throttle notch
