@@ -16,7 +16,7 @@
   html { box-sizing: border-box; }
   body { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overscroll-behavior: none; }
   #wrap { position: relative; width: 100%; height: 100%; }
-  #game { display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
+  #game { display: block; position: relative; z-index: 1; width: 100%; height: 100%; touch-action: none; outline: none; }
 </style>
 </head>
 <body>
@@ -32,6 +32,8 @@
 <script src="js/flats.js"></script>
 <script src="js/world.js"></script>
 <script src="js/chase.js"></script>
+<script src="js/vendor/three.min.js"></script>
+<script src="js/sea3d.js"></script>
 <script src="js/sea.js"></script>
 <script src="js/screens.js"></script>
 <script src="js/main.js"></script>

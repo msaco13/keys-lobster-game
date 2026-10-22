@@ -4,3 +4,4 @@ test/flow/
 test/bundle/
 test/*.png
 .DS_Store
+package-lock.json
