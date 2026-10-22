@@ -39,6 +39,8 @@ for (const run of RUNS) {
     if (pt.dis) throw new Error('button "' + id + '" is disabled on ' + (await scene()));
     if (run.touch) await page.touchscreen.tap(pt.x, pt.y); else await page.mouse.click(pt.x, pt.y);
     await settle();
+    // a Bug Hunt turn opens How to catch a bug on each angler's first dive: tap Got it, like a player would
+    if (id === 'ready') { await page.waitForTimeout(150); if (await page.evaluate(() => !!(Game.scene.help && UI.byId('help-ok')))) await click('help-ok'); }
   };
   const key = async (code) => { await page.keyboard.press(code); await settle(); };
   const has = (id) => page.evaluate((id) => !!UI.byId(id), id);

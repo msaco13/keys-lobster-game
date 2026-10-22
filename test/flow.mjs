@@ -33,6 +33,8 @@ for (const sp of ['bughunt', 'flats']) {
   for (let turn = 0; turn < 2; turn++) {
     await shot(`intro-${sp}-${turn}`);
     await click('ready'); await page.waitForTimeout(1200); console.log(' session:', await scene());
+    // each angler's first dive opens How to catch a bug; tap Got it like a player would
+    if (await page.evaluate(() => !!(Game.scene.help && UI.byId('help-ok')))) { await shot(`howto-${sp}-${turn}`); await click('help-ok'); }
     await shot(`play-${sp}-${turn}`);
     await click('pause'); await shot(`pause-${sp}-${turn}`); await click('resume');
     await page.evaluate(() => { Game.scene.timeLeft = 0.2; });

@@ -1,17 +1,32 @@
 'use strict';
 /* Keys Crew — Bug Hunt. Free-dive the reef for spiny lobster.
-   Hold on a hole (or TICKLE) to coax the bug out, and let go when it twitches. When it walks out,
-   click or tap it to swing the net. Lobsters tail-flip backward toward their hole, so a net set
-   behind one catches it. Gauge every bug: carapace over 3", no eggs. Six per person.
-   Now and then a shark shows up, and you race it back to the boat. */
+   Hold on a hole (or TICKLE) to coax the bug out. Its antennae go stiff and shiver just before it twitches:
+   let go then, and hold again after. When it walks out, tap it to swing the net. Lobsters tail-flip backward
+   toward their hole, so a net set behind one catches it. Every bug has a temperament: calm ones are easy,
+   wary old bugs (often the big ones) give you a split second and bolt. Gauge every bug: carapace over 3",
+   no eggs. Six per person. Now and then a shark shows up, and you race it back to the boat. */
 
 const BH = { SURF: 96, BAG: 6, BOATX: 660 };
 const GAUGE_IN = 3.0;
-const NET = { REACH: 170, HOOP: 30, SWING: 0.2, SET: 1.3, COOL: 0.3 };
+const NET = { REACH: 170, HOOP: 30, SWING: 0.2, SET: 1.3, COOL: 0.3, TAP: 70 };
+// mix: the share of calm, skittish and wary bugs at the site (the deep reef has more wary ones)
 const BH_SITES = {
-  patch: { WW: 3400, floor: 500, ledgeH: [62, 120], gap: [150, 260], bugs: 6, morays: 3, extra: 0.3, shark: 0.35, gold: 1, big: 1, short: 0.34, grade: 0.16 },
-  reef: { WW: 4300, floor: 700, ledgeH: [110, 240], gap: [120, 220], bugs: 9, morays: 5, extra: 0.35, shark: 0.55, gold: 2, big: 1.7, short: 0.24, grade: 0.36, light: true }
+  patch: { WW: 3400, floor: 500, ledgeH: [62, 120], gap: [150, 260], bugs: 6, morays: 3, extra: 0.3, shark: 0.35, gold: 1, big: 1, short: 0.34, grade: 0.16, mix: [0.45, 0.4] },
+  reef: { WW: 4300, floor: 700, ledgeH: [110, 240], gap: [120, 220], bugs: 9, morays: 5, extra: 0.35, shark: 0.55, gold: 2, big: 1.7, short: 0.24, grade: 0.36, light: true, mix: [0.35, 0.45] }
 };
+// Every bug has a temperament, shown when you're close enough to tickle it.
+//   In the hole: tell = seconds its antennae go stiff before a twitch (the warning); window = how long you can keep
+//   holding into the twitch before it backs in; twitch = how long the twitch lasts; gap = seconds of tickling between
+//   twitches; coax = how fast holding draws it out; gone = spooks before it backs in for good.
+//   Out: idle = seconds it stops between moves; crouch = chance it crouches to tail-flip when it stops (crouchT: how long
+//   it crouches first); flip = flip speed; life = seconds before it heads home; misses = swings before it runs; hoop = how
+//   forgiving the net is; walk = how quick it scuttles.
+const TEMPER = {
+  calm: { name: 'CALM BUG', col: '#5fe08a', tell: 0.5, window: 0.5, twitch: 0.85, gap: [1.6, 2.8], coax: 0.62, gone: 3, idle: [1.8, 3.2], crouch: 0.3, crouchT: 0.6, flip: [380, 460], life: 16, misses: 3, hoop: 1.15, walk: 1.1 },
+  skittish: { name: 'SKITTISH BUG', col: '#ffd24a', tell: 0.32, window: 0.38, twitch: 0.7, gap: [1, 1.9], coax: 0.5, gone: 3, idle: [1.1, 2.2], crouch: 0.5, crouchT: 0.5, flip: [470, 580], life: 12, misses: 3, hoop: 1, walk: 1.4 },
+  wary: { name: 'WARY OLD BUG', col: '#ff7a5c', tell: 0.14, window: 0.22, twitch: 0.6, gap: [0.5, 1.1], coax: 0.4, gone: 2, idle: [0.4, 0.9], crouch: 0.75, crouchT: 0.3, flip: [560, 660], life: 7, misses: 2, hoop: 0.85, walk: 2.2 }
+};
+const temperOf = (lob) => TEMPER[lob && lob.temper] || TEMPER.skittish;
 
 function rollCL(perks, site) {
   const r = Math.random(), sh = site ? site.short : 0.3;
@@ -75,7 +90,8 @@ class BugHuntScene extends SessionBase {
     if (!others.length) others = CHAR_ORDER.filter((c) => c !== this.ch);
     this.others = others;
     this.quip = null; this.wasUnder = false; this.exhaleT = 2;
-    this.coach = !Store.get('coach_bug2_' + this.ch, false); this.coachSaw = {};
+    this.coach = !Store.get('coach_bug3_' + this.ch, false); this.coachSaw = {};
+    this.help = this.coach ? { t: 0 } : null;   // the how-to card opens by itself on each angler's first dive (and from ?)
     this.shark = null; this.sharkDone = false;
     this.sharkAt = o.shark === true ? 6 : o.shark === false ? null : chance(this.site.shark) ? rand(this.len * 0.22, this.len * 0.62) : null;
     this.gen();
@@ -83,7 +99,7 @@ class BugHuntScene extends SessionBase {
   enter() {
     SFX.setAmbient(1, false); Music.play('reef');
     Game.toast(SPOTS[this.spot] ? SPOTS[this.spot].name : 'Bug Hunt', { color: PAL.coral, size: 44, y: 200, sub: 'Find the antennae. Tickle them out. Swing the net.' });
-    if (this.coach) Store.set('coach_bug2_' + this.ch, true);
+    if (this.coach) Store.set('coach_bug3_' + this.ch, true);
   }
   exit() { SFX.setAmbient(0); Music.muffle(false); }
   baseFloor(x) { return this.site.floor + 10 * Math.sin(x * 0.004) + 6 * Math.sin(x * 0.013 + 1) + (this.variant === 'reef' ? 22 * Math.sin(x * 0.0017 + 2) : 0); }
@@ -144,8 +160,14 @@ class BugHuntScene extends SessionBase {
     this.fg = []; for (let x = 0; x < WW * 1.4; x += rand(240, 420)) this.fg.push({ x, kind: pick(['fan', 'rock', 'grass', 'grass']), s: rand(0.8, 1.4) });
     this.farFish = []; for (let i = 0; i < 6; i++) this.farFish.push({ x: rand(0, 1400), y: rand(170, 380), sp: rand(8, 18) * (chance(0.5) ? 1 : -1), n: randi(5, 9) });
   }
-  makeDen(x, y, dir) { return { x, y, dir, kind: 'empty', coax: 0, spooks: 0, twitch: 0, nextTwitch: rand(0.9, 1.8), badHold: 0, state: 'in', peek: 0, peekT: rand(2, 5), lob: null, extra: 0, probe: 0 }; }
-  makeLob() { const cl = rollCL(this.perks, this.site); return { cl, w: lobsterWeight(cl), eggs: cl > 3.0 && chance(0.14), gold: cl > 3.0 && chance(0.04 * this.perks.trophy * this.site.gold) }; }
+  makeDen(x, y, dir) { return { x, y, dir, kind: 'empty', coax: 0, spooks: 0, tense: 0, twitch: 0, again: 0, nextTwitch: rand(0.9, 1.8), badHold: 0, state: 'in', peek: 0, peekT: rand(2, 5), lob: null, extra: 0, probe: 0 }; }
+  makeLob() {
+    const cl = rollCL(this.perks, this.site), lob = { cl, w: lobsterWeight(cl), eggs: cl > 3.0 && chance(0.14), gold: cl > 3.0 && chance(0.04 * this.perks.trophy * this.site.gold) };
+    // the big ones got big by being careful; every golden bug is wary. Shorts are mostly calm.
+    const [c, s] = this.site.mix, r = Math.random();
+    lob.temper = lob.gold || (cl >= 4.2 && chance(0.55)) ? 'wary' : cl < 3 && chance(0.6) ? 'calm' : r < c ? 'calm' : r < c + s ? 'skittish' : 'wary';
+    return lob;
+  }
   say(kind, p = 1) {
     if (!chance(p) || !QUIPS[kind]) return;
     this.quip = { who: pick(this.others), msg: pick(QUIPS[kind]), t: 2.8 };
@@ -153,13 +175,17 @@ class BugHuntScene extends SessionBase {
 
   /* ---------- input ---------- */
   actionZone() { return { x: Game.W - 96, y: Game.H - 96, r: 66 }; }
-  inAction(x, y) { const a = this.actionZone(); return dist(x, y, a.x, a.y) < a.r + 8; }
+  // the TICKLE / NET button only shows (and only takes touches) when there's something to do with it
+  actionShown() { return !!(this.out || (this.target && this.inReach)); }
+  inAction(x, y) { const a = this.actionZone(); return this.actionShown() && dist(x, y, a.x, a.y) < a.r + 8; }
   toWorld(p) { return [p.x + this.cam, p.y + this.camY]; }
   denAt(wx, wy) { let best = null, bd = 44; for (const den of this.dens) { if (den.state === 'gone') continue; const dd = dist(wx, wy, den.x + den.dir * 6, den.y); if (dd < bd) { bd = dd; best = den; } } return best; }
   pointerDown(p) {
-    if (this.basePointerDown(p) || this.gauge || this.blackout > 0 || this.intro) return;
+    if (this.basePointerDown(p) || this.gauge || this.help || this.blackout > 0 || this.intro) return;
     if (this.inAction(p.x, p.y)) { this.actionPtr = p.id; this.actionPress = true; return; }
     const [wx, wy] = this.toWorld(p);
+    // a bug is out and you touched it (or near it): the net goes at it right away, swimming in first if it's too far
+    if (this.out && dist(wx, wy, this.bugBody(this.out).x, this.bugBody(this.out).y) < NET.TAP) { this.netBug(); return; }
     if (!this.out) { const den = this.denAt(wx, wy); if (den) { this.tickPtr = { id: p.id, den }; return; } }
     this.press = { id: p.id, sx: p.x, sy: p.y, t0: this.t };
   }
@@ -174,9 +200,13 @@ class BugHuntScene extends SessionBase {
     if (this.tickPtr && this.tickPtr.id === p.id) { this.tickPtr = null; this.seek = null; }
   }
   keyDown(c) {
+    if (this.help) { if (['Space', 'Enter', 'Escape', 'KeyH'].includes(c)) this.closeHelp(); return; }
     if (this.baseKeyDown(c) || this.gauge || this.intro) return;
+    if (c === 'KeyH') { this.openHelp(); return; }
     if (c === 'Space' || c === 'KeyE' || c === 'KeyF') this.actionPress = true;
   }
+  openHelp() { if (!this.gauge && !this.ended && !this.paused && !(this.shark && this.shark.state === 'hunt')) { this.help = { t: 0 }; this.tickPtr = null; this.joy = null; this.press = null; this.actionPtr = null; } }
+  closeHelp() { this.help = null; this.tickPtr = null; this.joy = null; this.press = null; this.actionPtr = null; }
   actionHeld() { return this.actionPtr != null || Input.held('Space', 'KeyE'); }
 
   /* ---------- the net ---------- */
@@ -199,12 +229,20 @@ class BugHuntScene extends SessionBase {
     SFX.play('swish');
     for (let i = 0; i < 4; i++) this.parts.add({ kind: 'bubble', x: from.x + rand(-6, 6), y: from.y, vy: -rand(30, 60), vx: rand(-10, 10), life: 1.2, size: rand(1.5, 3) });
   }
+  // tap on the bug (or the NET button): swing at it if it's in reach, else swim over and swing when it is
+  netBug() {
+    const o = this.out; if (!o) return;
+    const b = this.bugBody(o), sh = this.shoulder();
+    if (dist(sh.x, sh.y, b.x, b.y) > NET.REACH * 0.95) { this.seek = { kind: 'net', t: 2 }; return; }
+    this.autoSwing();
+  }
   autoSwing() {
     const o = this.out; if (!o) return;
     const b = this.bugBody(o), lead = o.state === 'walk' ? Math.sign(o.tx - o.x) * 16 : 0;
     this.swingAt(b.x + lead, b.y);
   }
-  inHoop(o, tight) { const b = this.bugBody(o); return dist(this.net.x, this.net.y, b.x, b.y) < (tight ? NET.HOOP * 0.85 : NET.HOOP + 12); }
+  // calm bugs are easier to net than wary ones; quick hands (the window perk) help a little too
+  inHoop(o, tight) { const b = this.bugBody(o), k = temperOf(o.lob).hoop * (1 + (this.perks.window - 1) * 0.5); return dist(this.net.x, this.net.y, b.x, b.y) < (tight ? NET.HOOP * 0.85 : NET.HOOP + 12) * k; }
   updateNet(dt) {
     const n = this.net; n.cool = Math.max(0, n.cool - dt);
     if (n.state === 'carry') { const p = this.carryPos(); n.x = p.x; n.y = p.y; return; }
@@ -228,7 +266,7 @@ class BugHuntScene extends SessionBase {
   }
   missed(o) {
     o.misses++;
-    if (o.misses >= 3) { this.sendHome(o, 'It’s running for the rocks!'); return; }
+    if (o.misses >= temperOf(o.lob).misses) { this.sendHome(o, 'It’s running for the rocks!'); return; }
     const behind = (this.net.x - o.x) * o.dir < 0;
     if (behind && o.state !== 'flip') { o.state = 'walk'; o.tx = this.clampWalk(o, o.x + o.dir * rand(60, 90)); o.speed = 2.2; }
     else if (o.state !== 'flip') { o.state = 'crouch'; o.ct = 0.12; }
@@ -248,6 +286,7 @@ class BugHuntScene extends SessionBase {
   /* ---------- update ---------- */
   update(dt) {
     if (this.gauge) { if (!this.paused && !this.child) { this.gauge.t += dt; this.t += dt; } Game.toasts = []; return; }
+    if (this.help) { this.help.t += dt; this.t += dt; Game.toasts = []; return; }   // the clock stops while you read
     if (this.baseUpdate(dt)) return;
     const d = this.diver, t = this.t;
     if (this.quip) { this.quip.t -= dt; if (this.quip.t <= 0) this.quip = null; }
@@ -329,18 +368,30 @@ class BugHuntScene extends SessionBase {
     } else if (held && target.kind === 'lobster') {
       this.tickling = true;
       if (chance(dt * 18)) SFX.play('tickle');
-      if (target.twitch > 0) { target.badHold += dt; if (target.badHold > 0.22) this.spook(target); }
-      else target.coax += dt * 0.5 * this.perks.coax;
+      const T = temperOf(target.lob);
+      if (target.twitch > 0) { target.badHold += dt; if (target.badHold > T.window * this.perks.window) this.spook(target); }
+      else target.coax += dt * T.coax * this.perks.coax;
       target.nextTwitch -= dt;
-      if (target.nextTwitch <= 0 && target.twitch <= 0) { target.twitch = 0.6; target.badHold = 0; target.nextTwitch = rand(0.8, 1.9); SFX.tone(300, 0.06, { type: 'square', vol: 0.05 }); }
-      if (target.coax >= 1) this.emerge(target);
+      // the warning: the antennae go stiff and shiver for a moment before the twitch
+      if (target.nextTwitch <= 0 && target.tense <= 0 && target.twitch <= 0) { target.tense = T.tell; SFX.tone(1500, 0.03, { type: 'square', vol: 0.03 }); SFX.tone(1500, 0.03, { type: 'square', vol: 0.03, delay: 0.09 }); }
+      if (target.coax >= 1 && target.twitch <= 0) this.emerge(target);
     }
-    for (const den of this.dens) if (den.twitch > 0) den.twitch -= dt;
+    for (const den of this.dens) {
+      if (den.tense > 0) {
+        den.tense -= dt;
+        if (den.tense <= 0) {   // the twitch: from here, holding on spooks it once its window runs out
+          const T = temperOf(den.lob);
+          den.twitch = Math.max(T.twitch, T.window * this.perks.window + 0.2); den.badHold = 0; den.nextTwitch = rand(T.gap[0], T.gap[1]);
+          SFX.tone(300, 0.06, { type: 'square', vol: 0.05 });
+        }
+      } else if (den.twitch > 0) { den.twitch -= dt; if (den.twitch <= 0) den.again = 1.5; }
+      if (den.again > 0) den.again -= dt;
+    }
     if (this.out) this.updateOut(dt, d);
     this.updateNet(dt);
     if (this.actionPress) {
       this.actionPress = false;
-      if (this.out) this.autoSwing();
+      if (this.out) this.netBug();
       else if (!target) this.parts.burst(d.x + d.facing * 46, d.y + 2, 4, { kind: 'bubble', min: 10, max: 40, life: 0.8 });
     }
   }
@@ -451,18 +502,19 @@ class BugHuntScene extends SessionBase {
 
   /* ---------- lobsters ---------- */
   spook(den) {
-    den.coax = Math.max(0, den.coax - 0.4); den.spooks++; den.twitch = 0; den.badHold = 0;
+    den.coax = Math.max(0, den.coax - 0.4); den.spooks++; den.twitch = 0; den.tense = 0; den.badHold = 0; den.again = 1.5;
     SFX.play('fail');
-    if (den.spooks >= 3) { den.state = 'gone'; Game.toast('It backed in deep', { color: PAL.warn, size: 30, y: 130, sub: 'That bug is gone. Try another hole.' }); this.tickPtr = null; }
-    else Game.toast('Easy! It backed in.', { color: PAL.warn, size: 30, y: 130, sub: 'Let go when the antennae twitch' });
+    if (den.spooks >= temperOf(den.lob).gone) { den.state = 'gone'; Game.toast('It backed in deep', { color: PAL.warn, size: 30, y: 130, sub: 'That bug is gone. Try another hole.' }); this.tickPtr = null; }
+    else Game.toast('Easy! It backed in.', { color: PAL.warn, size: 30, y: 130, sub: 'Let go when the antennae go stiff and shake' });
   }
   emerge(den) {
     const lob = den.lob, gx = this.clampWalk({ x: den.x, dir: den.dir }, den.x + den.dir * rand(115, 150));
-    this.out = { x: den.x + den.dir * 8, y: den.y, tx: gx, dir: den.dir, lob, state: 'walk', speed: 1.4, t: 0, life: 0, idleT: 0, ct: 0, vx: 0, misses: 0, home: den };
+    this.out = { x: den.x + den.dir * 8, y: den.y, tx: gx, dir: den.dir, lob, state: 'walk', speed: temperOf(lob).walk, t: 0, life: 0, idleT: 0, ct: 0, vx: 0, misses: 0, home: den };
     if (den.extra > 0) { den.extra--; den.coax = 0; den.spooks = 0; den.lob = this.makeLob(); }
     else { den.state = 'empty'; den.kind = 'empty'; }
     this.tickPtr = null; this.seek = null;
-    Game.toast(lob.gold ? 'A GOLDEN BUG!' : 'It’s out!', { color: lob.gold ? PAL.sun : PAL.good, size: 34, y: 190, sub: Game.touch ? 'Tap the bug to swing your net' : 'Click the bug to swing your net (or Space)' });
+    const tap = Game.touch ? 'Tap the bug' : 'Click the bug (or Space)';
+    Game.toast(lob.gold ? 'A GOLDEN BUG!' : lob.temper === 'wary' ? 'It’s out! Quick!' : 'It’s out!', { color: lob.gold ? PAL.sun : PAL.good, size: 34, y: 190, sub: lob.temper === 'wary' ? tap + ' before it bolts' : tap + ' to swing your net' });
     if (lob.gold) this.say('gold');
     SFX.play('coin');
   }
@@ -485,28 +537,30 @@ class BugHuntScene extends SessionBase {
     if (!quiet) Game.toast('It got back in the rocks', { color: PAL.warn, size: 28, y: 130, sub: 'Tickle it out again' });
   }
   updateOut(dt, d) {
-    const o = this.out; o.t += dt; o.life += dt;
+    const o = this.out, T = temperOf(o.lob); o.t += dt; o.life += dt;
     const head = o.x + o.dir * bugLen(o.lob) * 0.45, close = Math.abs(d.x - head) < 110 && Math.abs(d.y - o.y) < 90;
     if (o.state === 'walk') {
       o.x = approach(o.x, o.tx, o.speed, dt);
-      if (Math.abs(o.x - o.tx) < 3) { o.state = 'idle'; o.idleT = rand(1.1, 2.2) * Math.pow(0.8, o.misses); o.speed = 1.4; }
+      if (Math.abs(o.x - o.tx) < 3) { o.state = 'idle'; o.idleT = rand(T.idle[0], T.idle[1]) * Math.pow(0.8, o.misses); o.speed = T.walk; }
     } else if (o.state === 'idle') {
       o.idleT -= dt * (close ? 1.8 : 1);
       if (o.idleT <= 0) {
-        if (o.life > 12 + o.lob.cl) this.sendHome(o, 'It’s heading back to its hole!');
-        else if (chance(close ? 0.3 : 0.5)) { if (chance(0.35)) o.dir *= -1; o.tx = this.clampWalk(o, o.x + o.dir * rand(30, 70)); o.state = 'walk'; }
-        else { o.state = 'crouch'; o.ct = 0.5; }
+        // when it stops, it either wanders on or crouches to tail-flip; a diver close by makes that likelier
+        if (o.life > T.life + o.lob.cl) this.sendHome(o, 'It’s heading back to its hole!');
+        else if (chance((1 - T.crouch) * (close ? 0.6 : 1))) { if (chance(0.35)) o.dir *= -1; o.tx = this.clampWalk(o, o.x + o.dir * rand(30, 70)); o.state = 'walk'; }
+        else { o.state = 'crouch'; o.ct = T.crouchT; }
       }
     } else if (o.state === 'crouch') {
       o.ct -= dt;
-      if (o.ct <= 0) { o.state = 'flip'; o.vx = -o.dir * rand(470, 580); SFX.play('splash'); this.parts.burst(o.x, o.y + 6, 12, { color: 'rgba(225,205,150,0.8)', min: 20, max: 90, life: 0.9, angle: -Math.PI / 2, spread: 1.4 }); }
+      if (o.ct <= 0) { o.state = 'flip'; o.vx = -o.dir * rand(T.flip[0], T.flip[1]); SFX.play('splash'); this.parts.burst(o.x, o.y + 6, 12, { color: 'rgba(225,205,150,0.8)', min: 20, max: 90, life: 0.9, angle: -Math.PI / 2, spread: 1.4 }); }
     } else if (o.state === 'flip') {
       const nx = o.x + o.vx * dt;
       if (this.groundAt(nx) < this.baseFloor(nx) - 2) o.vx = 0; else o.x = nx;
       o.vx *= 1 - Math.min(1, dt * 6);
       if (chance(0.5)) this.parts.add({ x: o.x, y: o.y + 6, vx: rand(-20, 20), vy: -rand(5, 25), life: 0.8, size: rand(2, 4), color: 'rgba(225,205,150,0.7)' });
+      if (this.net.state === 'set' && this.inHoop(o)) { this.catchIt(true); return; }   // a net set in its path beats the hole behind it
       for (const den of this.dens) if ((den.kind === 'empty') && den.state !== 'gone' && Math.abs(den.x + den.dir * 10 - o.x) < 22 && Math.abs(den.y - o.y) < 30) { this.backIn(den, o); return; }
-      if (Math.abs(o.vx) < 40) { o.state = 'idle'; o.idleT = rand(0.7, 1.5) * Math.pow(0.8, o.misses); if (chance(0.4)) o.dir *= -1; }
+      if (Math.abs(o.vx) < 40) { o.state = 'idle'; o.idleT = rand(T.idle[0], T.idle[1]) * 0.65 * Math.pow(0.8, o.misses); if (chance(0.4)) o.dir *= -1; }
     } else if (o.state === 'home') {
       const den = o.home, mx = den.x + den.dir * 8;
       o.dir = Math.sign(mx - o.x) || o.dir; o.x = approach(o.x, mx, 2.2, dt);
@@ -734,23 +788,24 @@ class BugHuntScene extends SessionBase {
     const d = this.diver, sh = this.shoulder(), b = this.bugBody(o);
     // a faint circle shows how far the net reaches
     ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.16)'; ctx.lineWidth = 2; ctx.setLineDash([6, 10]); ell(ctx, sh.x, sh.y, NET.REACH, NET.REACH); ctx.stroke(); ctx.restore();
-    if (Input.hover && !Game.touch) {
+    const k = (Math.sin(t * 6) + 1) / 2, onBug = Input.hover && !Game.touch && dist(Input.hover.x + this.cam, Input.hover.y + this.camY, b.x, b.y) < NET.TAP;
+    if (Input.hover && !Game.touch && !onBug) {
+      // the mouse is off the bug: show where the net would land (behind the tail is the pro move)
       let hx = Input.hover.x + this.cam, hy = Input.hover.y + this.camY; const L = dist(sh.x, sh.y, hx, hy);
       if (L > NET.REACH) { hx = sh.x + (hx - sh.x) * NET.REACH / L; hy = sh.y + (hy - sh.y) * NET.REACH / L; }
-      const on = dist(hx, hy, b.x, b.y) < NET.HOOP + 12;
-      ctx.save(); ctx.strokeStyle = on ? 'rgba(80,255,150,0.9)' : 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2.5; ctx.setLineDash([5, 5]); ell(ctx, hx, hy, NET.HOOP, NET.HOOP * 0.8); ctx.stroke(); ctx.restore();
-      if (L > NET.REACH + 20) text(ctx, 'click: swim in and swing', hx, hy - NET.HOOP - 10, { size: 13, align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.5)', sw: 3 });
-    } else {
-      const k = (Math.sin(t * 6) + 1) / 2;
-      ctx.strokeStyle = `rgba(255,214,90,${0.5 + 0.4 * k})`; ctx.lineWidth = 3; ell(ctx, b.x, b.y, 38 + k * 6, 26 + k * 4); ctx.stroke();
+      ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2.5; ctx.setLineDash([5, 5]); ell(ctx, hx, hy, NET.HOOP, NET.HOOP * 0.8); ctx.stroke(); ctx.restore();
     }
+    // the bug itself is the target: a ring around it, and what to do
+    ctx.strokeStyle = onBug ? 'rgba(80,255,150,0.95)' : `rgba(255,214,90,${0.5 + 0.4 * k})`; ctx.lineWidth = onBug ? 4 : 3; ell(ctx, b.x, b.y, 38 + k * 6, 26 + k * 4); ctx.stroke();
+    const far = dist(sh.x, sh.y, b.x, b.y) > NET.REACH * 0.95;
+    const tip = o.state === 'crouch' ? 'NET BEHIND IT!' : (Game.touch ? 'TAP IT!' : 'CLICK IT!') + (far ? '  (you’ll swim over)' : '');
+    if (o.state !== 'flip') text(ctx, tip, b.x, b.y - 46 - k * 3, { size: o.state === 'crouch' ? 18 : 20, align: 'center', color: o.state === 'crouch' ? PAL.warn : PAL.sun, weight: 800, stroke: 'rgba(0,0,0,0.65)', sw: 5 });
     if (o.state === 'crouch') {
       // it's about to tail-flip backward: show where it'll land
       const lx = o.x - o.dir * 110;
       ctx.save(); ctx.strokeStyle = 'rgba(255,120,80,0.85)'; ctx.lineWidth = 3; ctx.setLineDash([6, 6]);
       ctx.beginPath(); ctx.moveTo(o.x - o.dir * 30, o.y - 16); ctx.quadraticCurveTo(o.x - o.dir * 70, o.y - 44, lx, o.y - 8); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = 'rgba(255,120,80,0.85)'; ctx.beginPath(); ctx.moveTo(lx, o.y - 2); ctx.lineTo(lx + o.dir * 12, o.y - 16); ctx.lineTo(lx + o.dir * 16, o.y); ctx.fill(); ctx.restore();
-      text(ctx, '!', o.x, o.y - 40, { size: 30, align: 'center', color: PAL.warn, stroke: '#1a1a1a', sw: 5, weight: 800 });
     }
   }
   drawSharkSprite(ctx) {
@@ -806,7 +861,7 @@ class BugHuntScene extends SessionBase {
       const c = den.coax, tw = den.twitch > 0 ? Math.sin(t * 40) * 0.25 + 0.3 : 0;
       ctx.save(); ctx.beginPath(); ctx.rect(den.x - (den.dir < 0 ? 400 : 18), den.y - 200, 418, 260); ctx.clip();
       ctx.save(); ctx.translate(den.x + den.dir * (-22 + c * 30), den.y + 3); ctx.globalAlpha = clamp(0.4 + 0.6 * (1 - (dd - 120) / 220), 0.4, 1) * (0.6 + 0.4 * c);
-      drawLobsterSide(ctx, bugLen(den.lob), { t, flip: den.dir < 0, twitch: tw, gold: den.lob.gold });
+      drawLobsterSide(ctx, bugLen(den.lob), { t, flip: den.dir < 0, twitch: tw, tense: den.tense > 0, gold: den.lob.gold });
       ctx.restore(); ctx.restore();
     } else if (den.kind === 'moray') {
       if (Math.sin(t * 2.3 + den.x) > 0.6 || den.peek > 0) { ctx.fillStyle = '#e8f04a'; ell(ctx, den.x + den.dir * 4, den.y - 3, 2, 2); ctx.fill(); ell(ctx, den.x + den.dir * 9, den.y - 2, 2, 2); ctx.fill(); }
@@ -822,16 +877,28 @@ class BugHuntScene extends SessionBase {
       ctx.strokeStyle = 'rgba(210,130,70,0.4)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(den.x, den.y - 4); ctx.lineTo(den.x + den.dir * 16, den.y - 14); ctx.stroke();
     }
     if (this.target === den && !this.out) {
-      const tw = den.kind === 'lobster' && den.twitch > 0, c = den.kind === 'lobster' ? den.coax : den.probe / 0.8;
-      if (this.inReach) { ctx.strokeStyle = tw ? PAL.bad : 'rgba(255,200,69,0.9)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(den.x, den.y, 30, -Math.PI * 0.5, -Math.PI * 0.5 + TAU * clamp(c, 0, 1)); ctx.stroke(); }
-      const msg = !this.inReach ? (this.tickPtr ? 'Swimming over…' : '') : tw ? 'LET GO!' : this.tickling ? 'Keep tickling…' : Game.touch ? 'HOLD TO TICKLE' : 'HOLD TO TICKLE';
+      const lob = den.kind === 'lobster', tw = lob && den.twitch > 0, tense = lob && den.tense > 0, c = lob ? den.coax : den.probe / 0.8;
+      if (this.inReach) {
+        // the coax ring fills as you tickle; it flashes amber for the warning and turns red on the twitch
+        const ringCol = tw ? PAL.bad : tense ? (Math.sin(t * 40) > 0 ? '#ffb020' : '#fff3c0') : 'rgba(255,200,69,0.9)';
+        if (tense || tw) { ctx.strokeStyle = rgba(tw ? PAL.bad : '#ffb020', 0.35); ctx.lineWidth = 10; ell(ctx, den.x, den.y, 30, 30); ctx.stroke(); }
+        ctx.strokeStyle = ringCol; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(den.x, den.y, 30, -Math.PI * 0.5, -Math.PI * 0.5 + TAU * clamp(c, 0, 1)); ctx.stroke();
+      }
+      const held = this.tickling;
+      const msg = !this.inReach ? (this.tickPtr ? 'Swimming over…' : '') : tw ? 'LET GO!' : tense ? (held ? 'GET READY…' : 'WAIT…') : lob && den.again > 0 && !held ? 'HOLD AGAIN' : held ? 'Keep tickling…' : 'HOLD TO TICKLE';
       if (msg) {
-        const col = tw ? PAL.bad : this.tickling ? '#ffffff' : PAL.sun, sc = tw ? 1 + Math.sin(t * 30) * 0.06 : 1;
-        ctx.save(); ctx.translate(den.x + den.dir * 10, den.y - 52); ctx.scale(sc, sc);
-        text(ctx, msg, 0, 0, { size: tw ? 26 : 18, align: 'center', base: 'middle', color: col, stroke: 'rgba(0,0,0,0.65)', sw: 5, weight: 800 });
+        const col = tw ? PAL.bad : tense ? '#ffb020' : lob && den.again > 0 && !held ? PAL.good : held ? '#ffffff' : PAL.sun, sc = tw || tense ? 1 + Math.sin(t * 30) * 0.06 : 1;
+        ctx.save(); ctx.translate(den.x + den.dir * 10, den.y - 56); ctx.scale(sc, sc);
+        text(ctx, msg, 0, 0, { size: tw ? 26 : tense ? 22 : 18, align: 'center', base: 'middle', color: col, stroke: 'rgba(0,0,0,0.65)', sw: 5, weight: 800 });
         ctx.restore();
       }
-    } else if (den.kind === 'lobster' && den.twitch > 0 && den.state === 'in') text(ctx, '!', den.x + den.dir * 20, den.y - 30, { size: 30, align: 'center', color: PAL.warn, stroke: '#1a1a1a', sw: 5, weight: 800 });
+      // close enough to tickle: you can tell what kind of bug it is
+      if (lob && this.inReach) {
+        const T = temperOf(den.lob); ctx.font = fnt(12, 800); const pw = ctx.measureText(T.name).width + 18, px = den.x + den.dir * 10 - pw / 2, py = den.y - 94;
+        ctx.fillStyle = 'rgba(4,24,34,0.82)'; rr(ctx, px, py, pw, 18, 9); ctx.fill(); ctx.strokeStyle = T.col; ctx.lineWidth = 1.5; ctx.stroke();
+        text(ctx, T.name, px + pw / 2, py + 9.5, { size: 12, align: 'center', base: 'middle', color: T.col, weight: 800 });
+      }
+    } else if (den.kind === 'lobster' && (den.twitch > 0 || den.tense > 0) && den.state === 'in') text(ctx, '!', den.x + den.dir * 20, den.y - 30, { size: 30, align: 'center', color: den.tense > 0 ? '#ffb020' : PAL.warn, stroke: '#1a1a1a', sw: 5, weight: 800 });
   }
   drawOut(ctx, t) {
     const o = this.out;
@@ -869,50 +936,57 @@ class BugHuntScene extends SessionBase {
       if (this.shark) { ctx.fillStyle = PAL.bad; ell(ctx, mmx + clamp(this.shark.x / this.WW, 0, 1) * mmw, mmy + 6, 4, 4); ctx.fill(); }
       ctx.fillStyle = PAL.sun; ell(ctx, mmx + (this.diver.x / this.WW) * mmw, mmy + 6, 4.5, 4.5); ctx.fill();
     }
-    // the action button: TICKLE at a hole, LET GO on a twitch, NET when a bug is out
-    const a = this.actionZone();
-    let label = 'NET', fill = 'rgba(255,255,255,0.18)', fg = '#fff', active = false, prog = null, hot = false;
-    if (this.out) { active = true; hot = this.out.state === 'idle'; label = 'NET'; fill = PAL.good; fg = PAL.ink; }
-    else if (this.target && this.inReach) {
-      active = true; const tw = this.target.kind === 'lobster' && this.target.twitch > 0;
-      label = tw ? 'LET GO' : 'TICKLE'; fill = tw ? PAL.bad : PAL.sun; fg = tw ? '#fff' : PAL.ink;
-      prog = this.target.kind === 'lobster' ? this.target.coax : clamp(this.target.probe / 0.8, 0, 1);
+    // the action button, only when there's something to do: TICKLE at a hole (READY on the warning, LET GO on the
+    // twitch), NET when a bug is out. Tapping the hole or the bug itself does the same.
+    const a = this.actionZone(), active = this.actionShown();
+    let label = '', fill = PAL.sun, fg = PAL.ink, prog = null, hot = false;
+    if (this.out) { hot = this.out.state === 'idle'; label = 'NET'; fill = PAL.good; fg = PAL.ink; }
+    else if (active) {
+      const den = this.target, lob = den.kind === 'lobster', tw = lob && den.twitch > 0, tense = lob && den.tense > 0;
+      label = tw ? 'LET GO' : tense ? 'READY' : 'TICKLE'; fill = tw ? PAL.bad : tense ? '#ffb020' : PAL.sun; fg = tw ? '#fff' : PAL.ink;
+      prog = lob ? den.coax : clamp(den.probe / 0.8, 0, 1);
     }
     // held down (a finger on it, or Space): it sinks in a little and gets a bright rim, so you know it's registering
     const down = this.actionHeld();
-    const pulse = down ? 0.93 : active ? 1 + Math.sin(t * (hot ? 14 : 6)) * (hot ? 0.06 : 0.03) : 1;
-    ctx.save(); ctx.translate(a.x, a.y + (down ? 3 : 0)); ctx.scale(pulse, pulse);
-    ctx.globalAlpha = active || down ? 1 : 0.5;
-    if (active) { ctx.fillStyle = rgba(fill.startsWith('#') ? fill : '#ffffff', 0.25); ell(ctx, 0, 0, a.r + 12, a.r + 12); ctx.fill(); }
-    if (down) { ctx.save(); ctx.shadowColor = '#fff'; ctx.shadowBlur = 20; ctx.fillStyle = fill; ell(ctx, 0, 0, a.r, a.r); ctx.fill(); ctx.restore(); }
-    ctx.fillStyle = fill; ell(ctx, 0, 0, a.r, a.r); ctx.fill();
-    if (down) { ctx.fillStyle = 'rgba(255,255,255,0.22)'; ell(ctx, 0, 0, a.r, a.r); ctx.fill(); }
-    ctx.strokeStyle = down ? '#ffffff' : 'rgba(255,255,255,0.8)'; ctx.lineWidth = down ? 5 : 3; ell(ctx, 0, 0, a.r, a.r); ctx.stroke();
-    if (prog != null) {
-      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 7; ell(ctx, 0, 0, a.r + 6, a.r + 6); ctx.stroke();
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 0, a.r + 6, -Math.PI / 2, -Math.PI / 2 + TAU * prog); ctx.stroke();
+    if (active) {
+      const pulse = down ? 0.93 : 1 + Math.sin(t * (hot ? 14 : 6)) * (hot ? 0.06 : 0.03);
+      ctx.save(); ctx.translate(a.x, a.y + (down ? 3 : 0)); ctx.scale(pulse, pulse);
+      ctx.fillStyle = rgba(fill, 0.25); ell(ctx, 0, 0, a.r + 12, a.r + 12); ctx.fill();
+      if (down) { ctx.save(); ctx.shadowColor = '#fff'; ctx.shadowBlur = 20; ctx.fillStyle = fill; ell(ctx, 0, 0, a.r, a.r); ctx.fill(); ctx.restore(); }
+      ctx.fillStyle = fill; ell(ctx, 0, 0, a.r, a.r); ctx.fill();
+      if (down) { ctx.fillStyle = 'rgba(255,255,255,0.22)'; ell(ctx, 0, 0, a.r, a.r); ctx.fill(); }
+      ctx.strokeStyle = down ? '#ffffff' : 'rgba(255,255,255,0.8)'; ctx.lineWidth = down ? 5 : 3; ell(ctx, 0, 0, a.r, a.r); ctx.stroke();
+      if (prog != null) {
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 7; ell(ctx, 0, 0, a.r + 6, a.r + 6); ctx.stroke();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 0, a.r + 6, -Math.PI / 2, -Math.PI / 2 + TAU * prog); ctx.stroke();
+      }
+      text(ctx, label, 0, 2, { size: label.length > 4 ? 20 : 26, align: 'center', base: 'middle', color: fg, weight: 800 });
+      if (!Game.touch) text(ctx, 'SPACE', 0, 26, { size: 12, align: 'center', base: 'middle', color: fg, weight: 800, alpha: 0.7 });
+      ctx.restore();
     }
-    text(ctx, label, 0, 2, { size: label.length > 4 ? 20 : 26, align: 'center', base: 'middle', color: fg, weight: 800 });
-    if (!Game.touch) text(ctx, 'SPACE', 0, 26, { size: 12, align: 'center', base: 'middle', color: fg, weight: 800, alpha: 0.7 });
-    ctx.restore();
+    // how to catch one, any time (H)
+    UI.button(ctx, 'bughelp', W / 2 + 72, 12, 46, 46, '?', () => this.openHelp(), { style: 'dark', size: 22, r: 14, key: 'KeyH', disabled: !!(this.gauge || (this.shark && this.shark.state === 'hunt')) });
     if (this.joy) {
       ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 3; ell(ctx, this.joy.sx, this.joy.sy, 55, 55); ctx.stroke();
       const jx = clamp(this.joy.x - this.joy.sx, -55, 55), jy = clamp(this.joy.y - this.joy.sy, -55, 55);
       ctx.fillStyle = 'rgba(255,255,255,0.45)'; ell(ctx, this.joy.sx + jx, this.joy.sy + jy, 22, 22); ctx.fill();
-    } else if (this.t < 8 && !this.coach) {
-      text(ctx, Game.touch ? 'Drag to swim · hold a hole to tickle · tap the bug to net it' : 'WASD to swim · hold on a hole to tickle · click the bug to net it', 24, H - 30, { size: 17, color: '#fff', weight: 700, alpha: 0.85, stroke: 'rgba(0,0,0,0.4)', sw: 4, maxW: W - 200 });
+    } else if (this.t < 10 && !this.coach) {
+      text(ctx, Game.touch ? 'Drag to swim · hold a hole to tickle · tap the bug to net it · ? for help' : 'WASD to swim · hold on a hole to tickle · click the bug to net it · H for help', 24, 132, { size: 17, color: '#fff', weight: 700, alpha: 0.85, stroke: 'rgba(0,0,0,0.4)', sw: 4, maxW: W - 200 });
     }
-    if (this.coach && !this.paused) this.drawCoach(ctx, W, H, t);
-    if (this.quip && !(this.coachMsg() && !Game.toasts.length)) this.drawQuip(ctx, W);
+    if (this.coach && !this.paused && !this.help) this.drawCoach(ctx, W, H, t);
+    if (this.quip && !this.help && !(this.coachMsg() && !Game.toasts.length)) this.drawQuip(ctx, W);
+    if (this.help) this.drawHelp(ctx, W, H);
   }
   coachMsg() {
     if (!this.coach) return null;
     let msg = null;
-    if (this.out) msg = Game.touch ? 'Tap the bug to swing your net!' : 'Click the bug to swing your net!';
-    else if (this.target && this.inReach && this.target.kind === 'lobster' && this.target.twitch > 0) msg = 'It twitched: LET GO, then hold again';
-    else if (this.target && this.inReach) msg = Game.touch ? 'Hold on the hole (or TICKLE) to coax it out' : 'Hold the mouse on the hole (or Space) to tickle';
+    const den = this.target, lob = den && this.inReach && den.kind === 'lobster';
+    if (this.out) msg = Game.touch ? 'It’s out! Tap the bug to swing your net' : 'It’s out! Click the bug to swing your net';
+    else if (lob && (den.tense > 0 || den.twitch > 0)) msg = 'Antennae stiff and shaking? LET GO. Hold again after.';
+    else if (lob && den.again > 0) msg = 'Now hold again. The ring fills; when it’s full, the bug walks out.';
+    else if (den && this.inReach) msg = Game.touch ? 'Hold your finger on the hole (or TICKLE) to coax it out' : 'Hold the mouse on the hole (or Space) to tickle';
     else if (this.coachSaw.behind) msg = 'Lobsters flip backward. Set the net BEHIND the tail.';
-    else if (this.t < 14) msg = 'Swim down. Look for antennae poking out of holes.';
+    else if (this.t < 16) msg = Game.touch ? 'Drag anywhere to swim. Look for antennae poking out of holes.' : 'WASD or drag to swim. Look for antennae poking out of holes.';
     return msg;
   }
   drawCoach(ctx, W, H, t) {
@@ -921,6 +995,79 @@ class BugHuntScene extends SessionBase {
     const w = Math.min(470, W - 280), x = W / 2 - w / 2, y = 116;
     panel(ctx, x, y - 22, w, 44, { r: 14, fill: 'rgba(255,255,255,0.95)', line: 'rgba(0,0,0,0.1)' });
     text(ctx, msg, x + w / 2, y + 1, { size: 16, align: 'center', base: 'middle', color: PAL.ink, weight: 800, maxW: w - 16 });
+  }
+  // How to catch a bug: four steps in order, each with a small moving picture, and the three kinds of bug.
+  // Opens by itself on each angler's first dive, and from the ? button (or H). The turn clock waits.
+  drawHelp(ctx, W, H) {
+    const t = this.help.t, wide = W >= 900;
+    ctx.fillStyle = 'rgba(3,22,32,0.93)'; ctx.fillRect(0, 0, W, H);
+    UI.region('help-cover', 0, 0, W, H, null);   // nothing under the card answers while it's up
+    text(ctx, 'How to catch a bug', W / 2, 44, { display: true, size: 34, align: 'center', color: '#fff' });
+    const cols = wide ? 4 : 2, gap = 12, cw = Math.floor((W - 48 - gap * (cols - 1)) / cols), ch = wide ? 236 : 150, y0 = 70;
+    const steps = [
+      { title: 'Find', body: 'Swim along the reef. Antennae poking out of a hole means a bug. Yellow eyes mean a moray: skip it.' },
+      { title: 'Tickle', body: Game.touch ? 'Hold your finger on the hole. When the antennae go stiff and shake, LET GO. Then hold again.' : 'Hold the mouse on the hole (or Space). When the antennae go stiff and shake, LET GO. Then hold again.' },
+      { title: 'Net', body: Game.touch ? 'When it walks out, tap the bug. Pro move: tap behind its tail. It flips backward into the net.' : 'When it walks out, click the bug. Pro move: click behind its tail. It flips backward into the net.' },
+      { title: 'Gauge', body: 'Keep it only if the shell reaches past the gold 3" gauge and there are no eggs under the tail.' }
+    ];
+    steps.forEach((s, i) => {
+      const x = 24 + (i % cols) * (cw + gap), y = y0 + Math.floor(i / cols) * (ch + gap), artW = wide ? cw : Math.min(140, cw * 0.42), artH = wide ? 96 : ch - 20;
+      panel(ctx, x, y, cw, ch, { r: 14, fill: 'rgba(20,90,120,0.9)' });
+      ctx.save(); rr(ctx, x + 6, y + 6, artW - 12, artH - 6, 10); ctx.clip(); ctx.fillStyle = '#1a7fa6'; ctx.fillRect(x, y, artW, artH);
+      this.helpArt(ctx, i, x + artW / 2, y + artH / 2 + 4, t);
+      ctx.restore();
+      const tx = wide ? x + 14 : x + artW + 4, ty = wide ? y + artH + 22 : y + 26, tw = wide ? cw - 28 : cw - artW - 14;
+      ctx.fillStyle = PAL.sun; ell(ctx, tx + 11, ty - 6, 11, 11); ctx.fill();
+      text(ctx, String(i + 1), tx + 11, ty - 5, { size: 14, align: 'center', base: 'middle', color: PAL.ink, weight: 800 });
+      text(ctx, s.title, tx + 28, ty, { size: 19, color: '#fff', weight: 800 });
+      para(ctx, s.body, tx, ty + 24, tw, { size: wide ? 16 : 14, color: '#d6ebf2', weight: 600, lh: wide ? 20 : 17 });
+    });
+    // the three kinds of bug
+    const ky = y0 + (wide ? ch : ch * 2 + gap) + 16;
+    text(ctx, 'Get close and the tag under the hole tells you what you’re dealing with:', 24, ky + 4, { size: 15, color: '#cfe3ea', weight: 700, maxW: W - 48 });
+    const kinds = [['calm', 'slow to twitch, easy to net'], ['skittish', 'a quicker warning'], ['wary', 'a split-second warning, then it bolts. Often the big ones.']];
+    let kx = 24; const krow = ky + 16;
+    for (const [k, why] of kinds) {
+      const T = TEMPER[k]; ctx.font = fnt(12, 800); const pw = ctx.measureText(T.name).width + 18;
+      ctx.font = fnt(14, 600); const ww = ctx.measureText(why).width;
+      if (kx + pw + 8 + ww > W - 24) break;
+      ctx.fillStyle = 'rgba(4,24,34,0.9)'; rr(ctx, kx, krow, pw, 20, 10); ctx.fill(); ctx.strokeStyle = T.col; ctx.lineWidth = 1.5; ctx.stroke();
+      text(ctx, T.name, kx + pw / 2, krow + 10.5, { size: 12, align: 'center', base: 'middle', color: T.col, weight: 800 });
+      text(ctx, why, kx + pw + 8, krow + 15, { size: 14, color: '#d6ebf2', weight: 600 });
+      kx += pw + 8 + ww + 22;
+    }
+    UI.button(ctx, 'help-ok', W / 2 - 110, H - 66, 220, 54, 'Got it', () => this.closeHelp(), { style: 'primary', size: 22, key: 'Enter|Space|Escape|KeyH' });
+  }
+  // the little moving pictures on the help card
+  helpArt(ctx, i, cx, cy, t) {
+    const L = 64;
+    const hole = (x, y) => { const hg = ctx.createRadialGradient(x, y, 2, x, y, 22); hg.addColorStop(0, '#050807'); hg.addColorStop(0.7, '#141815'); hg.addColorStop(1, 'rgba(20,24,21,0)'); ctx.fillStyle = hg; ell(ctx, x, y, 22, 16); ctx.fill(); };
+    const rock = (x, y, w) => { ctx.fillStyle = '#6a604c'; rr(ctx, x - w / 2, y - 40, w, 80, 10); ctx.fill(); };
+    const finger = (x, y, on) => { ctx.strokeStyle = on ? '#ffffff' : 'rgba(255,255,255,0.4)'; ctx.lineWidth = 3; ell(ctx, x, y, 15, 15); ctx.stroke(); if (on) { ctx.fillStyle = 'rgba(255,255,255,0.25)'; ell(ctx, x, y, 15, 15); ctx.fill(); } };
+    if (i === 0) {   // a hole with antennae, a hole with eyes
+      rock(cx - 30, cy + 10, 70); hole(cx - 6, cy + 6);
+      ctx.save(); ctx.beginPath(); ctx.rect(cx - 12, cy - 60, 200, 120); ctx.clip(); ctx.translate(cx - 30, cy + 9); drawLobsterSide(ctx, L, { t }); ctx.restore();
+      hole(cx - 30, cy + 34); ctx.fillStyle = '#e8f04a'; ell(ctx, cx - 26, cy + 31, 2, 2); ctx.fill(); ell(ctx, cx - 21, cy + 32, 2, 2); ctx.fill();
+    } else if (i === 1) {   // hold, the warning, let go, hold again: a 3.2 s loop
+      const ph = t % 3.2, tense = ph > 1.6 && ph < 2.1, tw = ph >= 2.1 && ph < 2.7, holding = ph < 2.1 || ph > 2.9;
+      rock(cx - 40, cy + 10, 60); hole(cx - 14, cy + 6);
+      ctx.save(); ctx.beginPath(); ctx.rect(cx - 20, cy - 60, 200, 120); ctx.clip(); ctx.translate(cx - 30 + Math.min(1, (t % 3.2) / 2) * 12, cy + 9); drawLobsterSide(ctx, L, { t, tense, twitch: tw ? Math.sin(t * 40) * 0.25 + 0.3 : 0 }); ctx.restore();
+      finger(cx - 14, cy + 6, holding);
+      const msg = tw ? 'LET GO!' : tense ? 'GET READY…' : holding ? 'HOLD' : 'HOLD AGAIN';
+      text(ctx, msg, cx + 18, cy - 28, { size: 15, align: 'center', color: tw ? PAL.bad : tense ? '#ffb020' : '#fff', weight: 800, stroke: 'rgba(0,0,0,0.6)', sw: 4 });
+    } else if (i === 2) {   // the bug walks out; a tap, and the net swings at it
+      const ph = t % 2.4, bx = cx - 20 + Math.min(1, ph / 1.2) * 18;
+      ctx.fillStyle = '#d8c79a'; ctx.fillRect(cx - 120, cy + 22, 240, 40);
+      ctx.save(); ctx.translate(bx, cy + 18); drawLobsterSide(ctx, L * 0.8, { t, walk: ph < 1.2 }); ctx.restore();
+      if (ph > 1.3) { finger(bx + 4, cy + 14, ph < 1.6); const k = clamp((ph - 1.5) / 0.25, 0, 1); ctx.strokeStyle = '#eef4f6'; ctx.lineWidth = 3; ell(ctx, lerp(cx + 70, bx + 4, k), lerp(cy - 30, cy + 12, k), 22, 16); ctx.stroke(); }
+      text(ctx, 'TAP IT!', bx + 4, cy - 22, { size: 15, align: 'center', color: PAL.sun, weight: 800, stroke: 'rgba(0,0,0,0.6)', sw: 4 });
+    } else {   // the gauge: back of the shell past the gold end = keep
+      const ppi = 11, C = 3.4 * ppi, rx = cx - C / 2 - 4;
+      ctx.save(); ctx.translate(rx, cy - 14); drawLobsterTop(ctx, C, { t }); ctx.restore();
+      const gx = rx + C - 3 * ppi; ctx.fillStyle = '#e2bb55'; rr(ctx, gx, cy + 10, 3 * ppi, 10, 4); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.setLineDash([4, 4]); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(rx, cy - 30); ctx.lineTo(rx, cy + 24); ctx.stroke(); ctx.setLineDash([]);
+      text(ctx, 'past the gold = KEEP', cx, cy + 36, { size: 12, align: 'center', color: '#bff5cf', weight: 800 });
+    }
   }
   drawQuip(ctx, W) {
     const q = this.quip, C = CHARS[q.who], qw = Math.min(400, W * 0.44), qx = W - qw - 14, qy = 84;

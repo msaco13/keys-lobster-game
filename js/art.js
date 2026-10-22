@@ -303,7 +303,8 @@ function drawLobsterSide(ctx, len, o = {}) {
   const L = len, t = o.t || 0, curl = o.curl || 0, LP = o.gold ? LOBPAL.gold : LOBPAL.normal;
   ctx.save(); if (o.flip) ctx.scale(-1, 1);
   if (o.glow) { ctx.shadowColor = o.glow; ctx.shadowBlur = 18; }
-  const aw = Math.sin(t * 2.2) * 0.1 + (o.twitch || 0);
+  // tense: the warning before a twitch, both antennae held stiff and shivering
+  const aw = o.tense ? -0.2 + Math.sin(t * 70) * 0.05 : Math.sin(t * 2.2) * 0.1 + (o.twitch || 0);
   drawAntenna(ctx, L * 0.46, -L * 0.06, L * 1.55, -0.32 - aw, L * 0.04, -1, LP);
   drawAntenna(ctx, L * 0.44, -L * 0.09, L * 1.35, -0.62 + aw * 0.7, L * 0.035, -1, LP);
   ctx.lineCap = 'round';

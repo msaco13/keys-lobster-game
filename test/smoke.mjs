@@ -59,6 +59,11 @@ for (const dev of [{ label: 'phone', viewport: { width: 844, height: 390 }, touc
     check((await name()) === 'TurnIntroScene', dev.label + ': arriving → hand-off');
     await press('ready'); await page.waitForTimeout(1500);
     check((await name()) === 'BugHuntScene' && !(await gameErr()), dev.label + ': I’m ready → Bug Hunt runs');
+    // a first dive opens the how-to card and the clock waits on it; Got it starts the dive
+    const card = await page.evaluate(() => ({ help: !!Game.scene.help, left: Game.scene.timeLeft }));
+    await press('help-ok'); await page.waitForTimeout(600);
+    const dive = await page.evaluate(() => ({ help: !!Game.scene.help, left: Game.scene.timeLeft }));
+    check(card.help && card.left >= 119.9 && !dive.help && dive.left < card.left, dev.label + ': first dive shows how to catch a bug; Got it starts the clock (' + JSON.stringify([card, dive]) + ')');
     await page.evaluate(() => { const s = Game.scene; s.timeLeft = 0.05; });
     await page.waitForFunction(() => Game.scene.constructor.name === 'ResultsScene', null, { timeout: 15000 }).catch(() => {});
     await S.settle();
