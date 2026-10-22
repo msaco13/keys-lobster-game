@@ -84,11 +84,10 @@ for (const dev of [{ label: 'phone', viewport: { width: 844, height: 390 }, touc
       check(paused === 'pause' && sel === pin.id, dev.label + ': a tap just outside a small button still presses it (pause: ' + paused + ', chart pin ' + pin.id + ': ' + sel + ')');
       await press('chartclose');
     }
-    // pull up at the nearest charted spot and fish it
+    // skip the ride to the nearest charted spot and fish it
     await page.evaluate(() => { const s = Game.scene; s.skipTo('bughunt'); });
     await S.settle(); await page.waitForTimeout(300);
-    await page.evaluate(() => Game.scene.finishLeg(true)); await S.settle();
-    check((await name()) === 'TurnIntroScene', dev.label + ': arriving → hand-off');
+    check((await name()) === 'TurnIntroScene', dev.label + ': skipping the ride → straight to the hand-off');
     await press('ready'); await page.waitForTimeout(1500);
     check((await name()) === 'BugHuntScene' && !(await gameErr()), dev.label + ': I’m ready → Bug Hunt runs');
     // a first dive opens the how-to card and the clock waits on it; Got it starts the dive
