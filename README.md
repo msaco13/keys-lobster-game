@@ -168,6 +168,21 @@ tools/vendor-three.mjs + three-entry.js   rebuild js/vendor/three.min.js (npm ru
 test/             Playwright playtests, fight-balance and session simulations
 ```
 
+## The trailer
+
+`trailer/keys-crew-trailer.mp4` is a trailer cut entirely from the game: every shot is the game playing itself in
+headless Chromium (`tools/trailer/shots.js` stages each one with the game's own scenes, art and fonts), and every sound
+is the game's own synthesizer rendered offline (the songs, and each effect at the frame the game asked for it).
+
+```
+node tools/trailer/audio.mjs . /tmp/kc/audio                      # the songs and effects, as WAV (about 5 min)
+for k in 0 1 2 3; do node tools/trailer/render.mjs . /tmp/kc/frames --worker $k/4 & done; wait   # the frames, 1080p30
+node tools/trailer/assemble.mjs /tmp/kc/frames /tmp/kc/audio trailer/keys-crew-trailer.mp4
+```
+
+`--every 12 --size 960x540` on the renderer makes a quick preview of the staging; `tools/trailer/timeline.mjs` is the
+running order and the music plan. The whole render takes about ten minutes on four cores.
+
 ## Developing
 
 ```
