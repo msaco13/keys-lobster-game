@@ -10,7 +10,7 @@ const page = await browser.newPage({ viewport: { width: W, height: H }, deviceSc
 const errs = []; page.on('pageerror', (e) => errs.push('PAGEERR ' + e.message)); page.on('console', (m) => { if (m.type() === 'error' || (m.type() === 'warning' && /THREE|WebGL|shader/i.test(m.text()))) errs.push(m.type() + ': ' + m.text().slice(0, 400)); });
 await page.addInitScript(() => { localStorage.clear(); localStorage.setItem('keyscrew_gfx', JSON.stringify('3d')); localStorage.setItem('keyscrew_gfxTier', JSON.stringify(2)); });
 await page.goto('file://' + root + '/index.html'); await page.waitForTimeout(1000);
-await page.evaluate(() => { World.build(); Trip.start({ mode: 'crew', crew: ['michael', 'jorge', 'jemel'], plan: 'full', sessionLen: 120 }); Game.go(new SeaScene(), true); });
+await page.evaluate(() => { World.build(); Trip.start({ mode: 'crew', crew: ['michael', 'jorge', 'jemel'], plan: 'full', sessionLen: 120 }); Game.go(new SeaScene(), true); if (Game.scene.panel && Game.scene.panel.kind === 'captain') Game.scene.takeWheel(); });
 await page.waitForTimeout(2500);
 const state = await page.evaluate(() => ({ state: GL.state, why: GL.why, gl: GL.r && GL.r.getContext().getParameter(GL.r.getContext().VERSION), calls: GL.r && GL.r.info.render.calls, tris: GL.r && GL.r.info.render.triangles }));
 console.log('3D', JSON.stringify(state));

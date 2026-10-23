@@ -100,9 +100,22 @@ for (const run of RUNS) {
     const saved = await page.evaluate(() => Trip.load()); if (!saved) throw new Error('crew trip not saved after cast off');
     if ((saved.bounties || []).map((b) => b.id).join(',') !== want) throw new Error('the trip did not keep the briefing\'s bounties');
   });
+  await path_('saved trip -> new crew trip -> cast off asks -> keep it / start a new trip', async () => {
+    await fresh(); await startCrew(['jorge', 'jemel'], 'full'); await page.evaluate(() => { Trip.cur.done = ['bughunt']; Trip.cur.scores.jemel = 640; Trip.save(); });
+    await jump('new TitleScene()'); await click('crew'); await click('go'); await expectScene('BriefingScene', 'go with a trip saved');
+    await click('castoff'); if (!(await has('ask-replace'))) throw new Error('cast off over a saved trip did not ask');
+    await shot('replace-ask');
+    await click('ask-keep'); await expectScene('BriefingScene', 'keep it');
+    if ((await page.evaluate(() => Trip.load().crew.join(','))) !== 'jorge,jemel') throw new Error('Keep it lost the saved trip');
+    await click('castoff'); await key('Escape'); if (await has('ask-replace')) throw new Error('Esc should close the question');
+    await click('castoff'); await click('ask-replace'); await expectScene('SeaScene', 'start a new trip');
+    if ((await page.evaluate(() => Trip.load().crew.length)) !== 3) throw new Error('the new trip did not replace the saved one');
+  });
   // the boat's own pause panel lives in sea.js; this only checks the way out and back in
-  await path_('sea: pause -> quit to title -> resume -> SeaScene', async () => {
+  await path_('sea: captain hand-off -> take the wheel -> pause -> quit to title -> resume -> SeaScene', async () => {
     await fresh(); await startCrew(); await jump('new SeaScene()', 600); await expectScene('SeaScene', 'jump');
+    if (!(await has('wheel'))) throw new Error('a new run should open on the captain hand-off');
+    await click('wheel'); if (await page.evaluate(() => !!Game.scene.panel)) throw new Error('Take the wheel did not close the hand-off');
     await click('pause'); await click('totitle'); await expectScene('TitleScene', 'quit from the boat');
     await click('resume'); await page.waitForTimeout(300); await expectScene('SeaScene', 'resume to the boat');
   });

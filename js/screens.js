@@ -478,7 +478,7 @@ class BriefingScene {
   constructor(o, back) {
     this.o = o; this.back = back || (() => (o.mode === 'crew' ? new CrewSetupScene(o) : new SoloSetupScene(o)));
     this.t = 0; this.weather = rollWeather(); this.bounties = Bounties.roll(); this.ticks = 0;
-    this.saved = o.mode === 'crew' && !!Trip.load();
+    this.saved = o.mode === 'crew' ? Trip.load() : null; this.ask = false;
   }
   enter() { Music.play('title'); SFX.setAmbient(0.5, false); }
   update(dt) {
@@ -486,7 +486,9 @@ class BriefingScene {
     const n = Math.min(this.bounties.length, Math.floor((this.t - 0.15) / 0.16) + 1);
     if (n > this.ticks) { this.ticks = n; SFX.play('tick'); }
   }
-  castOff() {
+  // a crew trip already saved is only replaced once someone says so
+  castOff(sure) {
+    if (this.saved && !sure) { this.ask = true; return; }
     Trip.start(Object.assign({}, this.o, { weather: this.weather, bounties: this.bounties }));
     SFX.play('horn'); Game.go(new SeaScene());
   }
@@ -530,6 +532,19 @@ class BriefingScene {
     text(ctx, label, tx + aw + 10, ry + 35, { size: 15, color: '#cfe3ea', weight: 700 });
     UI.button(ctx, 'back', 20, H - 66, 120, 48, 'Back', () => Game.go(this.back()), { style: 'ghost', size: 18, key: 'Escape' });
     UI.button(ctx, 'castoff', W - 240, H - 72, 220, 56, 'Cast off', () => this.castOff(), { style: 'primary', size: 24, key: 'Enter|Space', sub: this.saved ? 'Replaces your saved trip' : null });
+    if (this.ask) this.drawAsk(ctx, W, H);
+  }
+  drawAsk(ctx, W, H) {
+    const sv = this.saved, y = Math.round(H / 2 - 80);
+    ctx.fillStyle = 'rgba(4,22,34,0.88)'; ctx.fillRect(0, 0, W, H);
+    UI.region('ask-cover', 0, 0, W, H, null, { key: 'Enter|Space' });   // nothing under it reacts while it's up
+    text(ctx, 'Replace your saved trip?', W / 2, y, { display: true, size: 38, align: 'center', color: '#fff', maxW: W - 40 });
+    const who = sv.crew.map((k) => (CHARS[k] ? CHARS[k].name : k)).join(', '), lead = sv.crew.slice().sort((a, b) => (sv.scores[b] || 0) - (sv.scores[a] || 0))[0];
+    const what = who + ' · ' + sv.done.length + (sv.spotsNeeded ? ' of ' + sv.spotsNeeded : '') + (sv.done.length === 1 && !sv.spotsNeeded ? ' spot fished' : ' spots fished') + (sv.scores[lead] > 0 ? ' · ' + CHARS[lead].name + ' leads with ' + sv.scores[lead].toLocaleString() : '');
+    text(ctx, what, W / 2, y + 38, { size: 18, align: 'center', color: '#cfe3ea', weight: 700, maxW: W - 40 });
+    text(ctx, 'Casting off starts a new trip. The saved one is gone for good.', W / 2, y + 66, { size: 16, align: 'center', color: '#9fb8c2', weight: 600, maxW: W - 40 });
+    UI.button(ctx, 'ask-keep', W / 2 - 230, y + 100, 220, 56, 'Keep it', () => { this.ask = false; }, { style: 'primary', size: 20, key: 'Escape', sub: 'Resume it from the title' });
+    UI.button(ctx, 'ask-replace', W / 2 + 10, y + 100, 220, 56, 'Start a new trip', () => this.castOff(true), { style: 'coral', size: 20 });
   }
 }
 
@@ -795,8 +810,12 @@ class DayEndScene {
       ctx.fillStyle = CHARS[a].skin; ell(ctx, hx - 6 - clap * 4, hy - 8, 11, 13); ctx.fill(); ctx.fillStyle = CHARS[b].skin; ell(ctx, hx + 6 + clap * 4, hy - 8, 11, 13); ctx.fill();
       if (clap < 0.2) { ctx.strokeStyle = PAL.sun; ctx.lineWidth = 3; for (let i = 0; i < 8; i++) { const an = (i / 8) * TAU; ctx.beginPath(); ctx.moveTo(hx + Math.cos(an) * 20, hy - 8 + Math.sin(an) * 20); ctx.lineTo(hx + Math.cos(an) * 32, hy - 8 + Math.sin(an) * 32); ctx.stroke(); } }
     } else { ctx.save(); ctx.translate(hx, hy + 30); crewAvatar(ctx, c.crew[0], 0, 0, 64, { expr: 'grin' }); ctx.restore(); }
-    text(ctx, 'Out. 🙌', hx, 48, { display: true, size: 46, align: 'center', color: '#fff', stroke: '#1d1636', sw: 8 });
-    text(ctx, 'Same crew. Same water. See you next season.', W / 2, 82, { size: 18, align: 'center', color: '#ffe3c0', weight: 700, alpha: 0.95 });
+    // a crew's day ends on who won it
+    const o = this.order, lead = c.mode === 'crew' && o.length > 1 && c.scores[o[0]] > 0, tied = lead && c.scores[o[0]] === c.scores[o[1]];
+    const head = !lead ? 'Out. 🙌' : tied ? 'A tie at the top!' : CHARS[o[0]].name + ' is Captain of the Day!';
+    text(ctx, head, hx, 48, { display: true, size: lead ? 40 : 46, align: 'center', color: '#fff', stroke: '#1d1636', sw: 8, maxW: W - 40 });
+    const tiedNames = tied ? o.filter((k) => c.scores[k] === c.scores[o[0]]).map((k) => CHARS[k].name) : [];
+    text(ctx, tied ? tiedNames.slice(0, -1).join(', ') + ' and ' + tiedNames[tiedNames.length - 1] + ' share it. Same water next season.' : 'Same crew. Same water. See you next season.', W / 2, 82, { size: 18, align: 'center', color: '#ffe3c0', weight: 700, alpha: 0.95, maxW: W - 40 });
     // the day's bounties: a banner in front of the crew
     const by0 = 228, nb = this.bounties.length;
     if (nb) {
@@ -824,7 +843,6 @@ class DayEndScene {
     this.order.forEach((ch, i) => {
       const y = top + 54 + i * rowH;
       crewAvatar(ctx, ch, bx + 38, y + 8, 17);
-      const lead = this.order.length > 1 && c.scores[this.order[0]] > 0, tied = lead && c.scores[this.order[0]] === c.scores[this.order[1]];
       if (i === 0 && lead && !tied) drawCrown(ctx, bx + 38, y - 12, 10);
       text(ctx, CHARS[ch].name, bx + 66, y + (i === 0 && lead ? 4 : 14), { size: 19, color: '#fff', weight: 800 });
       if (i === 0 && lead) text(ctx, tied ? 'Tied at the top' : 'Captain of the Day', bx + 66, y + 22, { size: 13, color: PAL.sun, weight: 800 });

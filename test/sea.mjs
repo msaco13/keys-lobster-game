@@ -8,7 +8,7 @@ await page.goto('file://' + root + '/index.html'); await page.waitForTimeout(120
 let n = 0; const shot = async (name) => { await page.screenshot({ path: `${out}/sea-${String(++n).padStart(2, '0')}-${name}.png` }); const ge = await page.evaluate(() => (Game.error ? String(Game.error.stack || Game.error) : null)); if (ge) { errs.push(name + ': ' + ge); await page.evaluate(() => { Game.error = null; }); } };
 const ms = await page.evaluate(() => { localStorage.clear(); const t0 = performance.now(); World.build(); return Math.round(performance.now() - t0); });
 console.log('world build ms', ms, 'keys', await page.evaluate(() => KEYS.length), 'reefs', await page.evaluate(() => PATCH_REEFS.length), 'floats', await page.evaluate(() => World.floats.length));
-await page.evaluate(() => { Trip.start({ mode: 'crew', crew: ['michael', 'jorge', 'jemel'], plan: 'full', sessionLen: 120 }); Game.go(new SeaScene(), true); });
+await page.evaluate(() => { Trip.start({ mode: 'crew', crew: ['michael', 'jorge', 'jemel'], plan: 'full', sessionLen: 120 }); Game.go(new SeaScene(), true); if (Game.scene.panel && Game.scene.panel.kind === 'captain') Game.scene.takeWheel(); });
 await page.waitForTimeout(1500); await shot('home');
 const place = async (name, x, s, h, v = 0, notch = 1) => { await page.evaluate(([x, s, h, v, notch]) => { const S = Game.scene; S.x = x; S.y = wy(x, s); S.h = h; S.v = v; S.notch = notch; S.cam.x = S.x; S.cam.y = S.y; S.panel = null; }, [x, s, h, v, notch]); await page.waitForTimeout(900); await shot(name); };
 await place('harbor', 8740, 420, Math.PI / 2, 60, 1);
