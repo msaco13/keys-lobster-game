@@ -612,7 +612,7 @@ class SeaScene {
       ctx.fillStyle = PAL.sun; ctx.beginPath(); ctx.moveTo(x, y - 34); ctx.lineTo(x + 22, y - 28 + Math.sin(t * 5) * 2); ctx.lineTo(x, y - 22); ctx.fill();
       const done = this.c.done.includes(id) && this.c.mode === 'crew';
       text(ctx, S.name, x, y + 34, { size: 20 / Math.max(0.7, v.z), align: 'center', color: '#fff', weight: 800, stroke: PAL.ink, sw: 5, alpha: ok ? 1 : 0.6 });
-      text(ctx, done ? 'Fished today' : S.kind, x, y + 34 + 20 / Math.max(0.7, v.z), { size: 15 / Math.max(0.7, v.z), align: 'center', color: done ? '#cfd8dc' : PAL.sun, weight: 800, stroke: PAL.ink, sw: 4, alpha: ok ? 1 : 0.6 });
+      text(ctx, done ? 'Done today' : S.kind, x, y + 34 + 20 / Math.max(0.7, v.z), { size: 15 / Math.max(0.7, v.z), align: 'center', color: done ? '#cfd8dc' : PAL.sun, weight: 800, stroke: PAL.ink, sw: 4, alpha: ok ? 1 : 0.6 });
     }
   }
   drawHumpLife(ctx, v, t) {
@@ -727,8 +727,8 @@ class SeaScene {
       UI.button(ctx, 'tieup', bx, by - 8, bw, 56, 'Tie up at the dock', () => this.arrive('home'), { style: 'primary', size: 20, key: 'Enter', disabled: open || this.v > NO_WAKE, sub: this.v > NO_WAKE ? 'Slow down first' : 'End the day' });
     } else if (this.inSpot) {
       const ok = spotAllowed(this.inSpot, this.c), slow = this.v <= 95;
-      if (ok) UI.button(ctx, 'fish', bx, by - 8, bw, 56, 'Fish here', () => this.arrive(this.inSpot), { style: 'primary', size: 22, key: 'Enter', disabled: open || !slow, sub: slow ? SPOTS[this.inSpot].name : 'Slow down to stop here' });
-      else { panel(ctx, bx, by, bw, 44, { r: 18 }); text(ctx, this.c.done.includes(this.inSpot) ? 'Already fished today' : 'Today’s spots are set', bx + bw / 2, by + 28, { size: 15, align: 'center', color: '#cfe3ea', weight: 700, maxW: bw - 16 }); }
+      if (ok) UI.button(ctx, 'fish', bx, by - 8, bw, 56, spotDo(this.inSpot).here, () => this.arrive(this.inSpot), { style: 'primary', size: 22, key: 'Enter', disabled: open || !slow, sub: slow ? SPOTS[this.inSpot].name : 'Slow down to stop here' });
+      else { panel(ctx, bx, by, bw, 44, { r: 18 }); text(ctx, this.c.done.includes(this.inSpot) ? 'Already been here today' : 'Today’s spots are set', bx + bw / 2, by + 28, { size: 15, align: 'center', color: '#cfe3ea', weight: 700, maxW: bw - 16 }); }
     }
     // banners
     const banner = (msg, fill, col) => { panel(ctx, W / 2 - 170, 66, 340, 34, { r: 17, fill, line: 'rgba(0,0,0,0.1)' }); text(ctx, msg, W / 2, 88, { size: 15, align: 'center', color: col, weight: 800 }); };
@@ -936,7 +936,7 @@ class SeaScene {
           else if (spotAllowed(sel, this.c)) {
             UI.button(ctx, 'setcourse', sx + 14, cy + ch - 126, sw - 28, 54, 'Set course', () => { this.dest = sel; this.planRoute(); this.setAuto(true); this.panel = null; }, { style: 'primary', size: 20, sub: 'Autopilot drives · you can take over' });
             UI.button(ctx, 'skipride', sx + 14, cy + ch - 62, sw - 28, 48, 'Skip the ride', () => this.skipTo(sel), { style: 'secondary', size: 16, sub: 'No captain’s points' });
-          } else text(ctx, this.c.done.includes(sel) ? 'Already fished today' : 'Today’s spots are set', sx + 16, cy + ch - 30, { size: 14, color: '#9fb8c2', weight: 700 });
+          } else text(ctx, this.c.done.includes(sel) ? 'Already been here today' : 'Today’s spots are set', sx + 16, cy + ch - 30, { size: 14, color: '#9fb8c2', weight: 700 });
         }
       }
     }
@@ -971,7 +971,7 @@ class SeaScene {
     for (const l of lines) { text(ctx, l.label, px + 24, y, { size: 17, color: l.pts < 0 ? '#ff9a8a' : '#fff', weight: 600, maxW: pw - 120 }); text(ctx, (l.pts > 0 ? '+' : '') + l.pts, px + pw - 24, y, { size: 18, align: 'right', color: l.pts < 0 ? PAL.bad : PAL.sun, weight: 800 }); y += 30; }
     const tot = this.total || 0;
     text(ctx, 'Captain’s points: ' + (tot > 0 ? '+' : '') + tot, px + 24, py + ph - 18, { size: 18, color: PAL.sun, weight: 800 });
-    UI.button(ctx, 'letsfish', W / 2 - 130, py + ph + 16, 260, 56, home ? 'Call it a day' : 'Let’s fish', () => this.finishLeg(false), { style: 'primary', size: 22, key: 'Enter|Space' });
+    UI.button(ctx, 'letsfish', W / 2 - 130, py + ph + 16, 260, 56, home ? 'Call it a day' : spotDo(this.panel.id).go, () => this.finishLeg(false), { style: 'primary', size: 22, key: 'Enter|Space' });
   }
   drawPause(ctx, W, H) {
     ctx.fillStyle = 'rgba(3,22,32,0.82)'; ctx.fillRect(0, 0, W, H);

@@ -12,7 +12,9 @@ const NET = { REACH: 170, HOOP: 30, SWING: 0.2, SET: 1.3, COOL: 0.3, TAP: 70 };
 // mix: the share of calm, skittish and wary bugs at the site (the deep reef has more wary ones)
 const BH_SITES = {
   patch: { WW: 3400, floor: 500, ledgeH: [62, 120], gap: [150, 260], bugs: 6, morays: 3, extra: 0.3, shark: 0.35, gold: 1, big: 1, short: 0.34, grade: 0.16, mix: [0.45, 0.4] },
-  reef: { WW: 4300, floor: 700, ledgeH: [110, 240], gap: [120, 220], bugs: 9, morays: 5, extra: 0.35, shark: 0.55, gold: 2, big: 1.7, short: 0.24, grade: 0.36, light: true, mix: [0.35, 0.45] }
+  reef: { WW: 4300, floor: 700, ledgeH: [110, 240], gap: [120, 220], bugs: 9, morays: 5, extra: 0.35, shark: 0.55, gold: 2, big: 1.7, short: 0.24, grade: 0.36, light: true, mix: [0.35, 0.45] },
+  // the bay side: low rock piles and sponges in the turtle grass, under ten feet of green water. Easy on the air, lots of shorts.
+  bay: { WW: 3200, floor: 300, ledgeH: [34, 66], gap: [150, 250], bugs: 8, morays: 1, extra: 0.3, shark: 0.15, gold: 0.6, big: 0.6, short: 0.48, grade: 0.05, bay: true, mix: [0.55, 0.35] }
 };
 // Every bug has a temperament, shown when you're close enough to tickle it.
 //   In the hole: tell = seconds its antennae go stiff before a twitch (the warning); window = how long you can keep
@@ -120,7 +122,7 @@ class BugHuntScene extends SessionBase {
       for (let px = L.x0 + 20; px < L.x1 - 14; px += 18) L.pts.push([px, L.top - rng() * 9]);
       L.pts.push([L.x1 - 4, L.top + 6], [L.x1 + 7, L.top + L.h * 0.55], [L.x1 + 2, this.baseFloor(L.x1) + 4]);
       L.deco = [];
-      const kinds = this.variant === 'reef' ? ['fan', 'elk', 'elk', 'brain', 'sponge', 'rod', 'barrel'] : ['fan', 'brain', 'sponge', 'rod', 'rod', 'fan', 'urchin', 'barrel'];
+      const kinds = this.variant === 'reef' ? ['fan', 'elk', 'elk', 'brain', 'sponge', 'rod', 'barrel'] : this.site.bay ? ['sponge', 'sponge', 'barrel', 'urchin', 'brain', 'sponge'] : ['fan', 'brain', 'sponge', 'rod', 'rod', 'fan', 'urchin', 'barrel'];
       for (let px = L.x0 + 14; px < L.x1 - 10; px += rand(22, 40)) L.deco.push({ x: px, kind: pick(kinds), s: rand(0.7, 1.25), c: pick(['#8a4fb8', '#b85fa8', '#e07a3a', '#d9a441', '#7d5bd0']) });
       L.spots = []; for (let i = 0; i < 10; i++) L.spots.push([L.x0 + rng() * (L.x1 - L.x0), L.top + 10 + rng() * (L.h - 16), 2 + rng() * 6, rng()]);
     }
@@ -140,10 +142,12 @@ class BugHuntScene extends SessionBase {
     // while you're learning, the bug closest to the boat is a calm one (golden bugs stay wary)
     if (this.coach) { const first = this.dens.filter((d) => d.kind === 'lobster' && !d.lob.gold).sort((a, b) => Math.abs(a.x - BH.BOATX) - Math.abs(b.x - BH.BOATX))[0]; if (first) first.lob.temper = 'calm'; }
     this.grass = []; for (let i = 0; i < WW / 34; i++) this.grass.push({ x: rand(0, WW), h: rand(10, 26), ph: rand(0, TAU) });
+    // the bay: a turtle-grass meadow, row on row down to the front of the picture
+    this.meadow = []; if (S.bay) { for (let i = 0; i < WW / 3; i++) this.meadow.push({ x: rand(0, WW), dy: Math.pow(Math.random(), 1.4) * 260, h: rand(14, 30), ph: rand(0, TAU), c: chance(0.5) ? '#4c8a3e' : '#6a9a48' }); this.meadow.sort((a, b) => a.dy - b.dy); }
     this.jellies = []; for (let i = 0; i < Math.round(WW / 700); i++) this.jellies.push({ x: rand(700, WW - 100), y: rand(170, this.site.floor - 150), ph: rand(0, TAU), hit: 0 });
     this.schools = [];
-    for (let i = 0; i < Math.round(WW / 650); i++) {
-      const L = pick(this.ledges), fish = [], kind = pick(['tang', 'sgt', 'grunt', 'yt']);
+    for (let i = 0; i < Math.round(WW / (S.bay ? 1000 : 650)); i++) {
+      const L = pick(this.ledges), fish = [], kind = pick(S.bay ? ['grunt', 'grunt', 'sgt'] : ['tang', 'sgt', 'grunt', 'yt']);
       for (let k = 0; k < randi(6, 11); k++) fish.push({ ox: rand(-56, 56), oy: rand(-28, 28), ph: rand(0, TAU) });
       this.schools.push({ x: (L.x0 + L.x1) / 2, y: L.top - 40, cx: (L.x0 + L.x1) / 2, cy: L.top - (kind === 'yt' ? 110 : 40), ph: rand(0, TAU), fish, kind });
     }
@@ -611,7 +615,8 @@ class BugHuntScene extends SessionBase {
 
   /* ---------- drawing ---------- */
   waterColor(wy) {
-    const stops = [[BH.SURF, this.weather.vis > 1.1 ? [76, 205, 224] : [58, 184, 208]], [300, [34, 150, 192]], [480, [20, 118, 164]], [640, [12, 84, 126]], [820, [7, 56, 90]]];
+    const stops = this.site.bay ? [[BH.SURF, this.weather.vis > 1.1 ? [118, 200, 178] : [100, 184, 164]], [300, [70, 150, 132]], [480, [48, 112, 100]], [820, [30, 72, 66]]]   // the bay: green and milky
+      : [[BH.SURF, this.weather.vis > 1.1 ? [76, 205, 224] : [58, 184, 208]], [300, [34, 150, 192]], [480, [20, 118, 164]], [640, [12, 84, 126]], [820, [7, 56, 90]]];
     for (let i = 1; i < stops.length; i++) if (wy < stops[i][0]) { const [a, c0] = stops[i - 1], [b, c1] = stops[i], k = clamp((wy - a) / (b - a), 0, 1); return `rgb(${Math.round(lerp(c0[0], c1[0], k))},${Math.round(lerp(c0[1], c1[1], k))},${Math.round(lerp(c0[2], c1[2], k))})`; }
     const c = stops[stops.length - 1][1]; return `rgb(${c[0]},${c[1]},${c[2]})`;
   }
@@ -636,7 +641,7 @@ class BugHuntScene extends SessionBase {
     }
     // far layer: hazy reef, schools far off, the odd eagle ray
     const fy = this.site.floor - 120 - cy * 0.75;
-    ctx.fillStyle = 'rgba(30,110,140,0.32)'; ctx.beginPath(); ctx.moveTo(0, H);
+    ctx.fillStyle = this.site.bay ? 'rgba(60,120,90,0.3)' : 'rgba(30,110,140,0.32)'; ctx.beginPath(); ctx.moveTo(0, H);
     for (let x = 0; x <= W + 20; x += 24) { const wx = x + cam * 0.2; ctx.lineTo(x, fy - 34 * Math.abs(Math.sin(wx * 0.004)) - 22 * Math.sin(wx * 0.011)); }
     ctx.lineTo(W, H); ctx.fill();
     ctx.fillStyle = 'rgba(20,80,110,0.35)';
@@ -650,7 +655,7 @@ class BugHuntScene extends SessionBase {
       ctx.fillStyle = rg; ctx.beginPath(); ctx.moveTo(bx, top); ctx.lineTo(bx + 46 + i * 4, top); ctx.lineTo(bx - 90 + sw, top + 440); ctx.lineTo(bx - 170 + sw, top + 440); ctx.fill();
     }
     ctx.restore();
-    ctx.fillStyle = 'rgba(10,70,95,0.5)'; ctx.beginPath(); ctx.moveTo(0, H);
+    ctx.fillStyle = this.site.bay ? 'rgba(40,90,70,0.45)' : 'rgba(10,70,95,0.5)'; ctx.beginPath(); ctx.moveTo(0, H);
     const my = this.site.floor - 80 - cy * 0.88;
     for (let x = 0; x <= W + 20; x += 20) { const wx = x + cam * 0.5; ctx.lineTo(x, my - 30 * Math.abs(Math.sin(wx * 0.006)) - 18 * Math.sin(wx * 0.017)); }
     ctx.lineTo(W, H); ctx.fill();
@@ -662,15 +667,21 @@ class BugHuntScene extends SessionBase {
     // sand, caustics, grass
     const sandPath = new Path2D(); sandPath.moveTo(cam - 10, bot + 10);
     for (let x = cam - 10; x <= cam + W + 20; x += 16) sandPath.lineTo(x, this.baseFloor(x)); sandPath.lineTo(cam + W + 20, bot + 10); sandPath.closePath();
-    const sg = ctx.createLinearGradient(0, this.site.floor - 30, 0, this.site.floor + 60); sg.addColorStop(0, '#dcc994'); sg.addColorStop(1, '#a8955f');
+    const sg = ctx.createLinearGradient(0, this.site.floor - 30, 0, this.site.floor + 60); sg.addColorStop(0, this.site.bay ? '#c9c08c' : '#dcc994'); sg.addColorStop(1, this.site.bay ? '#8f8c5c' : '#a8955f');
     ctx.fillStyle = sg; ctx.fill(sandPath);
     ctx.save(); ctx.clip(sandPath); ctx.globalCompositeOperation = 'lighter';
     const pat = ctx.createPattern(causticTile(), 'repeat');
     ctx.globalAlpha = 0.15 * (this.weather.vis > 1.1 ? 1.2 : 1) * (this.variant === 'reef' ? 0.75 : 1); ctx.fillStyle = pat;
     let ox = (t * 14) % 192, oy = (t * 6) % 192; ctx.translate(ox, oy); ctx.fillRect(cam - 200 - ox, this.site.floor - 80 - oy, W + 400, 300); ctx.translate(-ox, -oy);
     ctx.globalAlpha *= 0.6; ctx.scale(1.35, 1.35); ox = (-t * 10) % 192; oy = (t * 4) % 192; ctx.translate(ox, oy); ctx.fillRect((cam - 200) / 1.35 - ox, (this.site.floor - 80) / 1.35 - oy, (W + 400) / 1.35, 260); ctx.restore();
-    ctx.strokeStyle = '#4f8a46'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    ctx.strokeStyle = this.site.bay ? '#4c8a3e' : '#4f8a46'; ctx.lineWidth = this.site.bay ? 3.5 : 2.5; ctx.lineCap = 'round';
     for (const gr of this.grass) { if (gr.x < cam - 20 || gr.x > cam + W + 20) continue; const by = this.baseFloor(gr.x) + 4; ctx.beginPath(); ctx.moveTo(gr.x, by); ctx.quadraticCurveTo(gr.x + Math.sin(t * 1.4 + gr.ph) * 6, by - gr.h * 0.6, gr.x + Math.sin(t * 1.4 + gr.ph) * 10, by - gr.h); ctx.stroke(); }
+    for (const m of this.meadow) {
+      if (m.x < cam - 20 || m.x > cam + W + 20) continue;
+      const k = 1 + m.dy / 110, by = this.baseFloor(m.x) + 6 + m.dy, sw = Math.sin(t * 1.3 + m.ph) * 5 * k;
+      if (by > bot + 40) continue;
+      ctx.strokeStyle = m.c; ctx.lineWidth = 3 * k; ctx.beginPath(); ctx.moveTo(m.x, by); ctx.quadraticCurveTo(m.x + sw * 0.5, by - m.h * k * 0.6, m.x + sw, by - m.h * k); ctx.stroke();
+    }
     for (const s of this.sandDeco) { if (s.x < cam - 30 || s.x > cam + W + 30 || this.groundAt(s.x) < this.baseFloor(s.x) - 2) continue; ctx.save(); ctx.translate(s.x, this.baseFloor(s.x) + 6); if (s.kind === 'star') drawStarfish(ctx, s.r, s.c); else drawUrchin(ctx, s.r * 0.7, t); ctx.restore(); }
     const n = this.nurse; if (n.x > cam - 120 && n.x < cam + W + 120) { ctx.save(); ctx.translate(n.x, n.y); if (n.dir < 0) ctx.scale(-1, 1); drawShark(ctx, 130, { kind: 'nurse', t: n.t, speed: n.move > 0 ? 6 : 1.2 }); ctx.restore(); }
     if (this.goliath && this.goliath.x > cam - 160 && this.goliath.x < cam + W + 160) { ctx.save(); ctx.translate(this.goliath.x, this.goliath.y); drawFish(ctx, 'goliath', 150, { t: this.goliath.t, flip: true, wig: 0.15, speed: 2 }); ctx.restore(); }

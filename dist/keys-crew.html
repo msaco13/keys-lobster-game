@@ -1379,6 +1379,19 @@ const SPOTS = {
     rumor: 'The reef under Alligator Light is crawling with big lobster. Off Islamorada, out on the reef line.',
     blurb: 'Spur-and-groove reef under the old lighthouse. Deeper dives, bigger bugs, more morays. And the sharks know it.',
     tip: 'Deeper water: watch your air. Put the net behind a bug and it tail-flips right into it.' },
+  bayrocks: { id: 'bayrocks', name: 'Bayside Rocks', kind: 'Lobster', mode: 'bughunt', variant: 'bay', depth: '5–10 ft', at: [6310, -620], r: 260, charted: true, place: 'Bayside, Plantation Key',
+    species: ['lobster'],
+    blurb: 'Rock piles and sponges in the turtle grass, just through Snake Creek on the bay side of Plantation Key. Shallow and easy on your air: lots of bugs, lots of shorts.',
+    tip: 'Shallow water means long breath-holds. Gauge every bug: plenty of them are short.' },
+  pickles: { id: 'pickles', name: 'Pickles Reef', kind: 'Lobster', mode: 'bughunt', variant: 'reef', depth: '10–25 ft', at: [9900, 2300], r: 300, charted: true, place: 'Pickles Reef, off Tavernier',
+    species: ['lobster'],
+    blurb: 'The stretch of the reef line closest to the dock: spur-and-groove coral straight out from Tavernier. Ledges full of bugs, and a moray or two.',
+    tip: 'Deeper than the patch reef: watch your air. Put the net behind a bug and it tail-flips right into it.' },
+  patches: { id: 'patches', name: 'Islamorada Patches', kind: 'Lobster', mode: 'bughunt', variant: 'patch', depth: '12–18 ft', at: [5200, 1500], r: 300, charted: false, place: 'Hawk Channel off Islamorada',
+    species: ['lobster'],
+    rumor: 'A string of little patch reefs in Hawk Channel off Islamorada, and nobody dives them. Head west past Snake Creek.',
+    blurb: 'A string of little patch reefs in Hawk Channel off Islamorada. Quiet, shallow, and full of bugs.',
+    tip: 'Patch reefs: the bugs hide in the holes at the foot of each ledge.' },
   bottom: { id: 'bottom', name: 'The Ledge', kind: 'Bottom Fishing', mode: 'bottom', variant: 'ledge', depth: '95 ft', at: [8400, 2900], r: 320, charted: true, place: 'Off Tavernier',
     species: ['whitegrunt', 'lane', 'yellowtail', 'mangrove', 'mutton', 'hogfish', 'trigger', 'redgrouper', 'blackgrouper', 'amberjack', 'goliath'],
     blurb: 'The reef edge drops off into 95 feet. Watch the fish finder, drop baits to the marks, wait out the nibbles, set the hook on the real bite.',
@@ -1412,9 +1425,11 @@ const SPOTS = {
     blurb: 'The edge of the Everglades. Mangrove shorelines, tannin water, snook under the roots and reds tailing on the mud.',
     tip: 'Snook hug the mangroves. Drum and reds tail on the mud. Cast tight to the roots.' }
 };
-const SPOT_ORDER = ['bughunt', 'alligator', 'bottom', 'wreck', 'troll', 'hump', 'flats', 'bridge', 'flamingo'];
+const SPOT_ORDER = ['bughunt', 'bayrocks', 'pickles', 'alligator', 'patches', 'bottom', 'wreck', 'troll', 'hump', 'flats', 'bridge', 'flamingo'];
+// what you do at a spot, for the buttons that take you there: lobster spots are a dive, the rest are fishing
+const spotDo = (id) => (SPOTS[id] && SPOTS[id].mode === 'bughunt' ? { here: 'Dive for lobster', go: 'Let’s go lobstering' } : { here: 'Fish here', go: 'Let’s fish' });
 const spotMode = (id) => (SPOTS[id] ? SPOTS[id].mode : id);
-// Spots this device has found on the water (the starting four are always on the chart)
+// Spots this device has found on the water (the charted ones are always on the chart)
 const Charts = {
   known() { const k = Store.arr('charted'); return new Set(SPOT_ORDER.filter((id) => SPOTS[id].charted || k.includes(id))); },
   isKnown(id) { return this.known().has(id); },
@@ -3962,7 +3977,9 @@ const NET = { REACH: 170, HOOP: 30, SWING: 0.2, SET: 1.3, COOL: 0.3, TAP: 70 };
 // mix: the share of calm, skittish and wary bugs at the site (the deep reef has more wary ones)
 const BH_SITES = {
   patch: { WW: 3400, floor: 500, ledgeH: [62, 120], gap: [150, 260], bugs: 6, morays: 3, extra: 0.3, shark: 0.35, gold: 1, big: 1, short: 0.34, grade: 0.16, mix: [0.45, 0.4] },
-  reef: { WW: 4300, floor: 700, ledgeH: [110, 240], gap: [120, 220], bugs: 9, morays: 5, extra: 0.35, shark: 0.55, gold: 2, big: 1.7, short: 0.24, grade: 0.36, light: true, mix: [0.35, 0.45] }
+  reef: { WW: 4300, floor: 700, ledgeH: [110, 240], gap: [120, 220], bugs: 9, morays: 5, extra: 0.35, shark: 0.55, gold: 2, big: 1.7, short: 0.24, grade: 0.36, light: true, mix: [0.35, 0.45] },
+  // the bay side: low rock piles and sponges in the turtle grass, under ten feet of green water. Easy on the air, lots of shorts.
+  bay: { WW: 3200, floor: 300, ledgeH: [34, 66], gap: [150, 250], bugs: 8, morays: 1, extra: 0.3, shark: 0.15, gold: 0.6, big: 0.6, short: 0.48, grade: 0.05, bay: true, mix: [0.55, 0.35] }
 };
 // Every bug has a temperament, shown when you're close enough to tickle it.
 //   In the hole: tell = seconds its antennae go stiff before a twitch (the warning); window = how long you can keep
@@ -4070,7 +4087,7 @@ class BugHuntScene extends SessionBase {
       for (let px = L.x0 + 20; px < L.x1 - 14; px += 18) L.pts.push([px, L.top - rng() * 9]);
       L.pts.push([L.x1 - 4, L.top + 6], [L.x1 + 7, L.top + L.h * 0.55], [L.x1 + 2, this.baseFloor(L.x1) + 4]);
       L.deco = [];
-      const kinds = this.variant === 'reef' ? ['fan', 'elk', 'elk', 'brain', 'sponge', 'rod', 'barrel'] : ['fan', 'brain', 'sponge', 'rod', 'rod', 'fan', 'urchin', 'barrel'];
+      const kinds = this.variant === 'reef' ? ['fan', 'elk', 'elk', 'brain', 'sponge', 'rod', 'barrel'] : this.site.bay ? ['sponge', 'sponge', 'barrel', 'urchin', 'brain', 'sponge'] : ['fan', 'brain', 'sponge', 'rod', 'rod', 'fan', 'urchin', 'barrel'];
       for (let px = L.x0 + 14; px < L.x1 - 10; px += rand(22, 40)) L.deco.push({ x: px, kind: pick(kinds), s: rand(0.7, 1.25), c: pick(['#8a4fb8', '#b85fa8', '#e07a3a', '#d9a441', '#7d5bd0']) });
       L.spots = []; for (let i = 0; i < 10; i++) L.spots.push([L.x0 + rng() * (L.x1 - L.x0), L.top + 10 + rng() * (L.h - 16), 2 + rng() * 6, rng()]);
     }
@@ -4090,10 +4107,12 @@ class BugHuntScene extends SessionBase {
     // while you're learning, the bug closest to the boat is a calm one (golden bugs stay wary)
     if (this.coach) { const first = this.dens.filter((d) => d.kind === 'lobster' && !d.lob.gold).sort((a, b) => Math.abs(a.x - BH.BOATX) - Math.abs(b.x - BH.BOATX))[0]; if (first) first.lob.temper = 'calm'; }
     this.grass = []; for (let i = 0; i < WW / 34; i++) this.grass.push({ x: rand(0, WW), h: rand(10, 26), ph: rand(0, TAU) });
+    // the bay: a turtle-grass meadow, row on row down to the front of the picture
+    this.meadow = []; if (S.bay) { for (let i = 0; i < WW / 3; i++) this.meadow.push({ x: rand(0, WW), dy: Math.pow(Math.random(), 1.4) * 260, h: rand(14, 30), ph: rand(0, TAU), c: chance(0.5) ? '#4c8a3e' : '#6a9a48' }); this.meadow.sort((a, b) => a.dy - b.dy); }
     this.jellies = []; for (let i = 0; i < Math.round(WW / 700); i++) this.jellies.push({ x: rand(700, WW - 100), y: rand(170, this.site.floor - 150), ph: rand(0, TAU), hit: 0 });
     this.schools = [];
-    for (let i = 0; i < Math.round(WW / 650); i++) {
-      const L = pick(this.ledges), fish = [], kind = pick(['tang', 'sgt', 'grunt', 'yt']);
+    for (let i = 0; i < Math.round(WW / (S.bay ? 1000 : 650)); i++) {
+      const L = pick(this.ledges), fish = [], kind = pick(S.bay ? ['grunt', 'grunt', 'sgt'] : ['tang', 'sgt', 'grunt', 'yt']);
       for (let k = 0; k < randi(6, 11); k++) fish.push({ ox: rand(-56, 56), oy: rand(-28, 28), ph: rand(0, TAU) });
       this.schools.push({ x: (L.x0 + L.x1) / 2, y: L.top - 40, cx: (L.x0 + L.x1) / 2, cy: L.top - (kind === 'yt' ? 110 : 40), ph: rand(0, TAU), fish, kind });
     }
@@ -4561,7 +4580,8 @@ class BugHuntScene extends SessionBase {
 
   /* ---------- drawing ---------- */
   waterColor(wy) {
-    const stops = [[BH.SURF, this.weather.vis > 1.1 ? [76, 205, 224] : [58, 184, 208]], [300, [34, 150, 192]], [480, [20, 118, 164]], [640, [12, 84, 126]], [820, [7, 56, 90]]];
+    const stops = this.site.bay ? [[BH.SURF, this.weather.vis > 1.1 ? [118, 200, 178] : [100, 184, 164]], [300, [70, 150, 132]], [480, [48, 112, 100]], [820, [30, 72, 66]]]   // the bay: green and milky
+      : [[BH.SURF, this.weather.vis > 1.1 ? [76, 205, 224] : [58, 184, 208]], [300, [34, 150, 192]], [480, [20, 118, 164]], [640, [12, 84, 126]], [820, [7, 56, 90]]];
     for (let i = 1; i < stops.length; i++) if (wy < stops[i][0]) { const [a, c0] = stops[i - 1], [b, c1] = stops[i], k = clamp((wy - a) / (b - a), 0, 1); return `rgb(${Math.round(lerp(c0[0], c1[0], k))},${Math.round(lerp(c0[1], c1[1], k))},${Math.round(lerp(c0[2], c1[2], k))})`; }
     const c = stops[stops.length - 1][1]; return `rgb(${c[0]},${c[1]},${c[2]})`;
   }
@@ -4586,7 +4606,7 @@ class BugHuntScene extends SessionBase {
     }
     // far layer: hazy reef, schools far off, the odd eagle ray
     const fy = this.site.floor - 120 - cy * 0.75;
-    ctx.fillStyle = 'rgba(30,110,140,0.32)'; ctx.beginPath(); ctx.moveTo(0, H);
+    ctx.fillStyle = this.site.bay ? 'rgba(60,120,90,0.3)' : 'rgba(30,110,140,0.32)'; ctx.beginPath(); ctx.moveTo(0, H);
     for (let x = 0; x <= W + 20; x += 24) { const wx = x + cam * 0.2; ctx.lineTo(x, fy - 34 * Math.abs(Math.sin(wx * 0.004)) - 22 * Math.sin(wx * 0.011)); }
     ctx.lineTo(W, H); ctx.fill();
     ctx.fillStyle = 'rgba(20,80,110,0.35)';
@@ -4600,7 +4620,7 @@ class BugHuntScene extends SessionBase {
       ctx.fillStyle = rg; ctx.beginPath(); ctx.moveTo(bx, top); ctx.lineTo(bx + 46 + i * 4, top); ctx.lineTo(bx - 90 + sw, top + 440); ctx.lineTo(bx - 170 + sw, top + 440); ctx.fill();
     }
     ctx.restore();
-    ctx.fillStyle = 'rgba(10,70,95,0.5)'; ctx.beginPath(); ctx.moveTo(0, H);
+    ctx.fillStyle = this.site.bay ? 'rgba(40,90,70,0.45)' : 'rgba(10,70,95,0.5)'; ctx.beginPath(); ctx.moveTo(0, H);
     const my = this.site.floor - 80 - cy * 0.88;
     for (let x = 0; x <= W + 20; x += 20) { const wx = x + cam * 0.5; ctx.lineTo(x, my - 30 * Math.abs(Math.sin(wx * 0.006)) - 18 * Math.sin(wx * 0.017)); }
     ctx.lineTo(W, H); ctx.fill();
@@ -4612,15 +4632,21 @@ class BugHuntScene extends SessionBase {
     // sand, caustics, grass
     const sandPath = new Path2D(); sandPath.moveTo(cam - 10, bot + 10);
     for (let x = cam - 10; x <= cam + W + 20; x += 16) sandPath.lineTo(x, this.baseFloor(x)); sandPath.lineTo(cam + W + 20, bot + 10); sandPath.closePath();
-    const sg = ctx.createLinearGradient(0, this.site.floor - 30, 0, this.site.floor + 60); sg.addColorStop(0, '#dcc994'); sg.addColorStop(1, '#a8955f');
+    const sg = ctx.createLinearGradient(0, this.site.floor - 30, 0, this.site.floor + 60); sg.addColorStop(0, this.site.bay ? '#c9c08c' : '#dcc994'); sg.addColorStop(1, this.site.bay ? '#8f8c5c' : '#a8955f');
     ctx.fillStyle = sg; ctx.fill(sandPath);
     ctx.save(); ctx.clip(sandPath); ctx.globalCompositeOperation = 'lighter';
     const pat = ctx.createPattern(causticTile(), 'repeat');
     ctx.globalAlpha = 0.15 * (this.weather.vis > 1.1 ? 1.2 : 1) * (this.variant === 'reef' ? 0.75 : 1); ctx.fillStyle = pat;
     let ox = (t * 14) % 192, oy = (t * 6) % 192; ctx.translate(ox, oy); ctx.fillRect(cam - 200 - ox, this.site.floor - 80 - oy, W + 400, 300); ctx.translate(-ox, -oy);
     ctx.globalAlpha *= 0.6; ctx.scale(1.35, 1.35); ox = (-t * 10) % 192; oy = (t * 4) % 192; ctx.translate(ox, oy); ctx.fillRect((cam - 200) / 1.35 - ox, (this.site.floor - 80) / 1.35 - oy, (W + 400) / 1.35, 260); ctx.restore();
-    ctx.strokeStyle = '#4f8a46'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    ctx.strokeStyle = this.site.bay ? '#4c8a3e' : '#4f8a46'; ctx.lineWidth = this.site.bay ? 3.5 : 2.5; ctx.lineCap = 'round';
     for (const gr of this.grass) { if (gr.x < cam - 20 || gr.x > cam + W + 20) continue; const by = this.baseFloor(gr.x) + 4; ctx.beginPath(); ctx.moveTo(gr.x, by); ctx.quadraticCurveTo(gr.x + Math.sin(t * 1.4 + gr.ph) * 6, by - gr.h * 0.6, gr.x + Math.sin(t * 1.4 + gr.ph) * 10, by - gr.h); ctx.stroke(); }
+    for (const m of this.meadow) {
+      if (m.x < cam - 20 || m.x > cam + W + 20) continue;
+      const k = 1 + m.dy / 110, by = this.baseFloor(m.x) + 6 + m.dy, sw = Math.sin(t * 1.3 + m.ph) * 5 * k;
+      if (by > bot + 40) continue;
+      ctx.strokeStyle = m.c; ctx.lineWidth = 3 * k; ctx.beginPath(); ctx.moveTo(m.x, by); ctx.quadraticCurveTo(m.x + sw * 0.5, by - m.h * k * 0.6, m.x + sw, by - m.h * k); ctx.stroke();
+    }
     for (const s of this.sandDeco) { if (s.x < cam - 30 || s.x > cam + W + 30 || this.groundAt(s.x) < this.baseFloor(s.x) - 2) continue; ctx.save(); ctx.translate(s.x, this.baseFloor(s.x) + 6); if (s.kind === 'star') drawStarfish(ctx, s.r, s.c); else drawUrchin(ctx, s.r * 0.7, t); ctx.restore(); }
     const n = this.nurse; if (n.x > cam - 120 && n.x < cam + W + 120) { ctx.save(); ctx.translate(n.x, n.y); if (n.dir < 0) ctx.scale(-1, 1); drawShark(ctx, 130, { kind: 'nurse', t: n.t, speed: n.move > 0 ? 6 : 1.2 }); ctx.restore(); }
     if (this.goliath && this.goliath.x > cam - 160 && this.goliath.x < cam + W + 160) { ctx.save(); ctx.translate(this.goliath.x, this.goliath.y); drawFish(ctx, 'goliath', 150, { t: this.goliath.t, flip: true, wig: 0.15, speed: 2 }); ctx.restore(); }
@@ -7328,6 +7354,10 @@ class FlatsScene extends SessionBase {
     this.callout = null; this.callCool = 1; this.pointTo = null; this.quietT = 0; this.introSaid = false;
     this.slamDone = {}; this.landed = new Set();
     this.pole = 0; this.poleDir = 0; this.poleV = 0; this.everPoled = false;
+    // the coaching (a ring on the fish your buddy calls, where to put the fly, when to strip, the four steps) stays on
+    // until this angler hooks a first fish on the flats; the how-to card opens by itself on their first visit (and from ?)
+    this.coach = !Store.get('coach_flatset_' + this.ch, false); this.coachF = null;
+    this.help = !Store.get('coach_flats1_' + this.ch, false) ? { t: 0 } : null;
     const crew = Trip.cur && Trip.cur.crew ? Trip.cur.crew : CHAR_ORDER;
     // somebody is always up on the platform: on a solo day a buddy from the crew poles
     this.poler = crew.find((c) => c !== this.ch) || CHAR_ORDER.find((c) => c !== this.ch) || null;
@@ -7341,7 +7371,10 @@ class FlatsScene extends SessionBase {
   enter() {
     SFX.setAmbient(0.6, false); Music.play('boat');
     Game.toast(this.spotName, { color: PAL.coral, size: 46, y: 200, sub: 'Press and hold to aim. Release to cast.' });
+    if (this.help) Store.set('coach_flats1_' + this.ch, true);
   }
+  openHelp() { if (!this.child && !this.ended && !this.paused) { this.help = { t: 0 }; this.aim = null; this.pending = null; } }
+  closeHelp() { this.help = null; this.aim = null; this.pending = null; }
   exit() {
     SFX.setAmbient(0);
     // the flat is a big bitmap: hand its memory back now (mobile Safari caps total canvas memory)
@@ -7906,8 +7939,10 @@ class FlatsScene extends SessionBase {
       if (this.t - f.lastStrip > sp.strip * 3) f.interest -= dt * 0.12;
       if (f.interest <= 0) { f.state = 'cruise'; f.hd += rand(-1.2, 1.2); this.fl.add(f.x, f.y - 26, 'Refused', PAL.warn, 18); }
       else if (f.interest >= 1 && dd < f.len * 0.65 && !this.eat) {
-        this.eat = { f, t: 0.55 * this.perks.window, t0: 0.55 * this.perks.window }; f.state = 'eat';
-        Game.toast('IT ATE IT! SET!', { color: PAL.sun, size: 44, y: 140, dur: 0.7 }); SFX.play('bite'); Game.vibrate(80);
+        // the window to set the hook: at least a strip on the fish's own rhythm, so tapping at its pace sets it
+        const win = Math.max(0.6, sp.strip + 0.25) * this.perks.window * (this.coach ? 1.4 : 1);
+        this.eat = { f, t: win, t0: win }; f.state = 'eat';
+        Game.toast('IT ATE IT! TAP TO SET!', { color: PAL.sun, size: 44, y: 140, dur: win }); SFX.play('bite'); Game.vibrate(80);
         this.parts.add({ kind: 'ring', x: L.x, y: L.y, size: 4, grow: 50, life: 0.6, color: 'rgba(255,255,255,0.8)', flat: 0.6, lw: 2.5 });
       }
     } else if (f.state === 'eat') {
@@ -7963,7 +7998,7 @@ class FlatsScene extends SessionBase {
 
   /* ---------- input ---------- */
   pointerDown(p) {
-    if (this.basePointerDown(p)) return;
+    if (this.basePointerDown(p) || this.help) return;
     if (this.eat) { this.setHook(); return; }
     if (this.cast || this.snagT > 0) return;
     if (this.lure && !this.aim) {
@@ -7987,7 +8022,9 @@ class FlatsScene extends SessionBase {
     if (this.aim && this.aim.id === p.id) { const a = this.aim; this.aim = null; if (!cancel) this.doCast({ x: a.x + this.camX, y: a.y, t: a.t }); }
   }
   keyDown(c) {
+    if (this.help) { if (['Space', 'Enter', 'Escape', 'KeyH'].includes(c)) this.closeHelp(); return; }
     if (this.baseKeyDown(c)) return;
+    if (c === 'KeyH') { this.openHelp(); return; }
     if (c === 'Space' || c === 'Enter') { if (this.eat) this.setHook(); else if (this.lure) this.strip(); }
     else if (c === 'ArrowLeft' || c === 'KeyA') this.setPole(-1);
     else if (c === 'ArrowRight' || c === 'KeyD') this.setPole(1);
@@ -8078,6 +8115,7 @@ class FlatsScene extends SessionBase {
   }
   setHook() {
     const e = this.eat; if (!e) return; this.eat = null;
+    if (this.coach) { this.coach = false; Store.set('coach_flatset_' + this.ch, true); }   // hooked one: you've got it
     const f = e.f; f.gone = true;
     this.fishList = this.fishList.filter((x) => x !== f); this.lure = null; this.poleDir = 0;
     this.lastKey = f.key;
@@ -8097,6 +8135,7 @@ class FlatsScene extends SessionBase {
 
   /* ---------- update ---------- */
   update(dt) {
+    if (this.help && !this.paused) { this.help.t += dt; this.t += dt; Game.toasts = []; return; }   // the clock waits while you read
     if (this.baseUpdate(dt)) return;
     const W = Game.W;
     this.updatePole(dt);
@@ -8186,7 +8225,7 @@ class FlatsScene extends SessionBase {
     return nm;
   }
   callFish(f, far, again) {
-    f.called = true; f.calledAt = this.t; this.callCool = 2.4;
+    f.called = true; f.calledAt = this.t; this.callCool = 2.4; this.coachF = f;
     const s = this.skiff(), a = Math.atan2(f.x - s.x, -(f.y - s.y)), hour = Math.round(((a + TAU) % TAU) / (TAU / 12)) % 12;
     const ft = Math.max(10, Math.round(dist(f.x, f.y, s.x, s.y) / 5 / 5) * 5), what = this.sayWhat(f);
     let msg;
@@ -8232,7 +8271,7 @@ class FlatsScene extends SessionBase {
       ctx.strokeStyle = 'rgba(255,250,220,0.75)'; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(tip.x, tip.y); ctx.quadraticCurveTo((tip.x + L.x) / 2 + 10 + cu.x * 2, (tip.y + L.y) / 2 + cu.y * 1.5, L.x, L.y); ctx.stroke();
       ctx.fillStyle = '#e8b04a'; ell(ctx, L.x, L.y, 4 + L.hop * 10, 3); ctx.fill(); ctx.fillStyle = '#c0582a'; ell(ctx, L.x - 3, L.y, 2, 2); ctx.fill();
     }
-    if (this.eat) { const f = this.eat.f; ctx.strokeStyle = PAL.sun; ctx.lineWidth = 4; ell(ctx, f.x, f.y, f.len * 0.7 + Math.sin(t * 30) * 4, f.len * 0.5); ctx.stroke(); }
+    if (this.eat) { const f = this.eat.f; ctx.strokeStyle = PAL.sun; ctx.lineWidth = 4; ell(ctx, f.x, f.y, f.len * 0.7 + Math.sin(t * 30) * 4, f.len * 0.5); ctx.stroke(); text(ctx, 'TAP!', f.x, f.y - f.len * 0.5 - 14, { size: 24 + Math.sin(t * 20) * 2, align: 'center', color: PAL.sun, weight: 800, stroke: PAL.ink, sw: 5 }); }
     this.fl.draw(ctx);
     ctx.restore();
     if (this.aim) {
@@ -8466,10 +8505,139 @@ class FlatsScene extends SessionBase {
     this.drawTopBar(ctx);
     this.drawSlam(ctx, W);
     this.drawPoleCtl(ctx, W, H);
-    const hw = W / 2 - 90, o = { size: 17, color: '#fff', weight: 700, stroke: 'rgba(0,0,0,0.5)', sw: 4, lh: 20 };
-    if (this.t < 12 && !this.lure) para(ctx, Game.touch ? 'Press and hold where you want the fly, then let go to cast' : 'Click and hold where you want the fly, then let go to cast', 20, H - 46, hw, o);
-    else if (this.lure && !this.eat) para(ctx, Game.touch ? 'Tap to strip. Drag to recast.' : 'Tap or Space to strip. Drag to recast.', 20, H - 26, hw, o);
-    else if (!this.everPoled && this.t > 16 && this.t < 40) para(ctx, Game.touch ? 'Tap the arrows to pole along the flat' : 'Arrow keys or A / D pole the skiff along the flat', 20, H - 46, hw, o);
+    // how to catch one, any time (H)
+    UI.button(ctx, 'flatshelp', W / 2 + 72, 12, 46, 46, '?', () => this.openHelp(), { style: 'dark', size: 22, r: 14, key: 'KeyH', disabled: !!(this.child || this.help) });
+    if (this.coach && !this.help) this.drawCoach(ctx, W, H);
+    else {
+      const hw = W / 2 - 90, o = { size: 17, color: '#fff', weight: 700, stroke: 'rgba(0,0,0,0.5)', sw: 4, lh: 20 };
+      if (this.t < 12 && !this.lure) para(ctx, Game.touch ? 'Press and hold where you want the fly, then let go to cast' : 'Click and hold where you want the fly, then let go to cast', 20, H - 46, hw, o);
+      else if (this.lure && !this.eat) para(ctx, Game.touch ? 'Tap to strip. Drag to recast.' : 'Tap or Space to strip. Drag to recast.', 20, H - 26, hw, o);
+      else if (!this.everPoled && this.t > 16 && this.t < 40) para(ctx, Game.touch ? 'Tap the arrows to pole along the flat' : 'Arrow keys or A / D pole the skiff along the flat', 20, H - 46, hw, o);
+    }
+    if (this.help) this.drawHelp(ctx, W, H);
+  }
+  /* ---------- coaching, until a first fish is hooked ---------- */
+  // the fish to work: one following the fly, else the one your buddy called (while it's still around)
+  coachFish() {
+    const fol = this.fishList.find((f) => f.state === 'follow' || f.state === 'eat'); if (fol) return fol;
+    const f = this.coachF; if (!f || f.gone || f.state === 'spooked' || f.leaving || !this.fishList.includes(f)) return null;
+    return f;
+  }
+  // where to put the fly: past where it spooks and inside where it notices, ahead of its nose (where it will be once
+  // the fly lands), and not where the line would slap down across it
+  leadSpot(f) {
+    const tip = this.rodTip(), lead = f.state === 'cruise' && f.brain !== 'hold' && f.brain !== 'tail' ? (f.spd || f.speed) * 0.75 : 0;
+    const fx = f.x + Math.cos(f.hd) * lead, fy = f.y + Math.sin(f.hd) * lead, hx = fx + Math.cos(f.hd) * f.len * 0.4, hy = fy + Math.sin(f.hd) * f.len * 0.4, dd = (f.sp.spook + f.sp.notice) / 2;
+    for (const da of [0, 0.7, -0.7, 1.1, -1.1]) {
+      const a = f.hd + da, x = clamp(hx + Math.cos(a) * dd, 20, this.WW - 20), y = clamp(hy + Math.sin(a) * dd, 60, Game.H - 150);
+      if (this.snagAt(x, y) || flSegDist(fx, fy, tip.x, tip.y, x, y) < f.len * 0.2 + 18) continue;
+      return { x, y };
+    }
+    return null;
+  }
+  drawCoach(ctx, W, H) {
+    const t = this.t, cam = this.camX, f = this.coachFish(), fol = this.fishList.find((o) => o.state === 'follow');
+    // a ring on the fish, with its name
+    if (f && !this.eat) {
+      const sx = f.x - cam, r = f.len * 0.75 + 10 + Math.sin(t * 5) * 3;
+      if (sx > -30 && sx < W + 30) {
+        ctx.strokeStyle = PAL.sun; ctx.lineWidth = 3; ell(ctx, sx, f.y, r, r * 0.75); ctx.stroke();
+        text(ctx, (FL_NAME[f.key] || f.sp.short).toUpperCase(), sx, f.y - r * 0.75 - 9, { size: 14, align: 'center', color: PAL.sun, weight: 800, stroke: PAL.ink, sw: 4 });
+      }
+      // and where to put the fly
+      const L = !this.lure && !this.cast && f.state === 'cruise' ? this.leadSpot(f) : null;
+      if (L && L.x - cam > 10 && L.x - cam < W - 10) {
+        const lx = L.x - cam, pr = 18 + Math.sin(t * 6) * 2;
+        ctx.save(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ctx.setLineDash([6, 5]); ctx.lineDashOffset = -t * 20; ell(ctx, lx, L.y, pr, pr * 0.75); ctx.stroke(); ctx.restore();
+        ctx.fillStyle = '#fff'; ell(ctx, lx, L.y, 3, 3); ctx.fill();
+        text(ctx, 'CAST HERE', lx, L.y + pr + 16, { size: 14, align: 'center', color: '#fff', weight: 800, stroke: PAL.ink, sw: 4 });
+      }
+    }
+    // the strip timing: a ring closes in on the fly over the fish's rhythm; when it's closed (green), tap
+    let ready = false;
+    if (fol && this.lure && !this.eat) {
+      const Lr = this.lure, ph = (t - fol.lastStrip) / fol.sp.strip, lx = Lr.x - cam, rr2 = 12 + 34 * clamp(1 - ph, 0, 1);
+      ready = ph >= 0.85 && ph <= 2.2;
+      ctx.strokeStyle = ready ? PAL.good : 'rgba(255,255,255,0.85)'; ctx.lineWidth = ready ? 4 : 3; ell(ctx, lx, Lr.y, rr2, rr2 * 0.75); ctx.stroke();
+      text(ctx, ready ? 'STRIP!' : 'wait…', lx, Lr.y + 34, { size: ready ? 17 : 14, align: 'center', color: ready ? PAL.good : '#fff', weight: 800, stroke: PAL.ink, sw: 4 });
+    }
+    // what to do now
+    const P = this.poler ? CHARS[this.poler].name : 'Your buddy', tap = Game.touch ? 'Tap' : 'Tap (or Space)';
+    const msg = this.eat ? 'It ate it! ' + tap + ' NOW to set the hook!'
+      : fol ? 'It’s following! ' + tap + ' to strip the fly each time the ring closes. Not faster.'
+      : this.lure ? 'No takers yet. Strip it once or twice, or drag to cast again in front of a fish.'
+      : this.aim ? 'Hold until the circle is small, then let go.'
+      : f ? (Game.touch ? 'Press and hold on CAST HERE (in front of the fish), then let go.' : 'Click and hold on CAST HERE (in front of the fish), then let go.')
+      : P + ' calls fish by the clock: 12 is straight ahead. Watch for tails and wakes, and pole with ◀ ▶.';
+    const bw = Math.min(W / 2 - 64, 430); ctx.font = fnt(16, 800); const n = wrapText(ctx, msg, bw - 24).length, bh = 16 + n * 20;
+    panel(ctx, 14, H - 16 - bh, bw, bh, { r: 14, fill: 'rgba(255,255,255,0.95)', line: 'rgba(0,0,0,0.1)' });
+    para(ctx, msg, 26, H - 16 - bh + 24, bw - 24, { size: 16, color: this.eat ? PAL.bad : PAL.ink, weight: 800, lh: 20 });
+    // the four steps from the how-to card, with this one lit
+    const step = this.eat ? 3 : fol ? 2 : f || this.lure || this.aim ? 1 : 0, names = ['SPOT', 'CAST', 'STRIP', 'SET'], pw = 74, sx0 = W / 2 - (pw * 4 + 18) / 2, y = 116;
+    names.forEach((nm, i) => {
+      const px = sx0 + i * (pw + 6), now = i === step, done = i < step;
+      ctx.fillStyle = now ? PAL.sun : done ? 'rgba(95,224,138,0.9)' : 'rgba(4,24,34,0.72)'; rr(ctx, px, y, pw, 22, 11); ctx.fill();
+      text(ctx, (i + 1) + ' ' + nm, px + pw / 2, y + 15.5, { size: 12, align: 'center', color: now || done ? PAL.ink : '#cfe3ea', weight: 800 });
+    });
+  }
+  // How to catch a fish on the flats: four steps, each with a small moving picture. Opens by itself on each angler's
+  // first visit, and from the ? button (or H). The clock waits.
+  drawHelp(ctx, W, H) {
+    const t = this.help.t, wide = W >= 900;
+    ctx.fillStyle = 'rgba(3,22,32,0.93)'; ctx.fillRect(0, 0, W, H);
+    UI.region('help-cover', 0, 0, W, H, null);   // nothing under the card answers while it's up
+    text(ctx, 'How to catch a fish on the flats', W / 2, 44, { display: true, size: 32, align: 'center', color: '#fff', maxW: W - 40 });
+    const cols = wide ? 4 : 2, gap = 12, cw = Math.floor((W - 48 - gap * (cols - 1)) / cols), ch = wide ? 236 : 150, y0 = 70;
+    const steps = [
+      { title: 'Spot', body: 'Watch for tails, wakes and shadows. Your buddy calls fish by the clock: 12 is straight ahead.' },
+      { title: 'Cast', body: (Game.touch ? 'Press and hold' : 'Click and hold') + ' where you want the fly, then let go. Land it a few feet in front of the fish, never on it.' },
+      { title: 'Strip', body: 'Tap to strip the fly in, at the fish’s pace: Good strip means keep it up. Too fast and it refuses.' },
+      { title: 'Set', body: 'When it eats (IT ATE IT!), tap right away to set the hook. Then fight it in.' }
+    ];
+    steps.forEach((st, i) => {
+      const x = 24 + (i % cols) * (cw + gap), y = y0 + Math.floor(i / cols) * (ch + gap), artW = wide ? cw : Math.min(140, cw * 0.42), artH = wide ? 96 : ch - 20;
+      panel(ctx, x, y, cw, ch, { r: 14, fill: 'rgba(20,90,120,0.9)' });
+      ctx.save(); rr(ctx, x + 6, y + 6, artW - 12, artH - 6, 10); ctx.clip(); ctx.fillStyle = '#86c7ad'; ctx.fillRect(x, y, artW, artH);
+      this.helpArt(ctx, i, x + artW / 2, y + artH / 2 + 4, t);
+      ctx.restore();
+      const tx = wide ? x + 14 : x + artW + 4, ty = wide ? y + artH + 22 : y + 26, tw = wide ? cw - 28 : cw - artW - 14;
+      ctx.fillStyle = PAL.sun; ell(ctx, tx + 11, ty - 6, 11, 11); ctx.fill();
+      text(ctx, String(i + 1), tx + 11, ty - 5, { size: 14, align: 'center', base: 'middle', color: PAL.ink, weight: 800 });
+      text(ctx, st.title, tx + 28, ty, { size: 19, color: '#fff', weight: 800 });
+      para(ctx, st.body, tx, ty + 24, tw, { size: wide ? 16 : 14, color: '#d6ebf2', weight: 600, lh: wide ? 20 : 17 });
+    });
+    const ky = y0 + (wide ? ch : ch * 2 + gap) + 22;
+    para(ctx, '◀ ▶ (bottom right) poles the skiff along the flat. A fly on the fish’s head, the line across its back, or the boat too close spooks it.', 24, ky, W - 48, { size: 15, color: '#cfe3ea', weight: 700, lh: 19 });
+    UI.button(ctx, 'help-ok', W / 2 - 110, H - 66, 220, 54, 'Got it', () => this.closeHelp(), { style: 'primary', size: 22, key: 'Enter|Space|Escape|KeyH' });
+  }
+  // the little moving pictures on the help card
+  helpArt(ctx, i, cx, cy, t) {
+    const fish = (x, y, a, len = 72) => { ctx.save(); ctx.translate(x, y); ctx.rotate(a); drawFishTop(ctx, len, 'bonefish', t); ctx.restore(); };
+    const ring = (x, y, r, col, dash) => { ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 2.5; if (dash) { ctx.setLineDash([5, 4]); ctx.lineDashOffset = -t * 16; } ell(ctx, x, y, r, r * 0.75); ctx.stroke(); ctx.restore(); };
+    const lbl = (s, x, y, col) => text(ctx, s, x, y, { size: 14, align: 'center', color: col || '#fff', weight: 800, stroke: PAL.ink, sw: 4 });
+    if (i === 0) {   // a tailing fish, and the clock: 12 straight ahead, this one at 11
+      const ox = cx - 36; ctx.fillStyle = 'rgba(255,255,255,0.85)'; ell(ctx, ox, cy, 20, 20); ctx.fill(); ctx.strokeStyle = PAL.ink; ctx.lineWidth = 2; ctx.stroke();
+      text(ctx, '12', ox, cy - 11, { size: 9, align: 'center', color: PAL.ink, weight: 800 });
+      ctx.strokeStyle = PAL.coral; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(ox, cy + 2); ctx.lineTo(ox - 9, cy - 14); ctx.stroke();
+      fish(cx + 30, cy + 6, Math.PI * 0.85, 64);
+      const k = (t * 1.4) % 1; ring(cx + 10, cy - 4, 4 + k * 16, `rgba(255,255,255,${1 - k})`);
+      lbl('11 o’clock', cx + 24, cy - 24);
+    } else if (i === 1) {   // the fly lands in front of its nose
+      fish(cx - 30, cy + 4, 0); ring(cx + 34, cy + 4, 15, '#fff', true);
+      const k = (t % 2) / 2; if (k < 0.4) { const fx = lerp(cx - 70, cx + 34, k / 0.4), fy = cy + 4 - Math.sin(k / 0.4 * Math.PI) * 30; ctx.fillStyle = '#e8b04a'; ell(ctx, fx, fy, 4, 3); ctx.fill(); }
+      else { ctx.fillStyle = '#e8b04a'; ell(ctx, cx + 34, cy + 4, 4, 3); ctx.fill(); ring(cx + 34, cy + 4, 4 + (k - 0.4) * 30, `rgba(255,255,255,${1 - (k - 0.4) / 0.6})`); }
+      lbl('HERE', cx + 34, cy - 18, PAL.sun);
+    } else if (i === 2) {   // strip, strip, strip: the fly hops toward you, the fish follows
+      const ph = (t % 3) / 3, hop = Math.floor(ph * 6), fx = cx + 40 - hop * 14 - Math.min(1, (ph * 6 - hop) * 3) * 14;
+      ctx.fillStyle = '#e8b04a'; ell(ctx, fx, cy + 4, 4, 3); ctx.fill();
+      fish(fx + 40, cy + 4, Math.PI);
+      if ((ph * 6) % 1 < 0.35) lbl('strip', fx, cy - 14, PAL.good);
+    } else {   // it eats: set!
+      const k = (t % 1.6) / 1.6;
+      fish(cx + 14, cy + 6, Math.PI); ctx.fillStyle = '#e8b04a'; ell(ctx, cx - 14, cy + 6, 4, 3); ctx.fill();
+      ring(cx - 14, cy + 6, 6 + k * 26, `rgba(255,214,90,${1 - k})`);
+      lbl('SET!', cx - 6, cy - 22, PAL.sun);
+    }
   }
   drawCallout(ctx, W) {
     const c = this.callout; if (!c || !this.poler) return;
@@ -8639,13 +8807,17 @@ const PATCH_REEFS = [];
 (function buildReefs() {
   const [hx, hy] = spotXY('bughunt'), rng = mulberry(777);
   for (let i = 0; i < 7; i++) { const a = (i / 7) * TAU + rng(), r = 120 + rng() * 120; PATCH_REEFS.push({ x: hx + Math.cos(a) * r * 1.4, y: hy + Math.sin(a) * r * 0.8, rx: 50 + rng() * 60, ry: 34 + rng() * 40 }); }
+  const [px, py] = spotXY('patches');
   for (let x = 400; x < 15000; x += 420 + rng() * 380) {
     const s = 1260 + rng() * 760, y = wy(x, s), rx = 70 + rng() * 140, ry = 40 + rng() * 80;
     let clear = true; for (const id of SPOT_ORDER) { if (id === 'bughunt') continue; const [sx, sy] = spotXY(id); if (dist(x, y, sx, sy) < SPOTS[id].r + 220) clear = false; }
-    if (dist(x, y, hx, hy) < 520) clear = false;
+    if (dist(x, y, hx, hy) < 520 || dist(x, y, px, py) < 520) clear = false;
     if (clear) PATCH_REEFS.push({ x, y, rx, ry });
   }
   for (const r of PATCH_REEFS) r.seed = rng() * 100;
+  // the Islamorada patches: a string of little ones along Hawk Channel (their own dice, so the rest of the reef stays put)
+  const r2 = mulberry(778);
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU + r2() * 0.6, r = 150 + r2() * 90; PATCH_REEFS.push({ x: px + Math.cos(a) * r * 1.6, y: py + Math.sin(a) * r * 0.7, rx: 40 + r2() * 45, ry: 28 + r2() * 30, seed: r2() * 100 }); }
 })();
 // within a boat's swing of a patch reef's groundable crown: routes keep this much sea room, since the autopilot cuts corners
 function nearReefCrown(x, y) { const s = y - chainY(x); if (s < 1000 || s > 2300) return false; for (const r of PATCH_REEFS) { const dx = (x - r.x) / (r.rx + 70), dy = (y - r.y) / (r.ry + 70); if (dx * dx + dy * dy < 0.2) return true; } return false; }
@@ -8745,7 +8917,7 @@ const World = {
     for (const id of SPOT_ORDER) {
       const [x, y] = spotXY(id), m = SPOTS[id].mode;
       if (m === 'flats') CARVE.push([x, y, SPOTS[id].r * 0.7, 2.4, 6]);
-      else if (m === 'bughunt') CARVE.push([x, y, 150, 10, 40]);
+      else if (m === 'bughunt') CARVE.push(SPOTS[id].variant === 'bay' ? [x, y, 170, 5, 10] : [x, y, 150, 10, 40]);   // the bayside rocks sit in a grassy basin
     }
     const C = WORLD.CELL, gw = (this.gw = Math.ceil(WORLD.W / C) + 1), gh = (this.gh = Math.ceil(WORLD.H / C) + 1);
     this.grid = new Float32Array(gw * gh);
@@ -9591,7 +9763,7 @@ const Chase = {
     const S = SPOTS[id], ok = spotAllowed(id, s.c), done = s.c.done.includes(id) && s.c.mode === 'crew', here = s.inSpot === id;
     const sz = clamp(10 + 2200 / lp.z, 12, 20), a = (ok ? 1 : 0.6) * clamp(1.15 - this.fog(lp.z) * 0.6, 0.55, 1);
     text(g, S.name, lp.x, lp.y, { size: sz, align: 'center', color: here ? PAL.sun : '#fff', weight: 800, stroke: PAL.ink, sw: 4, alpha: a });
-    text(g, done ? 'Fished today' : S.kind, lp.x, lp.y + sz * 0.95, { size: sz * 0.75, align: 'center', color: done ? '#cfd8dc' : PAL.sun, weight: 800, stroke: PAL.ink, sw: 3, alpha: a });
+    text(g, done ? 'Done today' : S.kind, lp.x, lp.y + sz * 0.95, { size: sz * 0.75, align: 'center', color: done ? '#cfd8dc' : PAL.sun, weight: 800, stroke: PAL.ink, sw: 3, alpha: a });
   },
   // a side-view sprite for something heading `h`: squeezed when it's going straight away from us, facing the way it's crossing
   drawSide(g, fn, p, h, arg, lift = 0) {
@@ -16182,7 +16354,7 @@ class SeaScene {
       ctx.fillStyle = PAL.sun; ctx.beginPath(); ctx.moveTo(x, y - 34); ctx.lineTo(x + 22, y - 28 + Math.sin(t * 5) * 2); ctx.lineTo(x, y - 22); ctx.fill();
       const done = this.c.done.includes(id) && this.c.mode === 'crew';
       text(ctx, S.name, x, y + 34, { size: 20 / Math.max(0.7, v.z), align: 'center', color: '#fff', weight: 800, stroke: PAL.ink, sw: 5, alpha: ok ? 1 : 0.6 });
-      text(ctx, done ? 'Fished today' : S.kind, x, y + 34 + 20 / Math.max(0.7, v.z), { size: 15 / Math.max(0.7, v.z), align: 'center', color: done ? '#cfd8dc' : PAL.sun, weight: 800, stroke: PAL.ink, sw: 4, alpha: ok ? 1 : 0.6 });
+      text(ctx, done ? 'Done today' : S.kind, x, y + 34 + 20 / Math.max(0.7, v.z), { size: 15 / Math.max(0.7, v.z), align: 'center', color: done ? '#cfd8dc' : PAL.sun, weight: 800, stroke: PAL.ink, sw: 4, alpha: ok ? 1 : 0.6 });
     }
   }
   drawHumpLife(ctx, v, t) {
@@ -16297,8 +16469,8 @@ class SeaScene {
       UI.button(ctx, 'tieup', bx, by - 8, bw, 56, 'Tie up at the dock', () => this.arrive('home'), { style: 'primary', size: 20, key: 'Enter', disabled: open || this.v > NO_WAKE, sub: this.v > NO_WAKE ? 'Slow down first' : 'End the day' });
     } else if (this.inSpot) {
       const ok = spotAllowed(this.inSpot, this.c), slow = this.v <= 95;
-      if (ok) UI.button(ctx, 'fish', bx, by - 8, bw, 56, 'Fish here', () => this.arrive(this.inSpot), { style: 'primary', size: 22, key: 'Enter', disabled: open || !slow, sub: slow ? SPOTS[this.inSpot].name : 'Slow down to stop here' });
-      else { panel(ctx, bx, by, bw, 44, { r: 18 }); text(ctx, this.c.done.includes(this.inSpot) ? 'Already fished today' : 'Today’s spots are set', bx + bw / 2, by + 28, { size: 15, align: 'center', color: '#cfe3ea', weight: 700, maxW: bw - 16 }); }
+      if (ok) UI.button(ctx, 'fish', bx, by - 8, bw, 56, spotDo(this.inSpot).here, () => this.arrive(this.inSpot), { style: 'primary', size: 22, key: 'Enter', disabled: open || !slow, sub: slow ? SPOTS[this.inSpot].name : 'Slow down to stop here' });
+      else { panel(ctx, bx, by, bw, 44, { r: 18 }); text(ctx, this.c.done.includes(this.inSpot) ? 'Already been here today' : 'Today’s spots are set', bx + bw / 2, by + 28, { size: 15, align: 'center', color: '#cfe3ea', weight: 700, maxW: bw - 16 }); }
     }
     // banners
     const banner = (msg, fill, col) => { panel(ctx, W / 2 - 170, 66, 340, 34, { r: 17, fill, line: 'rgba(0,0,0,0.1)' }); text(ctx, msg, W / 2, 88, { size: 15, align: 'center', color: col, weight: 800 }); };
@@ -16506,7 +16678,7 @@ class SeaScene {
           else if (spotAllowed(sel, this.c)) {
             UI.button(ctx, 'setcourse', sx + 14, cy + ch - 126, sw - 28, 54, 'Set course', () => { this.dest = sel; this.planRoute(); this.setAuto(true); this.panel = null; }, { style: 'primary', size: 20, sub: 'Autopilot drives · you can take over' });
             UI.button(ctx, 'skipride', sx + 14, cy + ch - 62, sw - 28, 48, 'Skip the ride', () => this.skipTo(sel), { style: 'secondary', size: 16, sub: 'No captain’s points' });
-          } else text(ctx, this.c.done.includes(sel) ? 'Already fished today' : 'Today’s spots are set', sx + 16, cy + ch - 30, { size: 14, color: '#9fb8c2', weight: 700 });
+          } else text(ctx, this.c.done.includes(sel) ? 'Already been here today' : 'Today’s spots are set', sx + 16, cy + ch - 30, { size: 14, color: '#9fb8c2', weight: 700 });
         }
       }
     }
@@ -16541,7 +16713,7 @@ class SeaScene {
     for (const l of lines) { text(ctx, l.label, px + 24, y, { size: 17, color: l.pts < 0 ? '#ff9a8a' : '#fff', weight: 600, maxW: pw - 120 }); text(ctx, (l.pts > 0 ? '+' : '') + l.pts, px + pw - 24, y, { size: 18, align: 'right', color: l.pts < 0 ? PAL.bad : PAL.sun, weight: 800 }); y += 30; }
     const tot = this.total || 0;
     text(ctx, 'Captain’s points: ' + (tot > 0 ? '+' : '') + tot, px + 24, py + ph - 18, { size: 18, color: PAL.sun, weight: 800 });
-    UI.button(ctx, 'letsfish', W / 2 - 130, py + ph + 16, 260, 56, home ? 'Call it a day' : 'Let’s fish', () => this.finishLeg(false), { style: 'primary', size: 22, key: 'Enter|Space' });
+    UI.button(ctx, 'letsfish', W / 2 - 130, py + ph + 16, 260, 56, home ? 'Call it a day' : spotDo(this.panel.id).go, () => this.finishLeg(false), { style: 'primary', size: 22, key: 'Enter|Space' });
   }
   drawPause(ctx, W, H) {
     ctx.fillStyle = 'rgba(3,22,32,0.82)'; ctx.fillRect(0, 0, W, H);
@@ -17597,11 +17769,11 @@ class LogbookScene {
 /* ================= HOW TO PLAY ================= */
 const HOWTO = [
   { title: 'The trip', art: 'boat', lines: ['Crew Trip: pass one phone around. The captain drives the boat to a spot, then everyone fishes it.', 'Bigger fish and bigger bugs score more. Trophies, slams and clean releases add bonuses.', 'Every day has three bounties, like a mahi over 20\u00a0lb. The first one to finish a bounty takes its bonus.', 'Full day is four spots, half day is two. Then run home at sunset. Most points is Captain of the Day.'] },
-  { title: 'Running the boat', art: 'boat', lines: ['Hold left or right of the boat to turn (or ← →). The throttle is on the right: STOP, IDLE, SLOW, CRUISE, FULL.', 'Open the Chart and pick what to catch up top: Lobster, Reef, Offshore or Bayside. Set course and the autopilot drives.', 'The bay side is behind the islands. Get there through a creek under a bridge: Tavernier Creek is by the dock.', 'Light water is shallow: slow down or you run aground. No-wake zones mean SLOW or FWC pulls you over.', 'Only four spots are charted. Run past a ? on the chart to find the rest.'] },
+  { title: 'Running the boat', art: 'boat', lines: ['Hold left or right of the boat to turn (or ← →). The throttle is on the right: STOP, IDLE, SLOW, CRUISE, FULL.', 'Open the Chart and pick what to catch up top: Lobster, Reef, Offshore or Bayside. Set course and the autopilot drives.', 'The bay side is behind the islands. Get there through a creek under a bridge: Tavernier Creek is by the dock.', 'Light water is shallow: slow down or you run aground. No-wake zones mean SLOW or FWC pulls you over.', 'Some spots aren’t charted yet. Run past a ? on the chart to find them.'] },
   { title: 'Lobster (the Bug Hunt)', art: 'lobster', lines: ['Lobster spots are on the chart (tap Lobster). Look for antennae poking out of holes.', 'Hold on the hole (or TICKLE). When the antennae shake it says LET GO: let go, wait, then hold again.', 'Calm bugs are easy. Wary old bugs (often the big ones) give you a split second, and bolt once they’re out.', 'When it walks out, tap the bug to net it. Pro move: tap behind its tail; it flips backward into the net.', 'Gauge every bug: past the 3" gauge and no eggs. Stuck? Tap ? in the dive for the how-to.'] },
   { title: 'Bottom fishing', art: 'grouper', lines: ['Watch the fish finder on the right. Arches are fish (red means big), blue speckle is bait.', 'Drag up or down (or on the fish finder) to drop your bait to the marks. Squid for snapper, pinfish for grouper and jacks.', 'Small twitches are nibbles. Wait. When the rod slams down, tap to set the hook.', 'Nothing on the finder? Tap Move ◀ ▶ to idle along the ledge or the wreck until it lights up.', 'The ▸ under the finder (or F) makes it smaller, then tucks it away. Tap it again to bring it back.'] },
   { title: 'Trolling', art: 'mahi', lines: ['Drag up and down to steer. Your lures follow the path the boat took.', 'Frigate birds and weed lines mean mahi. Diving terns and bait balls mean tuna.', 'The fish are out there, but you have to find them. Read the birds and the weed.', 'Trap floats wrap your prop and foul your lures. Tripletail like to hide under them.'] },
-  { title: 'The backcountry', art: 'bonefish', lines: ['Your buddy poles the skiff (◀ ▶ at the bottom right) and calls fish by the clock: 12 is straight ahead.', 'Look for tails, wakes, mud puffs and rolling tarpon. Press and hold where you want the fly, then let go to cast.', 'Land it a few feet in front of the fish. Too close, behind it, or the line across its back, and it spooks.', 'Tap to strip in the fish’s rhythm. When it eats, tap to set. At the bridge, the tide carries your fly.'] },
+  { title: 'Bayside fishing (the flats)', art: 'bonefish', lines: ['Your buddy poles the skiff (◀ ▶ bottom right) and calls fish by the clock: 12 is straight ahead. Look for tails and wakes.', 'Press and hold where you want the fly, then let go. Land it a few feet in front of the fish, never on it.', 'Tap to strip the fly at the fish’s pace. When it eats (IT ATE IT!), tap to set the hook.', 'Until you hook your first one, a ring shows the fish, CAST HERE shows where to cast, and a ring on the fly shows when to strip.'] },
   { title: 'Fighting a fish', art: 'fight', lines: ['Hold to reel. Keep the drag needle in the green. The bar at the bottom lights up while you reel.', 'On a hard run it says LET IT GO: holding snaps the line. On a small run, keep cranking.', 'IT’S COMING UP means a jump: let go and bow to the fish. That earns a bonus.', 'Too much slack and it spits the hook. Wear it out before a shark shows up; once it’s beat, crank it in.'] }
 ];
 class HowToScene {
