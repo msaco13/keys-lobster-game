@@ -1,7 +1,7 @@
 // Cuts the rendered shots together and lays the sound under them: the game's songs where timeline.mjs says, and every
 // effect the game asked for while the shots were rendered (meta.json), at the frame it asked. Needs ffmpeg.
 //   node tools/trailer/assemble.mjs <frames dir> <audio dir> <out.mp4> [--crf 18] [--preset slow]
-import fs from 'fs'; import path from 'path'; import { execFileSync } from 'child_process';
+import fs from 'fs'; import path from 'path'; import { execFileSync, spawnSync } from 'child_process';
 import { TIMELINE, MUSIC } from './timeline.mjs';
 
 const args = process.argv.slice(2), frames = path.resolve(args[0]), audio = path.resolve(args[1]), outFile = path.resolve(args[2]);
@@ -34,7 +34,7 @@ for (const e of events) { if (lastAt[e.name] != null && e.t - lastAt[e.name] < 0
 const scratchAt = kept.find((e) => e.name === 'scratch'); if (!scratchAt) console.warn('no record scratch logged: the reef song will run into the title');
 // ffmpeg inputs and the filter graph
 const inputs = [], F = [], mixIns = [];
-const addInput = (file) => { inputs.push('-i', file); return inputs.length / 2 - 1; };
+const addInput = (file) => { inputs.push('-i', file); return inputs.length / 2; };   // input 0 is the picture
 const db = (v) => `${v.toFixed(2)}dB`, norm = (name, target) => target - 20 * Math.log10(Math.max(1e-4, levels[name].peak));   // dB to bring a file's peak to target dBFS
 for (const [mi, M] of MUSIC.entries()) {
   const from = at(M.from), until = M.until === 'scratch' ? (scratchAt ? scratchAt.t : at('title')) : at(M.until) + (M.fadeOut || 0);
@@ -51,10 +51,16 @@ for (const [name, list] of Object.entries(byName)) {
   F.push(`[${i}:a]volume=${db(norm(name, -3) + SFX_DB + (GAIN[name] || 0))},asplit=${list.length}${labs.map((l) => `[${l}p]`).join('')}`);
   list.forEach((e, k) => { const ms = Math.round(e.t * 1000); F.push(`[${labs[k]}p]adelay=${ms}|${ms}${e.k !== 1 ? `,volume=${db(20 * Math.log10(Math.max(0.1, e.k)))}` : ''}[${labs[k]}]`); mixIns.push(labs[k]); });
 }
-F.push(`${mixIns.map((l) => `[${l}]`).join('')}amix=inputs=${mixIns.length}:normalize=0:dropout_transition=0,apad,atrim=0:${total.toFixed(3)},loudnorm=I=-14:TP=-1.5:LRA=11,alimiter=limit=0.95[aout]`);
-const script = path.join(frames, 'audio.filter'); fs.writeFileSync(script, F.join(';\n'));
+const mix = `${mixIns.map((l) => `[${l}]`).join('')}amix=inputs=${mixIns.length}:normalize=0:dropout_transition=0,apad,atrim=0:${total.toFixed(3)}`;
 console.log(`${cuts.length} shots, ${total.toFixed(1)} s, ${kept.length} sound events (${events.length - kept.length} merged), ${mixIns.length} mix inputs`);
 console.log(cuts.map((c) => `${c.at.toFixed(1).padStart(6)}  ${c.id}`).join('\n'));
+// loudness in two passes: measure the mix, then apply one fixed gain (linear mode), so the quiet opening stays quiet
+const script = path.join(frames, 'audio.filter');
+fs.writeFileSync(script, [...F, `${mix},loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json[aout]`].join(';\n'));
+const stderr = spawnSync('ffmpeg', ['-y', '-v', 'info', '-f', 'lavfi', '-t', '0.1', '-i', 'anullsrc=r=48000:cl=stereo', ...inputs, '-filter_complex_script', script, '-map', '[aout]', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 64 << 20 }).stderr || '';   // a stand-in for the picture keeps the input numbers
+const m = JSON.parse(stderr.slice(stderr.lastIndexOf('{'), stderr.lastIndexOf('}') + 1));
+console.log(`measured ${m.input_i} LUFS, peak ${m.input_tp} dBTP, range ${m.input_lra} LU`);
+fs.writeFileSync(script, [...F, `${mix},loudnorm=I=-14:TP=-1.5:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,alimiter=limit=0.94[aout]`].join(';\n'));
 execFileSync('ffmpeg', ['-y', '-v', 'error', '-stats', '-r', String(fps), '-f', 'concat', '-safe', '0', '-i', list, ...inputs, '-filter_complex_script', script, '-map', '0:v', '-map', '[aout]',
-  '-fps_mode', 'cfr', '-r', String(fps), '-c:v', 'libx264', '-preset', opt('--preset', 'slow'), '-crf', opt('--crf', '18'), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-shortest', outFile], { stdio: 'inherit' });
+  '-fps_mode', 'cfr', '-r', String(fps), '-c:v', 'libx264', '-preset', opt('--preset', 'slow'), '-crf', opt('--crf', '20'), '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', '-shortest', outFile], { stdio: 'inherit' });
 console.log('->', outFile);
