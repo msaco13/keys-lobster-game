@@ -90,8 +90,10 @@ class BugHuntScene extends SessionBase {
     if (!others.length) others = CHAR_ORDER.filter((c) => c !== this.ch);
     this.others = others;
     this.quip = null; this.wasUnder = false; this.exhaleT = 2;
-    this.coach = !Store.get('coach_bug3_' + this.ch, false); this.coachSaw = {};
-    this.help = this.coach ? { t: 0 } : null;   // the how-to card opens by itself on each angler's first dive (and from ?)
+    // the coaching (an arrow to a bug, the steps, a tip for each one) stays on until this angler nets a first bug; the
+    // how-to card opens by itself on their first dive (and any time from ?)
+    this.coach = !Store.get('coach_bugnet_' + this.ch, false); this.coachSaw = {};
+    this.help = !Store.get('coach_bug3_' + this.ch, false) ? { t: 0 } : null;
     this.shark = null; this.sharkDone = false;
     this.sharkAt = o.shark === true ? 6 : o.shark === false ? null : chance(this.site.shark) ? rand(this.len * 0.22, this.len * 0.62) : null;
     this.gen();
@@ -99,7 +101,7 @@ class BugHuntScene extends SessionBase {
   enter() {
     SFX.setAmbient(1, false); Music.play('reef');
     Game.toast(SPOTS[this.spot] ? SPOTS[this.spot].name : 'Bug Hunt', { color: PAL.coral, size: 44, y: 200, sub: 'Find the antennae. Tickle them out. Swing the net.' });
-    if (this.coach) Store.set('coach_bug3_' + this.ch, true);
+    if (this.help) Store.set('coach_bug3_' + this.ch, true);
   }
   exit() { SFX.setAmbient(0); Music.muffle(false); }
   baseFloor(x) { return this.site.floor + 10 * Math.sin(x * 0.004) + 6 * Math.sin(x * 0.013 + 1) + (this.variant === 'reef' ? 22 * Math.sin(x * 0.0017 + 2) : 0); }
@@ -135,6 +137,8 @@ class BugHuntScene extends SessionBase {
       else if (i < S.morays + S.bugs) { d.kind = 'lobster'; d.extra = chance(S.extra) ? 1 : 0; d.lob = this.makeLob(); }
       else d.kind = 'empty';
     });
+    // while you're learning, the bug closest to the boat is a calm one (golden bugs stay wary)
+    if (this.coach) { const first = this.dens.filter((d) => d.kind === 'lobster' && !d.lob.gold).sort((a, b) => Math.abs(a.x - BH.BOATX) - Math.abs(b.x - BH.BOATX))[0]; if (first) first.lob.temper = 'calm'; }
     this.grass = []; for (let i = 0; i < WW / 34; i++) this.grass.push({ x: rand(0, WW), h: rand(10, 26), ph: rand(0, TAU) });
     this.jellies = []; for (let i = 0; i < Math.round(WW / 700); i++) this.jellies.push({ x: rand(700, WW - 100), y: rand(170, this.site.floor - 150), ph: rand(0, TAU), hit: 0 });
     this.schools = [];
@@ -280,7 +284,7 @@ class BugHuntScene extends SessionBase {
     if (pro) { this.addLine('Backed it into the net', 50); this.fl.add(o.x - this.cam, o.y - this.camY - 40, 'PRO MOVE +50', PAL.sun, 24); this.say('pro'); }
     else if (!o.misses) { this.addLine('One swing, one bug', 25); this.fl.add(o.x - this.cam, o.y - this.camY - 40, 'CLEAN SWING +25', PAL.sun, 22); }
     this.gauge = { lob: o.lob, t: 0 }; Game.toasts = [];
-    this.out = null; this.net.state = 'carry'; this.coach = false;
+    this.out = null; this.net.state = 'carry'; this.coach = false; Store.set('coach_bugnet_' + this.ch, true);
   }
 
   /* ---------- update ---------- */
@@ -885,11 +889,12 @@ class BugHuntScene extends SessionBase {
         ctx.strokeStyle = ringCol; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(den.x, den.y, 30, -Math.PI * 0.5, -Math.PI * 0.5 + TAU * clamp(c, 0, 1)); ctx.stroke();
       }
       const held = this.tickling;
-      const msg = !this.inReach ? (this.tickPtr ? 'Swimming over…' : '') : tw ? 'LET GO!' : tense ? (held ? 'GET READY…' : 'WAIT…') : lob && den.again > 0 && !held ? 'HOLD AGAIN' : held ? 'Keep tickling…' : 'HOLD TO TICKLE';
+      const shake = tw || tense, letGo = shake && held;
+      const msg = !this.inReach ? (this.tickPtr ? 'Swimming over…' : '') : letGo ? 'LET GO!' : shake ? 'WAIT…' : lob && den.again > 0 && !held ? 'HOLD AGAIN' : held ? 'Keep holding…' : 'HOLD TO TICKLE';
       if (msg) {
-        const col = tw ? PAL.bad : tense ? '#ffb020' : lob && den.again > 0 && !held ? PAL.good : held ? '#ffffff' : PAL.sun, sc = tw || tense ? 1 + Math.sin(t * 30) * 0.06 : 1;
+        const col = letGo ? (tw ? PAL.bad : '#ffb020') : shake ? '#cfe3ea' : lob && den.again > 0 && !held ? PAL.good : held ? '#ffffff' : PAL.sun, sc = letGo ? 1 + Math.sin(t * 30) * 0.06 : 1;
         ctx.save(); ctx.translate(den.x + den.dir * 10, den.y - 56); ctx.scale(sc, sc);
-        text(ctx, msg, 0, 0, { size: tw ? 26 : tense ? 22 : 18, align: 'center', base: 'middle', color: col, stroke: 'rgba(0,0,0,0.65)', sw: 5, weight: 800 });
+        text(ctx, msg, 0, 0, { size: letGo ? 26 : shake ? 20 : 18, align: 'center', base: 'middle', color: col, stroke: 'rgba(0,0,0,0.65)', sw: 5, weight: 800 });
         ctx.restore();
       }
       // close enough to tickle: you can tell what kind of bug it is
@@ -936,16 +941,18 @@ class BugHuntScene extends SessionBase {
       if (this.shark) { ctx.fillStyle = PAL.bad; ell(ctx, mmx + clamp(this.shark.x / this.WW, 0, 1) * mmw, mmy + 6, 4, 4); ctx.fill(); }
       ctx.fillStyle = PAL.sun; ell(ctx, mmx + (this.diver.x / this.WW) * mmw, mmy + 6, 4.5, 4.5); ctx.fill();
     }
-    // the action button, only when there's something to do: TICKLE at a hole (READY on the warning, LET GO on the
-    // twitch), NET when a bug is out. Tapping the hole or the bug itself does the same.
+    // the action button, only when there's something to do: TICKLE at a hole (LET GO while the antennae shake, WAIT
+    // once you have), NET when a bug is out. Tapping the hole or the bug itself does the same.
     const a = this.actionZone(), active = this.actionShown();
     let label = '', fill = PAL.sun, fg = PAL.ink, prog = null, hot = false;
     if (this.out) { hot = this.out.state === 'idle'; label = 'NET'; fill = PAL.good; fg = PAL.ink; }
     else if (active) {
       const den = this.target, lob = den.kind === 'lobster', tw = lob && den.twitch > 0, tense = lob && den.tense > 0;
-      label = tw ? 'LET GO' : tense ? 'READY' : 'TICKLE'; fill = tw ? PAL.bad : tense ? '#ffb020' : PAL.sun; fg = tw ? '#fff' : PAL.ink;
+      const shake = tw || tense, letGo = shake && this.tickling;
+      label = letGo ? 'LET GO' : shake ? 'WAIT' : 'TICKLE'; fill = letGo ? (tw ? PAL.bad : '#ffb020') : shake ? '#8fa9b3' : PAL.sun; fg = letGo && tw ? '#fff' : PAL.ink;
       prog = lob ? den.coax : clamp(den.probe / 0.8, 0, 1);
     }
+    this.actionLabel = active ? label : '';   // what the button says (the tests read it)
     // held down (a finger on it, or Space): it sinks in a little and gets a bright rim, so you know it's registering
     const down = this.actionHeld();
     if (active) {
@@ -982,19 +989,51 @@ class BugHuntScene extends SessionBase {
     let msg = null;
     const den = this.target, lob = den && this.inReach && den.kind === 'lobster';
     if (this.out) msg = Game.touch ? 'It’s out! Tap the bug to swing your net' : 'It’s out! Click the bug to swing your net';
-    else if (lob && (den.tense > 0 || den.twitch > 0)) msg = 'Antennae stiff and shaking? LET GO. Hold again after.';
-    else if (lob && den.again > 0) msg = 'Now hold again. The ring fills; when it’s full, the bug walks out.';
+    else if (lob && (den.tense > 0 || den.twitch > 0)) msg = this.tickling ? 'The antennae are shaking: LET GO!' : 'Good. Wait for it to settle, then hold again.';
+    else if (lob && den.again > 0) msg = 'Now hold again. When the ring fills up, the bug walks out.';
     else if (den && this.inReach) msg = Game.touch ? 'Hold your finger on the hole (or TICKLE) to coax it out' : 'Hold the mouse on the hole (or Space) to tickle';
     else if (this.coachSaw.behind) msg = 'Lobsters flip backward. Set the net BEHIND the tail.';
-    else if (this.t < 16) msg = Game.touch ? 'Drag anywhere to swim. Look for antennae poking out of holes.' : 'WASD or drag to swim. Look for antennae poking out of holes.';
+    else if (this.coachBug()) msg = Game.touch ? 'Drag to swim to the arrow. A bug is hiding in that hole.' : 'Swim to the arrow (WASD or drag). A bug is hiding in that hole.';
     return msg;
   }
+  // while you're learning: the closest bug still in its hole, for the arrow (none once one is out or you're at a hole)
+  coachBug() {
+    if (!this.coach || this.out || (this.target && this.inReach) || this.intro || (this.shark && this.shark.state === 'hunt')) return null;
+    const d = this.diver; let best = null, bd = 1e9;
+    for (const den of this.dens) { if (den.kind !== 'lobster' || den.state !== 'in') continue; const dd = Math.abs(den.x - d.x) + Math.abs(den.y - d.y) * 0.5; if (dd < bd) { bd = dd; best = den; } }
+    return best;
+  }
   drawCoach(ctx, W, H, t) {
+    // the arrow to a bug: bobbing over its hole, or on the edge of the screen pointing the way
+    const bug = this.coachBug();
+    if (bug) {
+      const bx = bug.x + bug.dir * 10 - this.cam, by = bug.y - this.camY, on = bx > 40 && bx < W - 40 && by > 150 && by < H - 30;
+      ctx.save();
+      if (on) {
+        const y = by - 62 - Math.abs(Math.sin(t * 4)) * 14;
+        ctx.translate(bx, y); ctx.fillStyle = PAL.sun; ctx.strokeStyle = PAL.ink; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-14, -18); ctx.lineTo(14, -18); ctx.lineTo(14, 0); ctx.lineTo(24, 0); ctx.lineTo(0, 24); ctx.lineTo(-24, 0); ctx.lineTo(-14, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+        text(ctx, 'BUG!', 0, -30, { size: 18, align: 'center', color: PAL.sun, weight: 800, stroke: PAL.ink, sw: 5 });
+      } else {
+        const ax = clamp(bx, 60, W - 60), ay = clamp(by, 170, H - 60), a = Math.atan2(by - ay, bx - ax), pulse = 1 + Math.sin(t * 6) * 0.08;
+        ctx.translate(ax, ay); ctx.save(); ctx.rotate(a); ctx.scale(pulse, pulse); ctx.fillStyle = PAL.sun; ctx.strokeStyle = PAL.ink; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(30, 0); ctx.lineTo(-6, -22); ctx.lineTo(0, 0); ctx.lineTo(-6, 22); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+        text(ctx, 'BUG', 0, 42, { size: 16, align: 'center', color: PAL.sun, weight: 800, stroke: PAL.ink, sw: 4 });
+      }
+      ctx.restore();
+    }
     const msg = this.coachMsg();
     if (!msg || Game.toasts.length) return;
     const w = Math.min(470, W - 280), x = W / 2 - w / 2, y = 116;
     panel(ctx, x, y - 22, w, 44, { r: 14, fill: 'rgba(255,255,255,0.95)', line: 'rgba(0,0,0,0.1)' });
     text(ctx, msg, x + w / 2, y + 1, { size: 16, align: 'center', base: 'middle', color: PAL.ink, weight: 800, maxW: w - 16 });
+    // the four steps from the how-to card, with this one lit
+    const step = this.out ? 2 : this.target && this.inReach ? 1 : 0, names = ['FIND', 'TICKLE', 'NET', 'GAUGE'], pw = 84, sx0 = W / 2 - (pw * 4 + 18) / 2;
+    names.forEach((nm, i) => {
+      const px = sx0 + i * (pw + 6), now = i === step, done = i < step;
+      ctx.fillStyle = now ? PAL.sun : done ? 'rgba(95,224,138,0.9)' : 'rgba(4,24,34,0.7)'; rr(ctx, px, y + 28, pw, 22, 11); ctx.fill();
+      text(ctx, (i + 1) + ' ' + nm, px + pw / 2, y + 43.5, { size: 12, align: 'center', color: now || done ? PAL.ink : '#cfe3ea', weight: 800 });
+    });
   }
   // How to catch a bug: four steps in order, each with a small moving picture, and the three kinds of bug.
   // Opens by itself on each angler's first dive, and from the ? button (or H). The turn clock waits.
@@ -1049,12 +1088,12 @@ class BugHuntScene extends SessionBase {
       ctx.save(); ctx.beginPath(); ctx.rect(cx - 12, cy - 60, 200, 120); ctx.clip(); ctx.translate(cx - 30, cy + 9); drawLobsterSide(ctx, L, { t }); ctx.restore();
       hole(cx - 30, cy + 34); ctx.fillStyle = '#e8f04a'; ell(ctx, cx - 26, cy + 31, 2, 2); ctx.fill(); ell(ctx, cx - 21, cy + 32, 2, 2); ctx.fill();
     } else if (i === 1) {   // hold, the warning, let go, hold again: a 3.2 s loop
-      const ph = t % 3.2, tense = ph > 1.6 && ph < 2.1, tw = ph >= 2.1 && ph < 2.7, holding = ph < 2.1 || ph > 2.9;
+      const ph = t % 3.2, tense = ph > 1.6 && ph < 2.1, tw = ph >= 2.1 && ph < 2.7, holding = ph < 1.8 || ph > 2.9;   // lets go on the warning
       rock(cx - 40, cy + 10, 60); hole(cx - 14, cy + 6);
       ctx.save(); ctx.beginPath(); ctx.rect(cx - 20, cy - 60, 200, 120); ctx.clip(); ctx.translate(cx - 30 + Math.min(1, (t % 3.2) / 2) * 12, cy + 9); drawLobsterSide(ctx, L, { t, tense, twitch: tw ? Math.sin(t * 40) * 0.25 + 0.3 : 0 }); ctx.restore();
       finger(cx - 14, cy + 6, holding);
-      const msg = tw ? 'LET GO!' : tense ? 'GET READY…' : holding ? 'HOLD' : 'HOLD AGAIN';
-      text(ctx, msg, cx + 18, cy - 28, { size: 15, align: 'center', color: tw ? PAL.bad : tense ? '#ffb020' : '#fff', weight: 800, stroke: 'rgba(0,0,0,0.6)', sw: 4 });
+      const msg = tense || tw ? (holding ? 'LET GO!' : 'WAIT…') : holding ? 'HOLD' : 'HOLD AGAIN';
+      text(ctx, msg, cx + 18, cy - 28, { size: 15, align: 'center', color: (tense || tw) && holding ? '#ffb020' : tense || tw ? '#cfe3ea' : holding ? '#fff' : PAL.good, weight: 800, stroke: 'rgba(0,0,0,0.6)', sw: 4 });
     } else if (i === 2) {   // the bug walks out; a tap, and the net swings at it
       const ph = t % 2.4, bx = cx - 20 + Math.min(1, ph / 1.2) * 18;
       ctx.fillStyle = '#d8c79a'; ctx.fillRect(cx - 120, cy + 22, 240, 40);

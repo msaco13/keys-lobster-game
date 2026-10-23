@@ -17,6 +17,9 @@ await start('bughunt');
 await page.waitForTimeout(500); await shot('how-to');
 check(await gotIt(), 'how-to card opens on the first dive and Got it closes it');
 await page.waitForTimeout(1300); await shot('in-water');
+// still learning: an arrow points at a bug, and the one nearest the boat is a calm one
+const firstBug = await page.evaluate(() => { const s = Game.scene, b = s.coachBug(), near = s.dens.filter((d) => d.kind === 'lobster' && !d.lob.gold).sort((a, c) => Math.abs(a.x - BH.BOATX) - Math.abs(c.x - BH.BOATX))[0]; return { coach: s.coach, arrow: !!b, calm: near.lob.temper }; });
+check(firstBug.coach && firstBug.arrow && firstBug.calm === 'calm', 'a first dive points the way to a bug, and the first bug is a calm one (' + JSON.stringify(firstBug) + ')');
 // park next to a lobster hole and hold the mouse on it
 const den = await page.evaluate(() => { const s = Game.scene; const den = s.dens.find((d) => d.kind === 'lobster'); s.diver.x = den.x + den.dir * 200; s.diver.y = den.y - 20; s.cam = Math.max(0, s.diver.x - Game.W * 0.45); s.camY = 0; den.nextTwitch = 99; return { x: den.x - s.cam + den.dir * 6, y: den.y - s.camY }; });
 let p = await toCss(den.x, den.y); await page.mouse.move(p.x, p.y); await page.mouse.down(); await page.waitForTimeout(900); await shot('swim-to-hole');
@@ -60,6 +63,7 @@ if (pro) {
 }
 const g = await page.evaluate(() => ({ gauge: !!Game.scene.gauge, lines: Game.scene.extraLines.map((l) => l.label + ' ' + l.pts) }));
 check(g.gauge && g.lines.some((l) => /Backed it into the net/.test(l)), 'net set behind the tail catches it on the flip (' + JSON.stringify(g) + ')');
+check(await page.evaluate(() => !Game.scene.coach && Store.get('coach_bugnet_michael', false) === true), 'the first bug in the net ends the coaching for good');
 if (!g.gauge) await page.evaluate(() => { Game.scene.gauge = { lob: { cl: 3.4, w: 1.2, eggs: false }, t: 0 }; });
 await page.waitForTimeout(500); await shot('gauge');
 await page.evaluate(() => Game.scene.decide(true));
@@ -86,7 +90,10 @@ await page.evaluate(() => { if (Game.scene.gauge) Game.scene.decide(true); });
     let h = await toCss(...Object.values(await holeAt())); await page.mouse.move(h.x, h.y); await page.mouse.down();
     let sawTense = false;
     for (let i = 0; i < 60; i++) { await page.waitForTimeout(25); if (await page.evaluate(() => window.__d.tense > 0)) { sawTense = true; break; } }
-    await page.mouse.up(); await shot('let-go-on-warning');
+    await page.waitForTimeout(40); const sayHeld = await page.evaluate(() => Game.scene.actionLabel);
+    await page.mouse.up(); await page.waitForTimeout(80); const sayUp = await page.evaluate(() => (window.__d.tense > 0 || window.__d.twitch > 0 ? Game.scene.actionLabel : 'over'));
+    await shot('let-go-on-warning');
+    check(sayHeld === 'LET GO' && (sayUp === 'WAIT' || sayUp === 'over'), 'the warning says LET GO while you hold, then WAIT once you have (' + sayHeld + ', ' + sayUp + ')');
     await page.waitForTimeout(900);   // the twitch comes and goes with the mouse up
     const calmLetGo = await page.evaluate(() => ({ spooks: window.__d.spooks, again: window.__d.again > 0 }));
     check(sawTense && calmLetGo.spooks === 0 && calmLetGo.again, 'the antennae warn before the twitch; letting go then is safe, and it asks you to hold again (' + JSON.stringify(calmLetGo) + ')');
@@ -98,6 +105,12 @@ await page.evaluate(() => { if (Game.scene.gauge) Game.scene.decide(true); });
 // end and results
 await page.evaluate(() => { Game.scene.timeLeft = 0.05; }); await page.waitForTimeout(2600);
 console.log('RESULT', JSON.stringify(await page.evaluate(() => window.__res && { total: window.__res.total, lines: window.__res.lines.map((l) => l.label + ' ' + l.pts) })));
+// the next dive: no card, no coaching (a bug's been netted). An angler who saw the card but never netted one is still coached.
+const dive2 = async () => page.evaluate(() => { Game.go(new BugHuntScene({ ch: 'michael', spot: 'bughunt', len: 120, weather: Trip.cur.weather, shark: false, onEnd: () => {} }), true); return { help: !!Game.scene.help, coach: Game.scene.coach }; });
+const again = await dive2();
+await page.evaluate(() => Store.set('coach_bugnet_michael', false));
+const unlucky = await dive2();
+check(!again.help && !again.coach && !unlucky.help && unlucky.coach, 'later dives skip the card; the coaching stays on until a first bug is netted (' + JSON.stringify([again, unlucky]) + ')');
 // the deep reef
 await start('alligator'); await page.waitForTimeout(300); await gotIt(); await page.waitForTimeout(1600);
 await page.evaluate(() => { const s = Game.scene; s.diver.x = 1500; s.diver.y = 560; }); await page.waitForTimeout(1500); await shot('reef-deep');

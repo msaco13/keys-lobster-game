@@ -516,7 +516,7 @@ class BriefingScene {
       drawBountyIcon(ctx, b.icon, cx, y0 + 62, Math.min(130, cw * 0.56), t + i * 0.7);
       pill(ctx, '+' + b.bonus, x + cw - 18, y0 + 30, { size: 19, h: 30, padX: 11, align: 'right' });
       ctx.restore();
-      const group = b.id === 'newspot' ? 'EXPLORE' : { bugs: 'BUG HUNT', reef: 'THE REEF', offshore: 'OFFSHORE', flats: 'BACKCOUNTRY', any: 'ANYWHERE' }[b.group] || '';
+      const group = b.id === 'newspot' ? 'EXPLORE' : { bugs: 'LOBSTER', reef: 'THE REEF', offshore: 'OFFSHORE', flats: 'BACKCOUNTRY', any: 'ANYWHERE' }[b.group] || '';
       text(ctx, group, x + 18, y0 + 136, { size: 13, color: PAL.coral, weight: 800 });
       const used = para(ctx, b.text, x + 18, y0 + 160, cw - 36, { size: 19, weight: 800, color: '#fff', lh: 22 });
       para(ctx, whereOf(b), x + 18, y0 + 160 + used + 2, cw - 36, { size: 14, weight: 700, color: '#9fd6e6', lh: 17 });
@@ -1022,8 +1022,8 @@ class LogbookScene {
 /* ================= HOW TO PLAY ================= */
 const HOWTO = [
   { title: 'The trip', art: 'boat', lines: ['Crew Trip: pass one phone around. The captain drives the boat to a spot, then everyone fishes it.', 'Bigger fish and bigger bugs score more. Trophies, slams and clean releases add bonuses.', 'Every day has three bounties, like a mahi over 20\u00a0lb. The first one to finish a bounty takes its bonus.', 'Full day is four spots, half day is two. Then run home at sunset. Most points is Captain of the Day.'] },
-  { title: 'Running the boat', art: 'boat', lines: ['Hold left or right of the boat to turn that way (or ← →). The throttle is on the right: STOP, IDLE, SLOW, CRUISE, FULL.', 'Open the Chart to pick a spot. Set course and the autopilot drives, and you can take over any time.', 'Watch the depth. Light water is shallow: slow down or you run aground. No-wake zones mean SLOW or FWC pulls you over.', 'Only four spots are charted. Find the rest by exploring: run past a ? on the chart to discover it.'] },
-  { title: 'Bug Hunt', art: 'lobster', lines: ['Swim down and look for antennae poking out of holes. Not every hole has a bug in it.', 'Hold on the hole (or TICKLE) to coax the bug out. When its antennae go stiff and shake, let go, then hold again.', 'Calm bugs are easy. Wary old bugs (often the big ones) give you a split second, and bolt once they’re out.', 'When it walks out, tap the bug to net it. Pro move: tap behind its tail; it flips backward into the net.', 'Gauge every bug: past the 3" gauge and no eggs. Stuck? Tap ? in the dive for the how-to.'] },
+  { title: 'Running the boat', art: 'boat', lines: ['Hold left or right of the boat to turn (or ← →). The throttle is on the right: STOP, IDLE, SLOW, CRUISE, FULL.', 'Open the Chart and pick what to catch up top: Lobster, Reef, Offshore or Bayside. Set course and the autopilot drives.', 'The bay side is behind the islands. Get there through a creek under a bridge: Tavernier Creek is by the dock.', 'Light water is shallow: slow down or you run aground. No-wake zones mean SLOW or FWC pulls you over.', 'Only four spots are charted. Run past a ? on the chart to find the rest.'] },
+  { title: 'Lobster (the Bug Hunt)', art: 'lobster', lines: ['Lobster spots are on the chart (tap Lobster). Look for antennae poking out of holes.', 'Hold on the hole (or TICKLE). When the antennae shake it says LET GO: let go, wait, then hold again.', 'Calm bugs are easy. Wary old bugs (often the big ones) give you a split second, and bolt once they’re out.', 'When it walks out, tap the bug to net it. Pro move: tap behind its tail; it flips backward into the net.', 'Gauge every bug: past the 3" gauge and no eggs. Stuck? Tap ? in the dive for the how-to.'] },
   { title: 'Bottom fishing', art: 'grouper', lines: ['Watch the fish finder on the right. Arches are fish (red means big), blue speckle is bait.', 'Drag up or down (or on the fish finder) to drop your bait to the marks. Squid for snapper, pinfish for grouper and jacks.', 'Small twitches are nibbles. Wait. When the rod slams down, tap to set the hook.', 'Nothing on the finder? Tap Move ◀ ▶ to idle along the ledge or the wreck until it lights up.', 'The ▸ under the finder (or F) makes it smaller, then tucks it away. Tap it again to bring it back.'] },
   { title: 'Trolling', art: 'mahi', lines: ['Drag up and down to steer. Your lures follow the path the boat took.', 'Frigate birds and weed lines mean mahi. Diving terns and bait balls mean tuna.', 'The fish are out there, but you have to find them. Read the birds and the weed.', 'Trap floats wrap your prop and foul your lures. Tripletail like to hide under them.'] },
   { title: 'The backcountry', art: 'bonefish', lines: ['Your buddy poles the skiff (◀ ▶ at the bottom right) and calls fish by the clock: 12 is straight ahead.', 'Look for tails, wakes, mud puffs and rolling tarpon. Press and hold where you want the fly, then let go to cast.', 'Land it a few feet in front of the fish. Too close, behind it, or the line across its back, and it spooks.', 'Tap to strip in the fish’s rhythm. When it eats, tap to set. At the bridge, the tide carries your fly.'] },
@@ -1049,8 +1049,11 @@ class HowToScene {
     else if (P.art === 'bonefish') drawFish(ctx, 'bonefish', 210, { t });
     else { drawFish(ctx, 'tarpon', 230, { t }); }
     ctx.restore();
-    let y = 130; const mw = W * 0.56;
-    P.lines.forEach((l) => { ctx.fillStyle = PAL.sun; ell(ctx, 50, y - 6, 5, 5); ctx.fill(); y += para(ctx, l, 66, y, mw - 30, { size: 19, weight: 600, color: '#fff', lh: 25 }) + 16; });
+    // the bullets, at the biggest size whose last line clears the buttons (a short screen gets a size or two smaller)
+    const mw = W * 0.56, fit = (sz) => { const lh = sz * 25 / 19, gap = sz * 16 / 19, k = floorPx(sz) / sz; ctx.font = fntRaw(floorPx(sz), 600); return { sz, lh, gap, h: P.lines.reduce((a, l) => a + wrapText(ctx, l, mw - 30).length * lh * k + gap, 0) - gap - lh * k }; };
+    let F = fit(19); for (const sz of [18, 17, 16, 15]) { if (130 + F.h + 10 <= H - 76) break; F = fit(sz); }
+    let y = 130;
+    P.lines.forEach((l) => { ctx.fillStyle = PAL.sun; ell(ctx, 50, y - 6, 5, 5); ctx.fill(); y += para(ctx, l, 66, y, mw - 30, { size: F.sz, weight: 600, color: '#fff', lh: F.lh }) + F.gap; });
     UI.button(ctx, 'back', 30, H - 70, 120, 48, 'Done', () => Game.go(new TitleScene()), { style: 'ghost', size: 18, key: 'Escape' });
     // Done (Esc) always leaves; Previous / Next page through, and the last page's button leaves too
     UI.button(ctx, 'prev', W - 290, H - 70, 120, 48, 'Previous', () => (this.page = Math.max(0, this.page - 1)), { style: 'secondary', size: 18, disabled: this.page === 0 });

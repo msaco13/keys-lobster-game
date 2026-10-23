@@ -876,7 +876,7 @@ const Sea3D = {
   overlay(s, ctx, W, H, t) {
     const P = (x, y, h) => Chase.proj(x, y, h), on = (p, m = 0) => p && p.x > -m && p.x < W + m;
     if (!s.homeRun) for (const id of SPOT_ORDER) { if (!Charts.isKnown(id) || id === s.dest) continue; const [x, y] = spotXY(id), lp = P(x, y, 70); if (lp && lp.z < 7000 && lp.d > 20 && on(lp)) Chase.drawSpotLabel(ctx, s, id, lp); }
-    for (const gp of GAPS) { const lp = P(gp.x, gp.y, 80); if (lp && lp.z < 2600 && on(lp)) text(ctx, gp.name, lp.x, lp.y, { size: clamp(9 + 1500 / lp.z, 12, 18), align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.5)', sw: 4, alpha: clamp(1 - Chase.fog(lp.z), 0.3, 1) }); }
+    for (const gp of GAPS) { const hot = s.via === gp, lp = P(gp.x, gp.y, 80); if (lp && lp.z < (hot ? 7000 : 2600) && on(lp)) Chase.drawCreekLabel(ctx, s, gp, lp, hot); }
     { const L = World.light, b = P(L.x, L.y, 0); if (b && b.z < 3200 && on(b)) text(ctx, 'Alligator Light', b.x, b.y + 18, { size: clamp(9 + 1600 / b.z, 12, 17), align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.5)', sw: 4 }); }
     for (const m of World.markers) if (m.kind === 'reef') { const tp = P(m.x, m.y, 70); if (tp && tp.z < 1400 && on(tp)) text(ctx, m.name, tp.x, tp.y - 6, { size: 13, align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.55)', sw: 4 }); }
     if (s.fwc && this.fwcAt) { const lt = P(this.fwcAt[0], this.fwcAt[1], 60); if (lt) text(ctx, 'FWC', lt.x, lt.y - 8, { size: 14, align: 'center', color: '#fff', weight: 800, stroke: '#123a8a', sw: 4 }); }

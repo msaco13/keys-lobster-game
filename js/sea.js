@@ -26,6 +26,26 @@ function rumorXY(id) {
   const L = Math.hypot(dx, dy), cap = 0.55 * (SPOTS[id].r + 300), k = L > cap ? cap / L : 1;
   return [x + dx * k, y + dy * k];
 }
+// the creek (or channel) under the Overseas Highway a path goes through first, from (x, y) on: null if it stays on
+// this side of the islands
+function creekOn(path, x, y, from = 0) {
+  if (!path) return null;
+  let a = [x, y];
+  for (let i = from; i < path.length; i++) {
+    const b = path[i], sa = a[1] - chainY(a[0]), sb = b[1] - chainY(b[0]);
+    if (sa * sb < 0) { const xm = a[0] + (b[0] - a[0]) * (sa / (sa - sb)), g = GAPS.find((G) => xm > G.x0 - 150 && xm < G.x1 + 150); if (g) return g; }
+    a = b;
+  }
+  return null;
+}
+const baySide = (x, y) => y < chainY(x);
+// the chart's "what do you want to catch?": each lights up its spots
+const SPOT_CATS = [
+  { id: 'lobster', name: 'Lobster', icon: 'lobster', has: (S) => S.mode === 'bughunt' },
+  { id: 'reef', name: 'Reef & wreck', icon: 'redgrouper', has: (S) => S.mode === 'bottom' },
+  { id: 'offshore', name: 'Offshore', icon: 'mahi', has: (S) => S.mode === 'troll' },
+  { id: 'bay', name: 'Bayside', icon: 'bonefish', has: (S) => S.mode === 'flats' }
+];
 function spotsLeft() { const c = Trip.cur; return c.mode === 'crew' && c.done.length >= c.spotsNeeded; }
 
 class SeaScene {
@@ -126,20 +146,45 @@ class SeaScene {
   }
 
   /* ---------- route planning: A* over the depth grid ---------- */
-  planRoute() {
-    const xy = this.destXY(); if (!xy) { this.route = null; return; }
-    // leave and come home straight down the middle of Tavernier harbor channel, like everybody does
+  // the way from the boat to (tx, ty). Leave and come home straight down the middle of Tavernier harbor channel,
+  // like everybody does
+  routeTo(tx, ty, home) {
     const Hm = World.home, mouth = [Hm.x, Hm.mouthY + 30], outer = [Hm.x, wy(Hm.x, Hm.hw + 640)], inHarbor = World.zones[0], inside = (x, y) => x > inHarbor.x0 && x < inHarbor.x1 && y > inHarbor.y0 && y < inHarbor.y1;
-    let path;
-    if (this.dest === 'home') {
-      if (inside(this.x, this.y)) path = [[Hm.x, this.y < Hm.mouthY ? this.y : Hm.mouthY + 30], [Hm.x, Hm.dockY + 20]];
-      else { const p = World.findPath(this.x, this.y, outer[0], outer[1]); path = p && p.concat([mouth, [Hm.x, Hm.dockY + 20]]); }
-    } else if (inside(this.x, this.y)) {
-      const p = World.findPath(outer[0], outer[1], xy[0], xy[1]);
-      path = p && (this.y < Hm.mouthY ? [[Hm.x, Hm.mouthY - 10], mouth, outer] : [mouth, outer]).concat(p);
-    } else path = World.findPath(this.x, this.y, xy[0], xy[1]);
+    if (home) {
+      if (inside(this.x, this.y)) return [[Hm.x, this.y < Hm.mouthY ? this.y : Hm.mouthY + 30], [Hm.x, Hm.dockY + 20]];
+      const p = World.findPath(this.x, this.y, outer[0], outer[1]); return p && p.concat([mouth, [Hm.x, Hm.dockY + 20]]);
+    }
+    if (inside(this.x, this.y)) { const p = World.findPath(outer[0], outer[1], tx, ty); return p && (this.y < Hm.mouthY ? [[Hm.x, Hm.mouthY - 10], mouth, outer] : [mouth, outer]).concat(p); }
+    return World.findPath(this.x, this.y, tx, ty);
+  }
+  planRoute(quiet) {
+    const xy = this.destXY(); if (!xy) { this.route = null; return; }
+    const path = this.routeTo(xy[0], xy[1], this.dest === 'home');
     this.route = path; this.ri = 0; this.path = path ? [[this.x, this.y]].concat(path) : null;
-    if (!path) Game.toast('No clear way through', { color: PAL.warn, size: 26, y: 170, sub: 'Steer it yourself. Follow the deeper (darker) water.' });
+    if (!path && !quiet) Game.toast('No clear way through', { color: PAL.warn, size: 26, y: 170, sub: 'Steer it yourself. Follow the deeper (darker) water.' });
+  }
+  // where the boat is along the course: the nearest of the next few legs, so ri moves on as you pass them
+  nearRoute() {
+    const P = this.path, N = P.length - 1; let best = 1e9, bi = this.ri, bt = 0;
+    for (let i = this.ri; i < Math.min(N, this.ri + 4); i++) {
+      const [ax, ay] = P[i], [bx, by] = P[i + 1], vx = bx - ax, vy = by - ay, l2 = vx * vx + vy * vy || 1, k = clamp(((this.x - ax) * vx + (this.y - ay) * vy) / l2, 0, 1), d = Math.hypot(this.x - ax - vx * k, this.y - ay - vy * k);
+      if (d < best) { best = d; bi = i; bt = k; }
+    }
+    return { best, bi, bt };
+  }
+  // the point dist0 farther along the course from leg bi (bt of the way along it): [x, y, leg]
+  alongRoute(bi, bt, dist0) {
+    const P = this.path, N = P.length - 1; if (N < 1) return [P[0][0], P[0][1], 0];
+    let L = dist0, i = bi, k = bt;
+    for (;;) { const [ax, ay] = P[i], [bx, by] = P[i + 1], seg = Math.hypot(bx - ax, by - ay) || 1, rem = seg * (1 - k); if (L <= rem || i === N - 1) { const q = Math.min(1, k + L / seg); return [ax + (bx - ax) * q, ay + (by - ay) * q, i]; } L -= rem; i++; k = 0; }
+  }
+  // where the arrow points: a little way along the course (around the islands and through a creek, not across
+  // them), or straight at the destination when there's no course or you've wandered well off it
+  guideXY() {
+    const xy = this.destXY(); if (!xy) return null;
+    if (!this.path || this.path.length < 2) return xy;
+    const r = this.nearRoute(); if (r.best > 420) return xy;
+    const g = this.alongRoute(r.bi, r.bt, 520); return [g[0], g[1]];
   }
   setAuto(on) {
     if (on) this.planRoute();
@@ -163,6 +208,29 @@ class SeaScene {
     if (c === 'ArrowUp' || c === 'KeyW') this.setNotch(this.notch + 1);
     if (c === 'ArrowDown' || c === 'KeyS') this.setNotch(this.notch - 1);
     if (/^Digit[1-5]$/.test(c)) this.setNotch(+c.slice(5) - 1);
+  }
+  // light up one kind of spot and pick the closest one you can fish today (or the ? to go find); again turns it off
+  pickCat(id) {
+    SFX.play('tick');
+    if (this.filt === id) { this.filt = null; return; }
+    this.filt = id;
+    const K = SPOT_CATS.find((k) => k.id === id), ids = SPOT_ORDER.filter((x) => K.has(SPOTS[x])), far = (x) => { const [px, py] = spotXY(x); return dist(this.x, this.y, px, py); };
+    const open = ids.filter((x) => Charts.isKnown(x) && (this.homeRun || spotAllowed(x, this.c))).sort((a, b) => far(a) - far(b));
+    this.sel = open[0] || ids.find((x) => !Charts.isKnown(x)) || ids[0] || null;
+  }
+  // the way to whatever's picked on the chart, drawn before you set course (one route per pick)
+  previewPath() {
+    const sel = this.sel; if (!sel || (sel === this.dest && this.route)) return null;
+    const P = this.prev;
+    if (P && P.sel === sel && dist(P.x, P.y, this.x, this.y) < 150) return P.path;
+    const [tx, ty] = sel === 'home' ? [World.home.x, World.home.dockY + 20] : Charts.isKnown(sel) ? spotXY(sel) : rumorXY(sel);
+    this.prev = { sel, x: this.x, y: this.y, path: this.routeTo(tx, ty, sel === 'home') };
+    return this.prev.path;
+  }
+  // which creek the way there goes through, when it's on the other side of the islands
+  wayTo(sel) {
+    if (sel === this.dest && this.route) return this.via;
+    return creekOn(this.previewPath(), this.x, this.y);
   }
   openChart() { this.panel = { kind: 'chart' }; this.sel = this.dest && this.dest !== 'home' ? this.dest : null; this.steer = null; SFX.play('tick'); }
 
@@ -191,15 +259,10 @@ class SeaScene {
     let cap = 999;
     if (this.auto && this.path && !this.panel) {
       // pure pursuit: find where we are along the route, aim at a point a little farther along it
-      const P = this.path, N = P.length - 1;
-      let best = 1e9, bi = this.ri, bt = 0;
-      for (let i = this.ri; i < Math.min(N, this.ri + 4); i++) {
-        const [ax, ay] = P[i], [bx, by] = P[i + 1], vx = bx - ax, vy = by - ay, l2 = vx * vx + vy * vy || 1, k = clamp(((this.x - ax) * vx + (this.y - ay) * vy) / l2, 0, 1), d = Math.hypot(this.x - ax - vx * k, this.y - ay - vy * k);
-        if (d < best) { best = d; bi = i; bt = k; }
-      }
+      const P = this.path, N = P.length - 1, { best, bi, bt } = this.nearRoute();
       if (best > 420) { this.planRoute(); return; }     // knocked way off course: plot it again
       this.ri = bi;
-      const along = (dist0) => { let L = dist0, i = bi, k = bt; for (;;) { const [ax, ay] = P[i], [bx, by] = P[i + 1], seg = Math.hypot(bx - ax, by - ay) || 1, rem = seg * (1 - k); if (L <= rem || i === N - 1) { const q = Math.min(1, k + L / seg); return [ax + (bx - ax) * q, ay + (by - ay) * q, i]; } L -= rem; i++; k = 0; } };
+      const along = (dist0) => this.alongRoute(bi, bt, dist0);
       const [px, py] = along(clamp(70 + this.v * 0.35, 90, 170));
       const off = angleDiff(this.h, Math.atan2(py - this.y, px - this.x));
       rud = clamp(off * 2.6, -1, 1);
@@ -218,6 +281,14 @@ class SeaScene {
       // stuck against something: back off, point at the route, and plot it again
       if (this.v < 6 && cap > 30 && NOTCH[this.notch].v > 30 && !this.stall && !this.stuck && !this.fwc) { this.stuckT = (this.stuckT || 0) + dt; if (this.stuckT > 1.2) { this.stuckT = 0; this.x -= Math.cos(this.h) * 24; this.y -= Math.sin(this.h) * 24; this.h = Math.atan2(py - this.y, px - this.x); this.planRoute(); } } else this.stuckT = 0;
     }
+    // steering it yourself with a course set: keep up with where you are along it (the arrow and the course line
+    // follow it), and plot it again from here once you've wandered well off it
+    if (!this.auto && this.path && this.dest && !this.panel) {
+      const r = this.nearRoute(); this.reT = Math.max(0, (this.reT || 0) - dt);
+      if (r.best <= 420) this.ri = r.bi;
+      else if (!this.reT && this.v > 5) { this.reT = 3; this.planRoute(true); }
+    }
+    this.via = this.dest && this.path ? creekOn(this.path, this.x, this.y, this.ri + 1) : null;
     this.rudder = approach(this.rudder, rud, 8, dt);
     // throttle
     let target = Math.min(NOTCH[this.notch].v, cap);
@@ -622,7 +693,7 @@ class SeaScene {
       const nm = dist(this.x, this.y, xy[0], xy[1]) / UNITS_PER_NM;
       text(ctx, (this.dest === 'home' ? 'Home dock' : SPOTS[this.dest].name) + ' · ' + nm.toFixed(1) + ' nm', px + 16, 32, { size: 15, color: zone ? PAL.ink : '#fff', weight: 800, maxW: pw - 110 });
     } else text(ctx, this.areaName(), px + 16, 32, { size: 15, color: zone ? PAL.ink : '#fff', weight: 800, maxW: pw - 110 });
-    text(ctx, zone ? 'NO WAKE ZONE · keep it SLOW' : xy ? this.areaName() : 'Exploring', px + 16, 50, { size: 12, color: zone ? '#c0392b' : '#9fb8c2', weight: 800, maxW: pw - 110 });
+    text(ctx, zone ? 'NO WAKE ZONE · keep it SLOW' : xy ? (this.via ? 'via ' + this.via.name : this.areaName()) : 'Exploring', px + 16, 50, { size: 12, color: zone ? '#c0392b' : '#9fb8c2', weight: 800, maxW: pw - 110 });
     text(ctx, depth > 99 ? (depth > 600 ? '600+' : Math.round(depth)) + ' ft' : depth.toFixed(1) + ' ft', px + pw - 14, 33, { size: 18, align: 'right', color: depth < 3 ? PAL.bad : depth < 5 ? PAL.warn : zone ? '#0b7285' : '#7ff0ff', weight: 800 });
     text(ctx, 'DEPTH', px + pw - 14, 50, { size: 11, align: 'right', color: zone ? '#5b7380' : '#9fb8c2', weight: 800 });
     // minimap (tap for the chart)
@@ -664,18 +735,21 @@ class SeaScene {
     if (this.zone && !open && this.v > NO_WAKE) banner('NO WAKE! Throttle down to SLOW', 'rgba(200,60,20,0.92)', '#fff');
     else if (!open && this.v > 140 && this.shallowAhead() < 2.6) banner('Shallow ahead! Ease off', 'rgba(230,200,120,0.95)', PAL.ink);
     else if (this.stall > 0 && !open) banner('Prop wrapped… ' + this.stall.toFixed(1) + 's', 'rgba(255,255,255,0.92)', PAL.ink);
-    // a pointer to the destination when it's off screen. Behind the boat it says which way to turn, so not while the
-    // autopilot drives: it's already turning, often around an island, and "Turn around" would only tell you to fight it
-    if (xy && !open && !this.auto && this.view === 'chase') {
-      const c = Chase.c, rel = angleDiff(Chase.yaw, Math.atan2(xy[1] - c.y, xy[0] - c.x)), half = Math.atan((W / 2 - 40) / c.F);
+    // a pointer the way to go when that's off screen: along the course (around the islands, through the creek), not
+    // straight at the spot. Behind the boat it says which way to turn, so not while the autopilot drives: it's already
+    // turning, often around an island, and "Turn around" would only tell you to fight it
+    const gxy = this.guideXY();
+    if (gxy && !open && !this.auto && this.view === 'chase') {
+      const c = Chase.c, rel = angleDiff(Chase.yaw, Math.atan2(gxy[1] - c.y, gxy[0] - c.x)), half = Math.atan((W / 2 - 40) / c.F);
       if (Math.abs(rel) > half) {
         const side = rel > 0 ? 1 : -1, ax = side > 0 ? W - mmW - 70 : 64, ay = c.hor + 40, pulse = 1 + Math.sin(t * 5) * 0.08;
         ctx.save(); ctx.translate(ax, ay); ctx.scale(side * pulse, pulse); ctx.fillStyle = 'rgba(255,214,90,0.95)'; ctx.strokeStyle = PAL.ink; ctx.lineWidth = 2.5;
         ctx.beginPath(); ctx.moveTo(26, 0); ctx.lineTo(-6, -20); ctx.lineTo(0, 0); ctx.lineTo(-6, 20); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
         text(ctx, Math.abs(rel) > 2.4 ? 'Turn around' : side > 0 ? 'Turn right' : 'Turn left', ax, ay + 40, { size: 15, align: 'center', color: PAL.sun, weight: 800, stroke: PAL.ink, sw: 4 });
+        if (this.via) text(ctx, 'to ' + this.via.name, ax, ay + 58, { size: 13, align: 'center', color: '#fff', weight: 800, stroke: PAL.ink, sw: 4 });
       }
-    } else if (xy && !open && this.view !== 'chase') {
-      const [tx, ty] = this.toScreen(xy[0], xy[1]);
+    } else if (gxy && !open && this.view !== 'chase') {
+      const [tx, ty] = this.toScreen(gxy[0], gxy[1]);
       if (tx < 30 || tx > W - 30 || ty < 70 || ty > H - 30) {
         const a = Math.atan2(ty - H / 2, tx - W / 2), r = Math.min(W * 0.42, H * 0.36), ax = W / 2 + Math.cos(a) * r, ay = H / 2 + Math.sin(a) * r;
         ctx.save(); ctx.translate(ax, ay); ctx.rotate(a); ctx.fillStyle = 'rgba(255,214,90,0.9)'; ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(-10, -13); ctx.lineTo(-4, 0); ctx.lineTo(-10, 13); ctx.closePath(); ctx.fill(); ctx.restore();
@@ -740,14 +814,28 @@ class SeaScene {
       if (known) { ctx.font = fnt(12, 800); const nw = ctx.measureText(SPOTS[id].name).width / 2 + 3; boxes.push([X - nw, Y + 12, X + nw, Y + 28]); }
     }
     boxes.push([M.X(World.home.x) - 8, M.Y(World.home.dockY) - 16, M.X(World.home.x) + 40, M.Y(World.home.dockY) + 8]);
+    // which side of the islands is which: you only get from one to the other through a creek, under the bridge
+    for (const [s2, msg] of [[-660, 'BAY SIDE ▲'], [600, 'OCEAN SIDE ▼']]) {
+      const X = M.X(14150), Y = M.Y(wy(14150, s2)); ctx.font = fnt(11, 800); const hw2 = ctx.measureText(msg).width / 2 + 3;
+      boxes.push([X - hw2, Y - 7, X + hw2, Y + 7]); lab(msg, 14150, wy(14150, s2), { size: 11, color: 'rgba(25,75,115,0.9)' });
+    }
     ctx.font = fnt(9, 800);
     for (const I of ISLANDS) {
       const lx = (I.x0 + Math.min(I.x1, WORLD.W)) / 2, hw = ctx.measureText(I.name).width / 2 + 3, side = I.name === 'ISLAMORADA' ? -260 : 260;
       const at = ([dx, dy]) => { const X = M.X(lx + dx), Y = M.Y(chainY(lx + dx) + dy); return [X - hw, Y - 6, X + hw, Y + 6]; };
       const tries = [];
-      for (const dy of [side, -side]) for (const px of [0, 12, -12, 24, -24, 36, -36]) if (Math.abs(px) < hw) tries.push([px * WORLD.W / cw, dy]);   // slid by up to its own half-width
-      const [dx, dy] = tries.find((p) => !hits(at(p))) || [0, side];
+      for (const dy of [side, -side, side * 1.9, -side * 1.9]) for (const px of [0, 12, -12, 24, -24, 36, -36, 48, -48]) if (Math.abs(px) < hw) tries.push([px * WORLD.W / cw, dy]);   // slid by up to its own half-width, then a bit farther out
+      const spot = tries.find((p) => !hits(at(p)));
+      if (!spot) continue;   // a small chart with no room: better no name than two on top of each other
+      const [dx, dy] = spot;
       boxes.push(at([dx, dy])); lab(I.name, lx + dx, chainY(lx + dx) + dy, { size: 9, color: 'rgba(90,70,30,0.85)' });
+    }
+    // the creeks: the only ways through the islands. The one the way there goes through is lit up and named.
+    const pv = this.previewPath(), via = this.sel ? this.wayTo(this.sel) : this.via;
+    for (const G of GAPS) {
+      const X = M.X(G.x), Y = M.Y(chainY(G.x)), hot = via === G, r = hot ? 6.5 : 4.5;
+      ctx.fillStyle = hot ? PAL.sun : '#ffffff'; ell(ctx, X, Y, r, r); ctx.fill(); ctx.strokeStyle = '#1f6fa8'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = '#1f6fa8'; for (const d of [-1, 1]) { ctx.beginPath(); ctx.moveTo(X - r * 0.5, Y + d * r * 0.15); ctx.lineTo(X + r * 0.5, Y + d * r * 0.15); ctx.lineTo(X, Y + d * r * 0.75); ctx.closePath(); ctx.fill(); }
     }
     // spots, rumors and home
     const pin = (id, x, y, known) => {
@@ -761,20 +849,36 @@ class SeaScene {
       const r = sel ? 15 : 12;
       ctx.fillStyle = 'rgba(0,0,0,0.25)'; ell(ctx, X + 1.5, Y + 3, r, r); ctx.fill();
       ctx.fillStyle = done ? '#cfd8dc' : sel ? PAL.sun : '#ffffff'; ell(ctx, X, Y, r, r); ctx.fill(); ctx.strokeStyle = id === this.dest ? PAL.sun : PAL.coral; ctx.lineWidth = 3; ctx.stroke();
-      ctx.save(); ctx.translate(X, Y); ctx.globalAlpha = done ? 0.5 : 1;
-      if (S.mode === 'bughunt') { ctx.rotate(-0.4); drawLobsterSide(ctx, r * 1.1, { t }); } else drawFish(ctx, S.species[0], r * 1.5, { wig: 0 });
+      ctx.save(); ctx.translate(X, Y); ctx.globalAlpha *= done ? 0.5 : 1;
+      if (S.mode === 'bughunt') { ctx.rotate(-0.45); ctx.translate(-r * 0.1, r * 0.15); drawLobsterSide(ctx, r * 1.75, { t }); } else drawFish(ctx, S.species[0], r * 1.5, { wig: 0 });
       ctx.restore();
       text(ctx, S.name, X, Y + r + 12, { size: 12, align: 'center', color: '#fff', weight: 800, stroke: PAL.ink, sw: 4 });
       UI.region('chartpin-' + id, X - 22, Y - 22, 44, 44, () => { this.sel = id; SFX.play('tick'); });
     };
+    const K = this.filt && SPOT_CATS.find((k) => k.id === this.filt);
     for (const id of SPOT_ORDER) {
-      const known = Charts.isKnown(id), [x, y] = known ? spotXY(id) : rumorXY(id);
+      const known = Charts.isKnown(id), [x, y] = known ? spotXY(id) : rumorXY(id), lit = !K || K.has(SPOTS[id]), X = M.X(x), Y = M.Y(y);
+      ctx.save(); if (!lit) ctx.globalAlpha = 0.28;
+      if (K && lit) { const rg = 20 + Math.sin(t * 5) * 2; ctx.strokeStyle = PAL.sun; ctx.lineWidth = 3; ell(ctx, X, Y, rg, rg); ctx.stroke(); }
       pin(id, x, y, known);
+      // a ? the picker lit up: what you'd find there
+      if (K && lit && !known) { ctx.save(); ctx.translate(X + 15, Y - 14); if (K.icon === 'lobster') { ctx.rotate(-0.4); drawLobsterSide(ctx, 18, {}); } else drawFish(ctx, K.icon, 22, { wig: 0 }); ctx.restore(); }
+      ctx.restore();
     }
     const hx = M.X(World.home.x), hy = M.Y(World.home.dockY);
     ctx.fillStyle = PAL.ink; ell(ctx, hx, hy, 6, 6); ctx.fill(); ctx.fillStyle = '#fff'; ell(ctx, hx, hy, 2.5, 2.5); ctx.fill();
     text(ctx, 'Home', hx + 9, hy - 6, { size: 11, color: PAL.ink, weight: 800 });
     UI.region('chartpin-home', hx - 16, hy - 16, 32, 32, () => { this.sel = 'home'; SFX.play('tick'); });
+    if (pv) {
+      const way = () => { ctx.beginPath(); ctx.moveTo(M.X(this.x), M.Y(this.y)); for (const q of pv) ctx.lineTo(M.X(q[0]), M.Y(q[1])); ctx.stroke(); };
+      ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 5; way();
+      ctx.strokeStyle = '#0b3d5c'; ctx.lineWidth = 2.5; ctx.setLineDash([4, 6]); ctx.lineDashOffset = -t * 14; way(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
+    }
+    if (via) {
+      const X = M.X(via.x), Y = M.Y(chainY(via.x)); ctx.font = fnt(12, 800); const w2 = ctx.measureText(via.name).width + 16, bx = clamp(X - w2 / 2, cx + 4, cx + cw - w2 - 4), by = Y + 10;
+      ctx.fillStyle = 'rgba(8,40,56,0.9)'; rr(ctx, bx, by, w2, 20, 10); ctx.fill();
+      text(ctx, via.name, bx + w2 / 2, by + 14.5, { size: 12, align: 'center', color: PAL.sun, weight: 800 });
+    }
     if (this.route && this.dest) { ctx.strokeStyle = 'rgba(210,120,20,0.9)'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 4]); ctx.beginPath(); ctx.moveTo(M.X(this.x), M.Y(this.y)); for (let i = this.ri; i < this.route.length; i++) ctx.lineTo(M.X(this.route[i][0]), M.Y(this.route[i][1])); ctx.stroke(); ctx.setLineDash([]); }
     ctx.save(); ctx.translate(M.X(this.x), M.Y(this.y)); ctx.rotate(this.h); ctx.fillStyle = '#d7262e'; ctx.beginPath(); ctx.moveTo(11, 0); ctx.lineTo(-7, -7); ctx.lineTo(-7, 7); ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
     ctx.restore();
@@ -784,7 +888,12 @@ class SeaScene {
     // header
     text(ctx, 'The Chart', 24, 50, { display: true, size: 30, color: '#fff' });
     const known = Charts.known().size;
-    text(ctx, 'Spots found: ' + known + ' / ' + SPOT_ORDER.length + (known < SPOT_ORDER.length ? ' · run past a ? to find it' : ' · you found them all!'), 200, 46, { size: 15, color: '#cfe3ea', weight: 700, maxW: W - 360 });
+    // what do you want to catch? Lights up those spots and picks the closest one
+    const x0 = 196, gap = 8, chipW = Math.min(136, (W - 142 - x0 - gap * (SPOT_CATS.length - 1)) / SPOT_CATS.length), icons = chipW >= 112;
+    SPOT_CATS.forEach((K2, i) => {
+      const on = this.filt === K2.id, icon = !icons ? null : (g, ix, iy) => { g.save(); g.translate(ix, iy); if (K2.icon === 'lobster') { g.rotate(-0.4); drawLobsterSide(g, 22, {}); } else drawFish(g, K2.icon, 26, { wig: 0 }); g.restore(); };
+      UI.button(ctx, 'cat-' + K2.id, x0 + i * (chipW + gap), 16, chipW, 40, K2.name, () => this.pickCat(K2.id), { style: on ? 'primary' : 'dark', size: 15, r: 20, icon, selected: on });
+    });
     UI.button(ctx, 'chartclose', W - 130, 14, 116, 44, 'Close', () => { this.panel = null; this.sel = null; }, { style: 'ghost', size: 18, key: 'Escape|KeyM' });
     // the side card
     const sx = cx + cw + 14, sw = W - sx - 14;
@@ -792,8 +901,9 @@ class SeaScene {
       const sel = this.sel;
       panel(ctx, sx, cy, sw, ch, { r: 16 });
       if (!sel) {
-        para(ctx, this.homeRun ? 'Tap Home to set a course back to the dock.' : 'Tap a spot to see what bites there. Set a course and the autopilot drives, or skip the ride.', sx + 16, cy + 30, sw - 32, { size: 15, color: '#cfe3ea', weight: 600, lh: 20 });
-        let y = cy + 130;
+        const used = para(ctx, this.homeRun ? 'Tap Home to set a course back to the dock.' : 'Pick what to catch up top, or tap a spot. Set course and the autopilot drives you there.', sx + 16, cy + 30, sw - 32, { size: 15, color: '#cfe3ea', weight: 600, lh: 20 });
+        text(ctx, 'Spots found: ' + known + ' / ' + SPOT_ORDER.length + (known < SPOT_ORDER.length ? ' · run past a ? to find it' : ' · all of them!'), sx + 16, cy + 30 + used + 4, { size: 13, color: '#9fb8c2', weight: 700, maxW: sw - 32 });
+        let y = Math.max(cy + 130, cy + 30 + used + 30);
         text(ctx, this.c.mode === 'crew' ? 'TODAY · ' + this.c.done.length + '/' + this.c.spotsNeeded + ' SPOTS' : 'SOLO DAY', sx + 16, y, { size: 13, color: '#9fb8c2', weight: 800 }); y += 24;
         for (const ch2 of this.c.crew.slice().sort((a, b) => this.c.scores[b] - this.c.scores[a])) { crewAvatar(ctx, ch2, sx + 30, y, 14); text(ctx, CHARS[ch2].name, sx + 52, y + 5, { size: 15, color: '#fff', weight: 800 }); text(ctx, this.c.scores[ch2].toLocaleString(), sx + sw - 16, y + 5, { size: 15, align: 'right', color: PAL.sun, weight: 800 }); y += 34; }
         if (!this.homeRun && y + 110 < cy + ch) drawBountyList(ctx, sx + 16, y + 10, sw - 32, { bounties: Bounties.list(this.c), size: 14 });
@@ -808,14 +918,17 @@ class SeaScene {
         if (!known2) {
           text(ctx, 'Uncharted', sx + 16, cy + 36, { display: true, size: 22, color: '#fff' });
           text(ctx, 'Word on the dock:', sx + 16, cy + 62, { size: 14, color: PAL.coral, weight: 800 });
-          para(ctx, '“' + S.rumor + '”', sx + 16, cy + 86, sw - 32, { size: 15, color: '#fff', weight: 600, lh: 20 });
+          const used = para(ctx, '“' + S.rumor + '”', sx + 16, cy + 86, sw - 32, { size: 15, color: '#fff', weight: 600, lh: 20 }), g2 = this.wayTo(sel), [rx, ry] = rumorXY(sel);
+          if (g2) text(ctx, (baySide(rx, ry) ? 'BAY SIDE' : 'OCEAN SIDE') + ': go through ' + g2.name, sx + 16, cy + 104 + used, { size: 13, color: PAL.sun, weight: 800, maxW: sw - 30 });
           para(ctx, 'Drive near the ? to find it and put it on the chart.', sx + 16, cy + ch - 60, sw - 32, { size: 14, color: '#9fb8c2', weight: 600, lh: 18 });
         } else {
           const [px2, py2] = spotXY(sel), nm = dist(this.x, this.y, px2, py2) / UNITS_PER_NM;
           text(ctx, S.name, sx + 16, cy + 36, { display: true, size: 22, color: '#fff', maxW: sw - 30 });
           text(ctx, S.kind.toUpperCase() + ' · ' + S.depth + ' · ' + nm.toFixed(1) + ' nm', sx + 16, cy + 60, { size: 13, color: PAL.coral, weight: 800, maxW: sw - 30 });
-          const used = para(ctx, S.blurb, sx + 16, cy + 84, sw - 32, { size: 14, color: '#dcebf0', weight: 500, lh: 18 });
-          const iy = cy + 96 + used, per = Math.max(1, Math.floor((sw - 24) / 44));
+          const g2 = this.homeRun ? null : this.wayTo(sel), by0 = cy + 84 + (g2 ? 22 : 0);
+          if (g2) text(ctx, (baySide(px2, py2) ? 'BAY SIDE' : 'OCEAN SIDE') + ': go through ' + g2.name, sx + 16, cy + 82, { size: 13, color: PAL.sun, weight: 800, maxW: sw - 30 });
+          const used = para(ctx, S.blurb, sx + 16, by0, sw - 32, { size: 14, color: '#dcebf0', weight: 500, lh: 18 });
+          const iy = by0 + 12 + used, per = Math.max(1, Math.floor((sw - 24) / 44));
           const nIc = Math.min(S.species.length, per * 2), here = this.homeRun ? [] : Bounties.list(this.c).filter((b) => Bounties.here(b, sel)), by = iy + Math.ceil(nIc / per) * 30 + 6;
           if (here.length && by + 20 + here.length * 28 < cy + ch - 132) drawBountyList(ctx, sx + 16, by, sw - 32, { bounties: Bounties.list(this.c), spot: sel, only: 'here', title: 'BOUNTIES HERE', size: 14, rowH: 28 });
           S.species.slice(0, per * 2).forEach((k, i) => { ctx.save(); ctx.translate(sx + 34 + (i % per) * 44, iy + 10 + Math.floor(i / per) * 30); if (k === 'lobster') drawLobsterSide(ctx, 22, {}); else drawFish(ctx, k, 38, { wig: 0, sil: Records.all()[k] ? null : 'rgba(255,255,255,0.35)' }); ctx.restore(); });
