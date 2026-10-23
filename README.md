@@ -57,7 +57,7 @@ the reef line, and the Gulf Stream out past the drop-off. The far spots are 15 t
   go too fast and a red banner warns you. FWC warns you once, then pulls you over.
 - Dodge trap floats and channel markers, thread the bridge spans, catch air off other boats' wakes,
   let dolphins ride the bow, and slow down for manatees. It all adds up to captain's points.
-- **Only four spots are on the chart.** The other five you have to find. The chart shows a ? and a rumor
+- **Six spots are on the chart from the start.** The other six you have to find. The chart shows a ? and a rumor
   from the dock; run past it to discover the spot and put it on the chart for good.
 - When the day's spots are done, run home at sunset and tie up at the dock. The end of the day names the Captain of
   the Day (or the tie).
@@ -94,7 +94,10 @@ Held upright, the game shows a small turning phone above it: it plays that way t
 | Spot | Game | Where |
 |---|---|---|
 | Hen & Chickens | Lobster (the Bug Hunt) | Patch reef in Hawk Channel off Plantation Key |
+| Bayside Rocks | Lobster, shallow | Rock piles in the turtle grass, through Snake Creek on the bay side |
+| Pickles Reef | Lobster, deeper | The reef line straight out from Tavernier |
 | Alligator Reef | Lobster, deeper | Under the old lighthouse on the reef line (find it) |
+| Islamorada Patches | Lobster | Little patch reefs in Hawk Channel off Islamorada (find it) |
 | The Ledge | Bottom fishing | The reef edge in 95 feet |
 | Eagle Wreck | Wreck fishing | A sunken freighter in 110 feet off Islamorada (find it) |
 | The Weedline | Trolling | Offshore on the Gulf Stream edge |
@@ -103,7 +106,10 @@ Held upright, the game shows a small turning phone above it: it plays that way t
 | Channel Five | Bridge fishing | Under the Channel Five bridge, down the Keys (find it) |
 | Flamingo | Everglades | All the way across Florida Bay (find it) |
 
-**Lobster (the Bug Hunt).** Free-dive for spiny lobster. Look for antennae poking out of holes in the ledges; most holes
+**Lobster (the Bug Hunt).** Free-dive for spiny lobster at five spots: two patch reefs (Hen & Chickens, the Islamorada
+Patches), the reef line (Pickles Reef, Alligator Reef: deeper, bigger bugs, more morays), and Bayside Rocks, a shallow
+turtle-grass bay with low rock piles and sponges (easy on your air, lots of shorts). At a lobster spot the button says
+**Dive for lobster**, and after the ride **Let's go lobstering**. Look for antennae poking out of holes in the ledges; most holes
 are empty, and some have morays. Hold on a hole (or TICKLE) to coax the bug out. Just before it twitches, its antennae go
 stiff and shake, and the hole and the button say **LET GO**: let go then, or it backs in. It says **WAIT** while it settles,
 then **HOLD AGAIN**. Get close and a tag under the hole says what kind of bug
@@ -135,7 +141,12 @@ Trap floats wrap your prop and foul your lures.
 **The backcountry** (Florida Bay, Channel Five, Flamingo). Sight-fishing from a poling skiff. Whoever isn't fishing is on
 the pole (◀ ▶), pushing you along the flat and calling fish by the clock. The fish are faint shadows; look for tails, wakes,
 mud puffs and rolling tarpon. Press and hold where you want the fly, let go to cast, and lead the fish. Strip in its rhythm
-and set the hook when it eats. At Channel Five the tide carries your fly past the pilings; at Flamingo, snook hug the
+and set the hook when it eats (IT ATE IT! TAP TO SET!): there's always time for one more strip at the fish's own pace, so
+tapping in its rhythm sets it. The ? button (or H) shows how, and it opens by itself on each angler's first time on the
+flats. Until an angler hooks a first fish there, the flats coach them: a ring and a name on the fish the poler calls, a
+CAST HERE target in front of it (past where it spooks, inside where it notices, not where the line would land on it),
+a ring on the fly that closes on the fish's strip rhythm and turns green for STRIP!, the four steps (Spot, Cast,
+Strip, Set), and a longer window to set that first hook. At Channel Five the tide carries your fly past the pilings; at Flamingo, snook hug the
 mangrove roots and reds and drum tail on the mud. Tarpon, bonefish and permit is a Grand Slam.
 
 **The fight** (all fishing spots). Hold to reel and keep the drag needle in the green. The bar at the bottom lights up

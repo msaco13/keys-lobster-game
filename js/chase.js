@@ -424,7 +424,7 @@ const Chase = {
     const S = SPOTS[id], ok = spotAllowed(id, s.c), done = s.c.done.includes(id) && s.c.mode === 'crew', here = s.inSpot === id;
     const sz = clamp(10 + 2200 / lp.z, 12, 20), a = (ok ? 1 : 0.6) * clamp(1.15 - this.fog(lp.z) * 0.6, 0.55, 1);
     text(g, S.name, lp.x, lp.y, { size: sz, align: 'center', color: here ? PAL.sun : '#fff', weight: 800, stroke: PAL.ink, sw: 4, alpha: a });
-    text(g, done ? 'Fished today' : S.kind, lp.x, lp.y + sz * 0.95, { size: sz * 0.75, align: 'center', color: done ? '#cfd8dc' : PAL.sun, weight: 800, stroke: PAL.ink, sw: 3, alpha: a });
+    text(g, done ? 'Done today' : S.kind, lp.x, lp.y + sz * 0.95, { size: sz * 0.75, align: 'center', color: done ? '#cfd8dc' : PAL.sun, weight: 800, stroke: PAL.ink, sw: 3, alpha: a });
   },
   // a side-view sprite for something heading `h`: squeezed when it's going straight away from us, facing the way it's crossing
   drawSide(g, fn, p, h, arg, lift = 0) {

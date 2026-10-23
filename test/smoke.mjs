@@ -87,10 +87,10 @@ for (const dev of [{ label: 'phone', viewport: { width: 844, height: 390 }, touc
     // where to go: the chart's picker lights up the lobster spots and the bay side, and the way to the bay goes
     // through a creek. Steering yourself, the arrow leads along the course, not over the islands.
     await press('chart'); await press('cat-lobster');
-    const lob = await page.evaluate(() => Game.scene.sel);
+    const lob = await page.evaluate(() => ({ id: Game.scene.sel, mode: SPOTS[Game.scene.sel] && SPOTS[Game.scene.sel].mode }));
     await press('cat-bay');
     const bay = await page.evaluate(() => { const s = Game.scene, g = s.wayTo('flats'); return { sel: s.sel, via: g && g.name }; });
-    check(lob === 'bughunt' && bay.sel === 'flats' && !!bay.via, dev.label + ': the chart picks the lobster spot and the bay side, and the way to the bay goes through a creek (' + JSON.stringify([lob, bay]) + ')');
+    check(lob.mode === 'bughunt' && bay.sel === 'flats' && !!bay.via, dev.label + ': the chart picks the lobster spot and the bay side, and the way to the bay goes through a creek (' + JSON.stringify([lob, bay]) + ')');
     await press('setcourse');
     const guide = await page.evaluate(() => { const s = Game.scene; s.auto = false; s.x = 8650; s.y = wy(8650, 900); s.planRoute(true); const g = s.guideXY(), via = creekOn(s.path, s.x, s.y, 1); return { dest: s.dest, via: via && via.name, bay: baySide(g[0], g[1]) }; });
     check(guide.dest === 'flats' && !!guide.via && guide.bay === false, dev.label + ': steering yourself, the arrow leads to the creek first (' + JSON.stringify(guide) + ')');
@@ -123,12 +123,31 @@ for (const dev of [{ label: 'phone', viewport: { width: 844, height: 390 }, touc
     await S.settle();
     check(order.captain === order.crew[1] && order.first === order.captain && new Set(order.order).size === order.crew.length && (await page.evaluate(() => Game.scene.ch)) === order.captain, dev.label + ': the captain fishes the spot first, then the rest in turn (' + order.order.join(' → ') + ')');
     // every kind of spot opens, runs, and has a fish fight
-    for (const [cls, spot, fight] of [['BottomScene', 'wreck', { sp: 'amberjack', weight: 30, ctxType: 'reef', depth: 100 }], ['TrollScene', 'troll', { sp: 'mahi', weight: 20, ctxType: 'offshore' }], ['FlatsScene', 'flats', { sp: 'redfish', weight: 8, ctxType: 'flats' }], ['BugHuntScene', 'alligator', null]]) {
+    for (const [cls, spot, fight] of [['BottomScene', 'wreck', { sp: 'amberjack', weight: 30, ctxType: 'reef', depth: 100 }], ['TrollScene', 'troll', { sp: 'mahi', weight: 20, ctxType: 'offshore' }], ['FlatsScene', 'flats', { sp: 'redfish', weight: 8, ctxType: 'flats' }], ['BugHuntScene', 'alligator', null], ['BugHuntScene', 'bayrocks', null]]) {
       await page.evaluate(([cls, spot]) => { Game.go(new (eval(cls))({ ch: 'jorge', spot, len: 120, weather: Trip.cur.weather, onEnd: () => {} }), true); }, [cls, spot]);
       await page.waitForTimeout(1500);
       let ok = (await name()) === cls && !(await gameErr());
       if (fight) { await page.evaluate((f) => Game.scene.startFight(f), fight); await page.waitForTimeout(1500); ok = ok && (await page.evaluate(() => !!Game.scene.child)) && !(await gameErr()); }
       check(ok, dev.label + ': ' + spot + ' runs' + (fight ? ', with a fish fight' : ''));
+    }
+    // more lobster: the new spots are on the chart (one to find), and a lobster spot asks you to dive, not fish
+    const more = await page.evaluate(() => ({ known: ['bayrocks', 'pickles'].every((id) => Charts.isKnown(id)), hidden: !Charts.isKnown('patches'), dive: spotDo('pickles'), fish: spotDo('troll').here, bay: !!(Game.scene.site && Game.scene.site.bay) }));
+    check(more.known && more.hidden && more.dive.here === 'Dive for lobster' && more.dive.go === 'Let’s go lobstering' && more.fish === 'Fish here' && more.bay, dev.label + ': new lobster spots, the bayside dive, and lobster spots say dive (' + JSON.stringify(more) + ')');
+    // the flats: the first visit opens how to catch one, then the coaching rings the fish your buddy calls; the eat
+    // leaves time for a strip at the fish's own pace, and the first hook ends the coaching
+    {
+      await page.evaluate(() => { Store.set('coach_flats1_jemel', false); Store.set('coach_flatset_jemel', false); Game.go(new FlatsScene({ ch: 'jemel', spot: 'flats', len: 120, weather: Trip.cur.weather, onEnd: () => {} }), true); });
+      await page.waitForTimeout(700);
+      const card = await page.evaluate(() => ({ help: !!Game.scene.help, left: Game.scene.timeLeft }));
+      await press('help-ok');
+      const fl = await page.evaluate(() => {
+        const s = Game.scene; for (let i = 0; i < 1200 && !s.coachFish(); i++) s.update(1 / 30);
+        const f = s.coachFish(); if (!f) return { coach: s.coach, help: !!s.help, fish: false };
+        s.lure = { x: f.x + Math.cos(f.hd) * f.len * 0.3, y: f.y + Math.sin(f.hd) * f.len * 0.3, t: 0, hop: 0 }; f.state = 'follow'; f.interest = 1.2; f.lastStrip = s.t; s.update(1 / 30);
+        const win = s.eat ? +(s.eat.t0 - f.sp.strip).toFixed(2) : null; s.setHook();
+        return { coach: s.coach, help: !!s.help, fish: true, spare: win, done: Store.get('coach_flatset_jemel', false) };
+      });
+      check(card.help && card.left >= 119.9 && !fl.help && fl.fish && fl.spare >= 0.25 && fl.done && !fl.coach && !(await gameErr()), dev.label + ': the flats show how, ring the called fish, give time to set, and stop coaching after the first hook (' + JSON.stringify([card, fl]) + ')');
     }
     for (const cls of ['LogbookScene', 'HowToScene', 'TitleScene']) { await page.evaluate((cls) => Game.go(new (eval(cls))(), true), cls); await page.waitForTimeout(500); check((await name()) === cls && !(await gameErr()), dev.label + ': ' + cls + ' opens'); }
   } catch (e) { check(false, dev.label + ': ' + e.message); }

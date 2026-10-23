@@ -109,13 +109,17 @@ const PATCH_REEFS = [];
 (function buildReefs() {
   const [hx, hy] = spotXY('bughunt'), rng = mulberry(777);
   for (let i = 0; i < 7; i++) { const a = (i / 7) * TAU + rng(), r = 120 + rng() * 120; PATCH_REEFS.push({ x: hx + Math.cos(a) * r * 1.4, y: hy + Math.sin(a) * r * 0.8, rx: 50 + rng() * 60, ry: 34 + rng() * 40 }); }
+  const [px, py] = spotXY('patches');
   for (let x = 400; x < 15000; x += 420 + rng() * 380) {
     const s = 1260 + rng() * 760, y = wy(x, s), rx = 70 + rng() * 140, ry = 40 + rng() * 80;
     let clear = true; for (const id of SPOT_ORDER) { if (id === 'bughunt') continue; const [sx, sy] = spotXY(id); if (dist(x, y, sx, sy) < SPOTS[id].r + 220) clear = false; }
-    if (dist(x, y, hx, hy) < 520) clear = false;
+    if (dist(x, y, hx, hy) < 520 || dist(x, y, px, py) < 520) clear = false;
     if (clear) PATCH_REEFS.push({ x, y, rx, ry });
   }
   for (const r of PATCH_REEFS) r.seed = rng() * 100;
+  // the Islamorada patches: a string of little ones along Hawk Channel (their own dice, so the rest of the reef stays put)
+  const r2 = mulberry(778);
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU + r2() * 0.6, r = 150 + r2() * 90; PATCH_REEFS.push({ x: px + Math.cos(a) * r * 1.6, y: py + Math.sin(a) * r * 0.7, rx: 40 + r2() * 45, ry: 28 + r2() * 30, seed: r2() * 100 }); }
 })();
 // within a boat's swing of a patch reef's groundable crown: routes keep this much sea room, since the autopilot cuts corners
 function nearReefCrown(x, y) { const s = y - chainY(x); if (s < 1000 || s > 2300) return false; for (const r of PATCH_REEFS) { const dx = (x - r.x) / (r.rx + 70), dy = (y - r.y) / (r.ry + 70); if (dx * dx + dy * dy < 0.2) return true; } return false; }
@@ -215,7 +219,7 @@ const World = {
     for (const id of SPOT_ORDER) {
       const [x, y] = spotXY(id), m = SPOTS[id].mode;
       if (m === 'flats') CARVE.push([x, y, SPOTS[id].r * 0.7, 2.4, 6]);
-      else if (m === 'bughunt') CARVE.push([x, y, 150, 10, 40]);
+      else if (m === 'bughunt') CARVE.push(SPOTS[id].variant === 'bay' ? [x, y, 170, 5, 10] : [x, y, 150, 10, 40]);   // the bayside rocks sit in a grassy basin
     }
     const C = WORLD.CELL, gw = (this.gw = Math.ceil(WORLD.W / C) + 1), gh = (this.gh = Math.ceil(WORLD.H / C) + 1);
     this.grid = new Float32Array(gw * gh);

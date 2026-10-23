@@ -21,15 +21,18 @@ async function open(w, h) {
   await page.goto('file://' + root + '/index.html'); await page.waitForTimeout(900);
   return page;
 }
-async function startSpot(page, spot, weatherId) {
-  await page.evaluate(([spot, wid]) => {
+// fresh: a first visit (the how-to card opens, and the coaching is on until a first hook); otherwise an angler who
+// has seen it all, so the screenshots and the catch-rate bot measure the game as it plays after that
+async function startSpot(page, spot, weatherId, fresh = false) {
+  await page.evaluate(([spot, wid, fresh]) => {
+    Store.set('coach_flats1_michael', !fresh); Store.set('coach_flatset_michael', !fresh);
     Trip.start({ mode: 'solo', crew: ['michael'], plan: 'solo', sessionLen: 120 });
     if (wid === 'glass') Trip.cur.weather = { id: 'glass', name: 'Glass calm', wind: '0–5 kts', vis: 1.25, drift: 0, aim: 0.75, tag: '#Glass' };
     if (wid === 'light') Trip.cur.weather = { id: 'light', name: 'Light chop', wind: '5–10 kts', vis: 1, drift: 0.5, aim: 1 };
     if (wid === 'breezy') Trip.cur.weather = { id: 'breezy', name: 'Breezy', wind: '15–20 kts', vis: 0.8, drift: 1, aim: 1.35 };
     window.__res = null;
     Game.go(new FlatsScene({ ch: 'michael', spot, len: 120, weather: Trip.cur.weather, onEnd: (r) => { window.__res = r; } }), true);
-  }, [spot, weatherId]);
+  }, [spot, weatherId, fresh]);
 }
 
 if (what === 'shots' || what === 'all') {
@@ -185,7 +188,12 @@ if (what === 'e2e' || what === 'all') {
   const tapBtn = async (id) => { const r = await page.evaluate((id) => { const r = UI.byId(id); return r && !r.disabled ? { x: Game.ox + (r.x + r.w / 2) * Game.scale, y: Game.oy + (r.y + r.h / 2) * Game.scale } : null; }, id); if (!r) { errs.push('no button ' + id); return; } await page.touchscreen.tap(r.x, r.y); await page.waitForTimeout(200); };
   const check = (label, ok, extra = '') => { console.log((ok ? 'ok   ' : 'FAIL ') + label, extra); if (!ok) errs.push('e2e: ' + label + ' ' + extra); };
   for (const spot of ['flats', 'bridge', 'flamingo']) {
-    await startSpot(page, spot, 'light'); await page.waitForTimeout(500);
+    await startSpot(page, spot, 'light', spot === 'flats'); await page.waitForTimeout(500);
+    if (spot === 'flats') {   // a first visit: how to catch one opens and the clock waits; Got it, like a player
+      const card = await page.evaluate(() => ({ help: !!Game.scene.help, left: Game.scene.timeLeft, coach: Game.scene.coach }));
+      await tapBtn('help-ok');
+      check(spot + ' first visit opens how to catch one, the clock waits, and Got it closes it', card.help && card.left >= 119.9 && card.coach && !(await page.evaluate(() => !!Game.scene.help)), JSON.stringify(card));
+    }
     const W = await page.evaluate(() => Game.W);
     const bx0 = await page.evaluate(() => Game.scene.bx);
     await tapBtn('poleR'); await page.waitForTimeout(1200);

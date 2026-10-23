@@ -119,6 +119,19 @@ const SPOTS = {
     rumor: 'The reef under Alligator Light is crawling with big lobster. Off Islamorada, out on the reef line.',
     blurb: 'Spur-and-groove reef under the old lighthouse. Deeper dives, bigger bugs, more morays. And the sharks know it.',
     tip: 'Deeper water: watch your air. Put the net behind a bug and it tail-flips right into it.' },
+  bayrocks: { id: 'bayrocks', name: 'Bayside Rocks', kind: 'Lobster', mode: 'bughunt', variant: 'bay', depth: '5–10 ft', at: [6310, -620], r: 260, charted: true, place: 'Bayside, Plantation Key',
+    species: ['lobster'],
+    blurb: 'Rock piles and sponges in the turtle grass, just through Snake Creek on the bay side of Plantation Key. Shallow and easy on your air: lots of bugs, lots of shorts.',
+    tip: 'Shallow water means long breath-holds. Gauge every bug: plenty of them are short.' },
+  pickles: { id: 'pickles', name: 'Pickles Reef', kind: 'Lobster', mode: 'bughunt', variant: 'reef', depth: '10–25 ft', at: [9900, 2300], r: 300, charted: true, place: 'Pickles Reef, off Tavernier',
+    species: ['lobster'],
+    blurb: 'The stretch of the reef line closest to the dock: spur-and-groove coral straight out from Tavernier. Ledges full of bugs, and a moray or two.',
+    tip: 'Deeper than the patch reef: watch your air. Put the net behind a bug and it tail-flips right into it.' },
+  patches: { id: 'patches', name: 'Islamorada Patches', kind: 'Lobster', mode: 'bughunt', variant: 'patch', depth: '12–18 ft', at: [5200, 1500], r: 300, charted: false, place: 'Hawk Channel off Islamorada',
+    species: ['lobster'],
+    rumor: 'A string of little patch reefs in Hawk Channel off Islamorada, and nobody dives them. Head west past Snake Creek.',
+    blurb: 'A string of little patch reefs in Hawk Channel off Islamorada. Quiet, shallow, and full of bugs.',
+    tip: 'Patch reefs: the bugs hide in the holes at the foot of each ledge.' },
   bottom: { id: 'bottom', name: 'The Ledge', kind: 'Bottom Fishing', mode: 'bottom', variant: 'ledge', depth: '95 ft', at: [8400, 2900], r: 320, charted: true, place: 'Off Tavernier',
     species: ['whitegrunt', 'lane', 'yellowtail', 'mangrove', 'mutton', 'hogfish', 'trigger', 'redgrouper', 'blackgrouper', 'amberjack', 'goliath'],
     blurb: 'The reef edge drops off into 95 feet. Watch the fish finder, drop baits to the marks, wait out the nibbles, set the hook on the real bite.',
@@ -152,9 +165,11 @@ const SPOTS = {
     blurb: 'The edge of the Everglades. Mangrove shorelines, tannin water, snook under the roots and reds tailing on the mud.',
     tip: 'Snook hug the mangroves. Drum and reds tail on the mud. Cast tight to the roots.' }
 };
-const SPOT_ORDER = ['bughunt', 'alligator', 'bottom', 'wreck', 'troll', 'hump', 'flats', 'bridge', 'flamingo'];
+const SPOT_ORDER = ['bughunt', 'bayrocks', 'pickles', 'alligator', 'patches', 'bottom', 'wreck', 'troll', 'hump', 'flats', 'bridge', 'flamingo'];
+// what you do at a spot, for the buttons that take you there: lobster spots are a dive, the rest are fishing
+const spotDo = (id) => (SPOTS[id] && SPOTS[id].mode === 'bughunt' ? { here: 'Dive for lobster', go: 'Let’s go lobstering' } : { here: 'Fish here', go: 'Let’s fish' });
 const spotMode = (id) => (SPOTS[id] ? SPOTS[id].mode : id);
-// Spots this device has found on the water (the starting four are always on the chart)
+// Spots this device has found on the water (the charted ones are always on the chart)
 const Charts = {
   known() { const k = Store.arr('charted'); return new Set(SPOT_ORDER.filter((id) => SPOTS[id].charted || k.includes(id))); },
   isKnown(id) { return this.known().has(id); },
