@@ -84,6 +84,16 @@ for (const dev of [{ label: 'phone', viewport: { width: 844, height: 390 }, touc
       check(paused === 'pause' && sel === pin.id, dev.label + ': a tap just outside a small button still presses it (pause: ' + paused + ', chart pin ' + pin.id + ': ' + sel + ')');
       await press('chartclose');
     }
+    // where to go: the chart's picker lights up the lobster spots and the bay side, and the way to the bay goes
+    // through a creek. Steering yourself, the arrow leads along the course, not over the islands.
+    await press('chart'); await press('cat-lobster');
+    const lob = await page.evaluate(() => Game.scene.sel);
+    await press('cat-bay');
+    const bay = await page.evaluate(() => { const s = Game.scene, g = s.wayTo('flats'); return { sel: s.sel, via: g && g.name }; });
+    check(lob === 'bughunt' && bay.sel === 'flats' && !!bay.via, dev.label + ': the chart picks the lobster spot and the bay side, and the way to the bay goes through a creek (' + JSON.stringify([lob, bay]) + ')');
+    await press('setcourse');
+    const guide = await page.evaluate(() => { const s = Game.scene; s.auto = false; s.x = 8650; s.y = wy(8650, 900); s.planRoute(true); const g = s.guideXY(), via = creekOn(s.path, s.x, s.y, 1); return { dest: s.dest, via: via && via.name, bay: baySide(g[0], g[1]) }; });
+    check(guide.dest === 'flats' && !!guide.via && guide.bay === false, dev.label + ': steering yourself, the arrow leads to the creek first (' + JSON.stringify(guide) + ')');
     // skip the ride to the nearest charted spot and fish it
     await page.evaluate(() => { const s = Game.scene; s.skipTo('bughunt'); });
     await S.settle(); await page.waitForTimeout(300);
@@ -95,6 +105,9 @@ for (const dev of [{ label: 'phone', viewport: { width: 844, height: 390 }, touc
     await press('help-ok'); await page.waitForTimeout(600);
     const dive = await page.evaluate(() => ({ help: !!Game.scene.help, left: Game.scene.timeLeft }));
     check(card.help && card.left >= 119.9 && !dive.help && dive.left < card.left, dev.label + ': first dive shows how to catch a bug; Got it starts the clock (' + JSON.stringify([card, dive]) + ')');
+    await page.waitForTimeout(900);
+    const coach = await page.evaluate(() => { const s = Game.scene, b = s.coachBug(); return { coach: s.coach, arrow: !!b }; });
+    check(coach.coach && coach.arrow, dev.label + ': a first dive points the way to a bug (' + JSON.stringify(coach) + ')');
     await page.evaluate(() => { const s = Game.scene; s.timeLeft = 0.05; });
     await page.waitForFunction(() => Game.scene.constructor.name === 'ResultsScene', null, { timeout: 15000 }).catch(() => {});
     await S.settle();

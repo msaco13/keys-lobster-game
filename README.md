@@ -41,9 +41,16 @@ the reef line, and the Gulf Stream out past the drop-off. The far spots are 15 t
   switches to the overhead map view, and it's remembered.
 - **Steer** by holding left or right of the boat (or ← →); the farther out you hold, the harder it turns. In the top-down
   view, hold where you want to go. **Throttle** is the lever: STOP, IDLE, SLOW, CRUISE, FULL (or ↑ ↓).
-- **The chart** (Chart button or M) shows every spot you know about. Pick one and **Set course**: the autopilot drives the
-  channels for you, and you can grab the wheel any time. **Skip the ride** if you just want to fish: it goes straight to
-  the hand-off, with no captain's points.
+- **The chart** (Chart button or M) shows every spot you know about. Across the top it asks what you want to catch:
+  **Lobster**, **Reef & wreck**, **Offshore** or **Bayside** lights up those spots (and any ? that hides one) and picks
+  the closest. Tap a spot and the chart draws the way there; anything on the other side of the islands says which creek
+  to go through. Then **Set course**: the autopilot drives the channels for you, and you can grab the wheel any time.
+  **Skip the ride** if you just want to fish: it goes straight to the hand-off, with no captain's points.
+- **The bay side and the ocean side.** The islands only open at the creeks and channels under the Overseas Highway
+  (Tavernier Creek is right by the dock; Snake Creek, Whale Harbor, Channel Two and Channel Five are farther down). The
+  chart marks each one, and labels which side is which. Steering yourself with a course set, the top panel says
+  "via Tavernier Creek", the arrow leads along the course to the creek instead of straight over the land, and the creek
+  itself is lit up behind the boat.
 - **Read the water.** The depth sounder is top-center. Light water is shallow: run it fast and you go aground.
   Florida Bay is a maze of mud banks; follow the marked channels.
 - **No-wake zones** (the harbor, under the bridges, Flamingo) mean SLOW. The panel at the top turns white and says so;
@@ -86,23 +93,26 @@ Held upright, the game shows a small turning phone above it: it plays that way t
 
 | Spot | Game | Where |
 |---|---|---|
-| Hen & Chickens | Bug Hunt | Patch reef in Hawk Channel off Plantation Key |
-| Alligator Reef | Bug Hunt, deeper | Under the old lighthouse on the reef line (find it) |
+| Hen & Chickens | Lobster (the Bug Hunt) | Patch reef in Hawk Channel off Plantation Key |
+| Alligator Reef | Lobster, deeper | Under the old lighthouse on the reef line (find it) |
 | The Ledge | Bottom fishing | The reef edge in 95 feet |
 | Eagle Wreck | Wreck fishing | A sunken freighter in 110 feet off Islamorada (find it) |
 | The Weedline | Trolling | Offshore on the Gulf Stream edge |
 | The Hump | Deep trolling | An underwater mountain way offshore (find it) |
-| Florida Bay | Backcountry flats | Behind Tavernier |
+| Florida Bay | Backcountry flats | The bay side, through Tavernier Creek from the dock |
 | Channel Five | Bridge fishing | Under the Channel Five bridge, down the Keys (find it) |
 | Flamingo | Everglades | All the way across Florida Bay (find it) |
 
-**Bug Hunt.** Free-dive for spiny lobster. Look for antennae poking out of holes in the ledges; most holes are empty,
-and some have morays. Hold on a hole (or TICKLE) to coax the bug out. Just before it twitches, its antennae go stiff and
-shake (GET READY): let go then, or it backs in, and hold again after. Get close and a tag under the hole says what kind of bug
+**Lobster (the Bug Hunt).** Free-dive for spiny lobster. Look for antennae poking out of holes in the ledges; most holes
+are empty, and some have morays. Hold on a hole (or TICKLE) to coax the bug out. Just before it twitches, its antennae go
+stiff and shake, and the hole and the button say **LET GO**: let go then, or it backs in. It says **WAIT** while it settles,
+then **HOLD AGAIN**. Get close and a tag under the hole says what kind of bug
 it is: a **calm bug** gives you plenty of warning and is easy to net, a **skittish bug** gives you less, and a **wary old bug**
 (often the big ones, and every golden one) gives you a split second, scuttles fast once it's out, and runs after two misses.
 When it walks out, **tap the bug** (or anywhere near it) to swing your net; if it's too far, you swim over and swing.
-The ? button (or H) shows how to catch one at any time, and it opens by itself on each angler's first dive.
+The ? button (or H) shows how to catch one at any time, and it opens by itself on each angler's first dive. Until an
+angler nets a first bug, the dive coaches them: an arrow points at a hole with a bug in it (the one nearest the boat is
+always a calm one), the four steps (Find, Tickle, Net, Gauge) show which one they're on, and a tip says what to do now.
 Lobsters tail-flip backward toward their hole, so watch for
 the crouch, and the pro move is to set the net down behind it and let it flip in. Then gauge it: keep it only if the back of the
 shell sits past the end of the 3" gauge and there are no eggs under the tail. Six per person, and FWC checks your bag at the ramp.

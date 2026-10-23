@@ -249,7 +249,7 @@ const Chase = {
         items.push({ z: p.z, f: (g) => this.drawDeck(g, x, xb2) });
       }
       for (const pr of World.piers) if (pr.g === gp) { const p = P(pr.x, pr.y, 0); if (!p || p.d < 8 || !onScreen(p, 100)) continue; items.push({ z: p.z + 2, f: (g) => this.drawPier(g, pr, p) }); }
-      const lp = P(gp.x, gp.y, 70); if (lp && lp.z < 2600 && onScreen(lp)) items.push({ z: lp.z - 1, f: (g) => text(g, gp.name, lp.x, lp.y, { size: clamp(9 + 1500 / lp.z, 12, 18), align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.5)', sw: 4, alpha: clamp(1 - this.fog(lp.z), 0.3, 1) }) });
+      const hot = s.via === gp, lp = P(gp.x, gp.y, 70); if (lp && lp.z < (hot ? 7000 : 2600) && onScreen(lp)) items.push({ z: lp.z - 1, f: (g) => this.drawCreekLabel(g, s, gp, lp, hot) });
     }
     for (const car of World.cars) { if (!gapAt(car.x) || !near(car.x, chainY(car.x), 2500)) continue; const y = chainY(car.x) + (car.dir > 0 ? 6 : -6), p = P(car.x, y, 30); if (!onScreen(p) || p.d < 10) continue; items.push({ z: p.z - 0.5, f: (g) => this.drawCar(g, car, p) }); }
     // fishing spots: a buoy with a flag, and the name hanging over it
@@ -413,6 +413,12 @@ const Chase = {
     const s = tp.s; g.strokeStyle = '#222'; g.lineWidth = Math.max(1, 2 * s); g.beginPath(); g.moveTo(p.x, p.y - 6 * s); g.lineTo(tp.x, tp.y); g.stroke();
     g.fillStyle = PAL.sun; g.beginPath(); g.moveTo(tp.x, tp.y); g.lineTo(tp.x + 22 * s, tp.y + 6 * s + Math.sin(t * 5) * 2 * s); g.lineTo(tp.x, tp.y + 12 * s); g.fill();
     const r = Math.max(2, 10 * p.s); g.fillStyle = PAL.coral; ell(g, p.x, p.y - r * 0.6, r, r * 0.9); g.fill(); g.fillStyle = '#fff'; g.fillRect(p.x - r, p.y - r * 0.8, r * 2, r * 0.35);
+  },
+  // a creek's name over the bridge; the one the course goes through is lit up and says where it leads
+  drawCreekLabel(g, s, gp, lp, hot) {
+    const sz = clamp(9 + 1500 / lp.z, hot ? 15 : 12, 18), a = hot ? 1 : clamp(1 - this.fog(lp.z), 0.3, 1);
+    text(g, gp.name, lp.x, lp.y, { size: sz, align: 'center', color: hot ? PAL.sun : '#fff', weight: 800, stroke: hot ? PAL.ink : 'rgba(0,0,0,0.5)', sw: 4, alpha: a });
+    if (hot) text(g, baySide(s.x, s.y) ? 'out to the ocean side' : 'through to the bay side', lp.x, lp.y + sz * 0.95, { size: sz * 0.75, align: 'center', color: '#fff', weight: 800, stroke: PAL.ink, sw: 3 });
   },
   drawSpotLabel(g, s, id, lp) {
     const S = SPOTS[id], ok = spotAllowed(id, s.c), done = s.c.done.includes(id) && s.c.mode === 'crew', here = s.inSpot === id;

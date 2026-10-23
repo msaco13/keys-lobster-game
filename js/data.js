@@ -110,13 +110,13 @@ function makeCatch(key, weight, ch, spot, extras = []) {
 /* Fishing spots. mode picks the game, variant dresses it up. at = [x along the Keys, offset from the island chain]
    in world units (positive is the ocean side, negative is Florida Bay). Uncharted spots have to be found on the water. */
 const SPOTS = {
-  bughunt: { id: 'bughunt', name: 'Hen & Chickens', kind: 'Bug Hunt', mode: 'bughunt', variant: 'patch', depth: '12–20 ft', at: [6960, 1310], r: 300, charted: true, place: 'Plantation Key, Florida',
+  bughunt: { id: 'bughunt', name: 'Hen & Chickens', kind: 'Lobster', mode: 'bughunt', variant: 'patch', depth: '12–20 ft', at: [6960, 1310], r: 300, charted: true, place: 'Plantation Key, Florida',
     species: ['lobster'],
     blurb: 'A patch reef in Hawk Channel off Plantation Key. Free-dive the ledges for spiny lobster: tickle them out, swing the net, gauge every bug.',
     tip: 'Hold on the antennae to tickle, let go when they twitch. When it walks out, click or tap the bug to swing the net.' },
-  alligator: { id: 'alligator', name: 'Alligator Reef', kind: 'Bug Hunt', mode: 'bughunt', variant: 'reef', depth: '15–35 ft', at: [4640, 2380], r: 320, charted: false, place: 'Alligator Reef Light',
+  alligator: { id: 'alligator', name: 'Alligator Reef', kind: 'Lobster', mode: 'bughunt', variant: 'reef', depth: '15–35 ft', at: [4640, 2380], r: 320, charted: false, place: 'Alligator Reef Light',
     species: ['lobster'],
-    rumor: 'The reef under Alligator Light is crawling with big bugs. Off Islamorada, out on the reef line.',
+    rumor: 'The reef under Alligator Light is crawling with big lobster. Off Islamorada, out on the reef line.',
     blurb: 'Spur-and-groove reef under the old lighthouse. Deeper dives, bigger bugs, more morays. And the sharks know it.',
     tip: 'Deeper water: watch your air. Put the net behind a bug and it tail-flips right into it.' },
   bottom: { id: 'bottom', name: 'The Ledge', kind: 'Bottom Fishing', mode: 'bottom', variant: 'ledge', depth: '95 ft', at: [8400, 2900], r: 320, charted: true, place: 'Off Tavernier',
