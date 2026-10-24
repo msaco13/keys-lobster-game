@@ -202,6 +202,7 @@ class BugHuntScene extends SessionBase {
     if (this.joy && this.joy.id === p.id) { this.joy.x = p.x; this.joy.y = p.y; }
   }
   pointerUp(p) {
+    if (this.paused || this.leaving) { this.press = null; this.joy = null; this.actionPtr = null; this.tickPtr = null; return; }   // let go under the pause menu: no swing
     if (this.press && this.press.id === p.id) { const [wx, wy] = this.toWorld(p); this.press = null; this.swingAt(wx, wy); }
     if (this.joy && this.joy.id === p.id) this.joy = null;
     if (this.actionPtr === p.id) this.actionPtr = null;

@@ -240,6 +240,13 @@ for (const run of RUNS) {
     await click('quityes'); await expectScene('TitleScene', 'solo quit');
     if (await has('resume')) throw new Error('solo day should not offer Resume trip');
   });
+  await path_('solo: the boat\'s Quit to title asks first (the day isn\'t saved)', async () => {
+    await fresh(); await page.evaluate(() => Trip.start({ mode: 'solo', crew: ['jorge'], plan: 'solo', sessionLen: 90 })); await jump('new SeaScene()', 500);
+    await click('pause'); await click('totitle'); if (!(await has('ask-leave'))) throw new Error('quitting a solo day from the boat did not ask');
+    await click('ask-stay'); await expectScene('SeaScene', 'keep fishing'); if (!(await has('totitle'))) throw new Error('Keep fishing should go back to the pause menu');
+    await click('totitle'); await key('Escape'); if (!(await has('totitle'))) throw new Error('Esc on the question should go back to the pause menu');
+    await click('totitle'); await click('ask-leave'); await expectScene('TitleScene', 'leave the solo day');
+  });
   await path_('solo: results -> back to the boat', async () => {
     await fresh(); await page.evaluate(() => Trip.start({ mode: 'solo', crew: ['michael'], plan: 'solo', sessionLen: 90 }));
     await toTurn('bughunt', 0); await click('ready'); await page.waitForTimeout(300); await timeOut();

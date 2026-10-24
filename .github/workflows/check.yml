@@ -42,6 +42,8 @@ jobs:
         run: node test/smoke.mjs dist/keys-crew.html
       - name: Bully netting at night
         run: node test/night.mjs "$PWD"
+      - name: Fixed bugs stay fixed
+        run: node test/fixes.mjs "$PWD"
       - name: Autopilot reaches every spot
         run: node test/autopilot.mjs "$PWD"
       - name: 3D safeguards

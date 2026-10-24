@@ -108,10 +108,14 @@ async function open(o) {
     { const s = mk('jorge', false), b = bugAhead(s, { temper: 'calm' }); s.dropNet(b.x, b.y); step(s, 6); out.late = s.net.state + '/' + b.st + '/' + b.misses; }
     { const s = mk('jemel', true), b = bugAhead(s, { temper: 'calm' }); s.dropNet(b.x, b.y); step(s, 0.45); s.twist(); out.coachEarly = s.net.state; }
     for (const kind of ['crab', 'ray', 'nurse']) { const s = mk('jorge', false), bw = s.bow(), c = { kind, x: bw.x, y: bw.y - 160, h: 0, t: 0, v: 0, flee: 0, s: 1, len: 140, side: 1 }; s.crits.push(c); const t0 = s.timeLeft; s.dropNet(c.x, c.y); step(s, 0.5); out[kind] = Math.round(t0 - s.timeLeft - 0.5); }
-    { const s = mk('jorge', false), bw = s.bow(), b = bugAhead(s, { temper: 'skittish', h: 1.2 }); b.x = bw.x + 60; b.y = bw.y - 340; s.notch = 1;
+    { const s = mk('jorge', false), bw = s.bow(), b = bugAhead(s, { temper: 'calm', h: 1.2 }); b.x = bw.x + 60; b.y = bw.y - 340; s.notch = 1;
       s.aimLight(b.x, b.y, null); step(s, 0.6); out.lock = s.light.lock === b;
       let tt = 0; while (tt < 15 && !s.netTarget()) { s.update(1 / 60); tt += 1 / 60; } out.reach = +tt.toFixed(1); out.frozen = b.st;
-      step(s, 4); out.hold = +s.boat.v.toFixed(1); out.dist = Math.round(dist(s.bow().x, s.bow().y, b.x, b.y)); }
+      tt = 0; while (tt < 10 && s.boat.v > 1) { s.update(1 / 60); tt += 1 / 60; } out.hold = +s.boat.v.toFixed(1); out.dist = Math.round(dist(s.bow().x, s.bow().y, b.x, b.y)); out.held = b.st; }
+    // how long a skittish bug gives you once the net can reach it (the boat creeping in with the light on it)
+    { const left = []; for (let k = 0; k < 12; k++) { const s = mk('jorge', false), bw = s.bow(), b = bugAhead(s, { temper: 'skittish', h: rand(0, 6) }); b.x = bw.x + rand(-80, 80); b.y = bw.y - 340; s.notch = 1; s.aimLight(b.x, b.y, b);
+      let tt = 0; while (tt < 15 && !s.netTarget()) { s.update(1 / 60); tt += 1 / 60; } let u = 0; while (u < 15 && b.st === 'freeze') { s.update(1 / 60); u += 1 / 60; } left.push(+u.toFixed(1)); }
+      left.sort((a, c) => a - c); out.skittishLeft = left; }
     { const s = mk('jorge', false), b = bugAhead(s, { temper: 'wary', cl: 4.6 }); s.aimLight(b.x, b.y, b); let tt = 0; while (tt < 10 && b.st !== 'bolt') { s.update(1 / 60); tt += 1 / 60; } out.waryBolt = +tt.toFixed(1); }
     { const s = mk('jorge', false); s.dirT = 0; let tt = 0; while (tt < 10 && !s.bugs.length) { s.update(1 / 60); tt += 1 / 60; } out.director = +tt.toFixed(1); }
     { const s = mk('jorge', false); for (let i = 0; i < 6; i++) { s.gauge = { lob: { cl: 3.5, w: 1.3, eggs: false, gold: false }, t: 0 }; s.decide(true); } out.limit = s.endReason; }
@@ -124,7 +128,8 @@ async function open(o) {
   check(pct(r.calm.onTop, 'pin') === 1 && pct(r.skittish.onTop, 'pin') > 0.4 && pct(r.skittish.onTop, 'miss') > 0.1 && pct(r.wary.onTop, 'miss') === 1, 'right on top: calm bugs stay put, skittish ones sometimes, wary old bugs never (' + JSON.stringify([r.calm.onTop, r.skittish.onTop, r.wary.onTop]) + ')');
   check(r.early === 'lift/flip' && r.late.startsWith('carry/') && r.late.endsWith('/1') && r.coachEarly === 'pin', 'twist too soon or never and it slips out under the rim; a learner’s early twist is forgiven (' + [r.early, r.late, r.coachEarly].join(', ') + ')');
   check(r.crab === 0 && r.ray === 3 && r.nurse === 5, 'netting a crab costs nothing, a ray 3 seconds, a nurse shark 5 (' + [r.crab, r.ray, r.nurse].join(', ') + ')');
-  check(r.lock && r.reach < 8 && r.frozen === 'freeze' && r.hold < 1 && r.dist < 250, 'the light holds a bug, the boat idles over in ' + r.reach + 's and holds up within reach (' + JSON.stringify({ frozen: r.frozen, hold: r.hold, dist: r.dist }) + ')');
+  check(r.lock && r.reach < 8 && r.frozen === 'freeze' && r.hold <= 1 && r.dist < 250 && r.held === 'freeze', 'the light holds a bug, the boat idles over in ' + r.reach + 's and holds up within reach, the bug still frozen (' + JSON.stringify({ frozen: r.frozen, hold: r.hold, dist: r.dist, held: r.held }) + ')');
+  check(r.skittishLeft[Math.floor(r.skittishLeft.length / 2)] >= 2 && r.skittishLeft[0] >= 1, 'a skittish bug gives a few seconds once it’s in reach (median ' + r.skittishLeft[Math.floor(r.skittishLeft.length / 2)] + 's, ' + JSON.stringify(r.skittishLeft) + ')');
   check(r.waryBolt > 0.8 && r.waryBolt < 4, 'a wary old bug held in the light bolts in a second or two (' + r.waryBolt + 's)');
   check(r.director <= 6, 'when nothing’s ahead for a while, a bug walks out of the dark (' + r.director + 's)');
   check(r.limit === 'limit', 'six bugs: limited out');

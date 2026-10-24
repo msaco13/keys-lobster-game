@@ -6,7 +6,9 @@
    backward, right into the hoop. Then wait for it to kick up into the bag and TWIST the pole to close it.
    Gauge it like a dive (over 3", no eggs). Six per person. Don't net the rays and the sleeping nurse sharks. */
 
-const BN = { TILE: 256, REACH: 250, LIGHT: 380, LIGHT_MIN: 64, CORE: 92, HALO: 2.7, HOOP: 36, DROP: 0.36, SET: 0.85, LIFT: 0.42, TAP: 80, SENSE: 140, LOOK: 185, BOAT: 0.86, BOW: 72 };
+// REACH: how far from the bow a bug can be netted; the hoop itself lands up to SPAN past that (just behind a bug at the
+// edge of reach)
+const BN = { TILE: 256, REACH: 250, SPAN: 50, LIGHT: 380, LIGHT_MIN: 64, CORE: 92, HALO: 2.7, HOOP: 36, DROP: 0.36, SET: 0.85, LIFT: 0.42, TAP: 80, SENSE: 140, LOOK: 185, BOAT: 0.86, BOW: 72 };
 const BN_SPEED = [{ name: 'STOP', v: 0, say: 'holding still' }, { name: 'SLOW', v: 24, say: 'creeping along' }, { name: 'IDLE', v: 46, say: 'idling along' }];
 // how a bug takes the light and the net, on top of its Bug Hunt temperament (TEMPER: the tag's name and color).
 //   shy: how fast the light wears on it (it freezes, then bolts at 1); react: how far into a net's drop it sees one
@@ -14,9 +16,9 @@ const BN_SPEED = [{ name: 'STOP', v: 0, say: 'holding still' }, { name: 'SLOW', 
 //   sense: chance a net landing close by spooks it; walk: px/s; flip: px/s off the bottom; kick: seconds it sits up in
 //   the bag (the window to twist); hoop: how forgiving the hoop is; misses: spooks before it's gone for good
 const BN_TEMPER = {
-  calm: { shy: 0.2, react: 0.95, crouch: 0.12, sense: 0.55, walk: 9, flip: 470, kick: 0.85, hoop: 1.12, misses: 3 },
-  skittish: { shy: 0.34, react: 0.45, crouch: 0.07, sense: 0.85, walk: 13, flip: 520, kick: 0.62, hoop: 1, misses: 3 },
-  wary: { shy: 0.6, react: 0.3, crouch: 0.05, sense: 1, walk: 17, flip: 580, kick: 0.45, hoop: 0.9, misses: 2 }
+  calm: { shy: 0.16, react: 0.95, crouch: 0.12, sense: 0.55, walk: 9, flip: 470, kick: 0.85, hoop: 1.12, misses: 3 },
+  skittish: { shy: 0.26, react: 0.45, crouch: 0.07, sense: 0.85, walk: 13, flip: 520, kick: 0.62, hoop: 1, misses: 3 },
+  wary: { shy: 0.5, react: 0.3, crouch: 0.05, sense: 1, walk: 17, flip: 580, kick: 0.45, hoop: 0.9, misses: 2 }
 };
 const bnTemper = (b) => BN_TEMPER[b && b.temper] || BN_TEMPER.skittish;
 // the flats at night: lots of shorts, the odd big one
@@ -208,6 +210,7 @@ class BullyNetScene extends SessionBase {
     if (this.drag && this.drag.id === p.id) { this.drag.x = p.x; this.drag.y = p.y; }
   }
   pointerUp(p) {
+    if (this.paused || this.leaving) { this.press = null; this.drag = null; this.actionPtr = null; return; }   // let go under the pause menu: no drop
     if (this.press && this.press.id === p.id) { const [wx, wy] = this.toWorld(p); this.press = null; this.tapAt(wx, wy); }
     if (this.drag && this.drag.id === p.id) { this.drag = null; this.light.still = 0; }
     if (this.actionPtr === p.id) this.actionPtr = null;
@@ -226,8 +229,8 @@ class BullyNetScene extends SessionBase {
   tapAt(wx, wy) {
     if (this.net.state === 'pin') { this.twist(); return; }
     if (this.net.state !== 'carry' || this.net.cool > 0) return;
-    const near = this.thingNear(wx, wy, 0.3);
-    if (near && this.reachable(wx, wy)) { this.dropNet(wx, wy); return; }
+    const near = this.thingNear(wx, wy, 0.3), bw = this.bow();
+    if (near && this.reachable(near.x, near.y) && dist(bw.x, bw.y, wx, wy) <= BN.REACH + BN.SPAN) { this.dropNet(wx, wy); return; }
     if (near) {
       this.aimLight(near.x, near.y, near.kind === 'bug' ? near : null);
       if (!this.coachSaw.far) { this.coachSaw.far = true; Game.toast('Too far for the net', { color: PAL.warn, size: 28, y: 170, sub: 'Keep the light on it. Your buddy idles you over.' }); }
@@ -276,7 +279,7 @@ class BullyNetScene extends SessionBase {
   dropNet(tx, ty) {
     const n = this.net; if (n.state !== 'carry' || n.cool > 0) return;
     const bw = this.bow(), d = dist(bw.x, bw.y, tx, ty);
-    if (d > BN.REACH) { tx = bw.x + (tx - bw.x) * BN.REACH / d; ty = bw.y + (ty - bw.y) * BN.REACH / d; }
+    if (d > BN.REACH + BN.SPAN) { tx = bw.x + (tx - bw.x) * (BN.REACH + BN.SPAN) / d; ty = bw.y + (ty - bw.y) * (BN.REACH + BN.SPAN) / d; }
     const h = this.carryPos();
     this.net = { state: 'drop', t: 0, fx: h.x, fy: h.y, tx, ty, x: h.x, y: h.y, cool: 0, splashed: false, spooked: [] };
     for (const b of this.bugs) { b.react = false; b.rx = 0; }
@@ -415,23 +418,13 @@ class BullyNetScene extends SessionBase {
   }
   buildResult() { return bagResult(this); }
   // time's up with the net in the water (a bug in the hoop, or on its way down): that drop gets finished first
-  end(reason) {
-    const n = this.net;
-    if (reason === 'time' && !this.ended && (n.state === 'drop' || n.state === 'set' || n.state === 'pin' || (n.state === 'lift' && n.caught) || this.gauge)) {
-      if (!this.lastDrop) { this.lastDrop = true; Game.toast('Last drop! Finish it!', { color: PAL.sun, size: 30, y: 110 }); }
-      return;
-    }
-    super.end(reason);
-  }
+  lastChance() { const n = this.net; return n.state === 'drop' || n.state === 'set' || n.state === 'pin' || (n.state === 'lift' && !!n.caught); }
 
   /* ---------- update ---------- */
   update(dt) {
     if (this.gauge) { if (!this.paused) { this.gauge.t += dt; this.t += dt; } Game.toasts = []; SFX.setEngine(0.35, 0); return; }
     if (this.help) { this.help.t += dt; this.t += dt; Game.toasts = []; return; }   // the clock stops while you read
-    if (this.baseUpdate(dt)) {
-      if (this.ended) { this.updateWorld(dt, true); return; }
-      if (!this.lastDrop || this.paused) return;   // out of time with the net in the water: let it finish (see end)
-    }
+    if (this.baseUpdate(dt)) { if (this.ended) this.updateWorld(dt, true); return; }
     if (this.quip) { this.quip.t -= dt; if (this.quip.t <= 0) this.quip = null; }
     if (this.intro) {
       const I = this.intro; I.t += dt;
@@ -537,15 +530,15 @@ class BullyNetScene extends SessionBase {
     if (lk) {
       // your buddy follows the light to the bug, and holds up once the net can reach it
       const d = dist(bw.x, bw.y, lk.x, lk.y);
-      if (d < BN.REACH * 0.72) { want = 0; if (!this.holdSaid && b.v > 6) { this.holdSaid = true; this.say('hold', 0.6); } }
-      else { want = Math.min(Math.max(want, 24), d < BN.REACH * 1.3 ? 22 : 44); this.holdSaid = false; }
+      if (d < BN.REACH * 0.8) { want = 0; if (!this.holdSaid && b.v > 6) { this.holdSaid = true; this.say('hold', 0.6); } }
+      else { want = Math.min(Math.max(want, 24), d < BN.REACH * 1.3 ? 28 : 44); this.holdSaid = false; }
       if (this.notch === 0) want = 0;
     } else if (this.netTarget()) want *= 0.4;   // a bug in the light: easing off
     if (n.state !== 'carry' || this.intro) want = 0;   // the net's in the water: hold up
     const toL = dist(bw.x, bw.y, L.tx, L.ty), aim = Math.atan2(L.ty - b.y, L.tx - b.x), diff = angleDiff(b.h, aim);
     if (toL > 80 && this.notch > 0 && n.state === 'carry') { const rate = 0.55 * clamp(b.v / 20, 0.3, 1); b.h += clamp(diff, -rate * dt, rate * dt); }
     b.v = approach(b.v, want * (1 - 0.45 * Math.min(1, Math.abs(diff) / 1.5)), want < b.v ? 2.2 : 1.1, dt);
-    const drift = this.weather.drift * 6 * (n.state === 'carry' ? 1 : 0.3), dx = Math.cos(b.h) * b.v * dt + Math.cos(this.windA) * drift * dt, dy = Math.sin(b.h) * b.v * dt + Math.sin(this.windA) * drift * dt;
+    const drift = this.weather.drift * 6 * (n.state === 'carry' && !(lk && want === 0) ? 1 : 0.3), dx = Math.cos(b.h) * b.v * dt + Math.cos(this.windA) * drift * dt, dy = Math.sin(b.h) * b.v * dt + Math.sin(this.windA) * drift * dt;
     b.x += dx; b.y += dy;
     if (!L.lock) { L.x += dx; L.y += dy; }   // the light rides along with the boat
   }

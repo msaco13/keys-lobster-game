@@ -203,6 +203,7 @@ class SeaScene {
   pointerMove(p) { if (this.steer && this.steer.id === p.id) { this.steer.x = p.x; this.steer.y = p.y; } }
   pointerUp(p) { if (this.steer && this.steer.id === p.id) this.steer = null; }
   keyDown(c) {
+    if (c === 'KeyP') { if (!this.panel) this.panel = { kind: 'pause' }; else if (this.panel.kind === 'pause' && !this.panel.confirm && !this.panel.leave) this.panel = null; return; }   // P pauses, as it does at every spot
     if (c === 'Escape') { if (this.panel && this.panel.kind === 'captain') this.takeWheel(); else if (this.panel && this.panel.kind !== 'summary') { this.panel = null; this.sel = null; } else if (!this.panel) this.panel = { kind: 'pause' }; return; }
     if (this.panel) return;
     if (c === 'KeyM' || c === 'Tab') { this.openChart(); return; }
@@ -244,7 +245,7 @@ class SeaScene {
     if (this.panel) { this.v = approach(this.v, 0, 1.5, dt); }
     // steering
     let rud = 0;
-    if (Input.held('ArrowLeft', 'KeyA')) rud -= 1; if (Input.held('ArrowRight', 'KeyD')) rud += 1;
+    if (!this.panel) { if (Input.held('ArrowLeft', 'KeyA')) rud -= 1; if (Input.held('ArrowRight', 'KeyD')) rud += 1; }   // not under the chart
     const live = this.steerLive();
     if (live && this.view === 'chase') {   // behind the boat: hold left or right of it to turn that way, harder the farther out
       const dx = this.steer.x - Game.W / 2; if (Math.abs(dx) > 14) rud = clamp((dx - Math.sign(dx) * 14) / (Game.W * 0.2), -1, 1);
@@ -726,7 +727,7 @@ class SeaScene {
     // chart, autopilot and the big context button
     const by = H - 64;
     UI.button(ctx, 'chart', 196, by, 104, 48, 'Chart', () => this.openChart(), { style: 'dark', size: 18, key: 'KeyM', disabled: open });
-    if (this.dest) UI.button(ctx, 'auto', 308, by, 104, 48, this.auto ? 'AUTO on' : 'Autopilot', () => this.setAuto(!this.auto), { style: this.auto ? 'primary' : 'dark', size: this.auto ? 17 : 15, key: 'KeyP', disabled: open });
+    if (this.dest) UI.button(ctx, 'auto', 308, by, 104, 48, this.auto ? 'AUTO on' : 'Autopilot', () => this.setAuto(!this.auto), { style: this.auto ? 'primary' : 'dark', size: this.auto ? 17 : 15, key: 'KeyO', disabled: open });
     // the big context button sits in the space between the left buttons and the throttle
     const left = this.dest ? 424 : 312, room = lx - 24 - left, bw = Math.min(300, room), bx = left + (room - bw) / 2;
     if (this.homeRun && this.atHome) {
@@ -967,14 +968,14 @@ class SeaScene {
     ctx.fillStyle = `rgba(3,22,32,${Math.min(0.78, P.t * 2)})`; ctx.fillRect(0, 0, W, H);
     UI.region('sum-bg', 0, 0, W, H, () => {});
     const home = P.id === 'home', name = home ? 'the dock' : SPOTS[P.id].name;
-    const lines = this.lines;
-    const pw = Math.min(540, W - 60), px = W / 2 - pw / 2, ph = 150 + Math.max(1, lines.length) * 30, py = Math.max(16, H / 2 - ph / 2 - 34);
+    const lines = this.lines, rowH = clamp(Math.floor((H - 16 - 150 - 16 - 72) / Math.max(1, lines.length)), 20, 30), fs = rowH < 26 ? 15 : 17;   // a long run's list squeezes up so the button stays on screen
+    const pw = Math.min(540, W - 60), px = W / 2 - pw / 2, ph = 150 + Math.max(1, lines.length) * rowH, py = clamp(H / 2 - ph / 2 - 34, 16, H - 16 - 72 - ph);
     panel(ctx, px, py, pw, ph, { r: 22 });
     text(ctx, (home ? 'Back at ' : 'Anchored at ') + name, px + 24, py + 46, { display: true, size: 28, color: '#fff', maxW: pw - 48 });
     text(ctx, 'Captain ' + CHARS[this.driver].name + ' · ' + (this.legDist / UNITS_PER_NM).toFixed(1) + ' nm', px + 24, py + 74, { size: 15, color: '#9fb8c2', weight: 700 });
     let y = py + 108;
     if (!lines.length) text(ctx, 'Uneventful ride. Nothing to report.', px + 24, y, { size: 17, color: '#cfe3ea', weight: 600 });
-    for (const l of lines) { text(ctx, l.label, px + 24, y, { size: 17, color: l.pts < 0 ? '#ff9a8a' : '#fff', weight: 600, maxW: pw - 120 }); text(ctx, (l.pts > 0 ? '+' : '') + l.pts, px + pw - 24, y, { size: 18, align: 'right', color: l.pts < 0 ? PAL.bad : PAL.sun, weight: 800 }); y += 30; }
+    for (const l of lines) { text(ctx, l.label, px + 24, y, { size: fs, color: l.pts < 0 ? '#ff9a8a' : '#fff', weight: 600, maxW: pw - 120 }); text(ctx, (l.pts > 0 ? '+' : '') + l.pts, px + pw - 24, y, { size: fs + 1, align: 'right', color: l.pts < 0 ? PAL.bad : PAL.sun, weight: 800 }); y += rowH; }
     const tot = this.total || 0;
     text(ctx, 'Captain’s points: ' + (tot > 0 ? '+' : '') + tot, px + 24, py + ph - 18, { size: 18, color: PAL.sun, weight: 800 });
     UI.button(ctx, 'letsfish', W / 2 - 130, py + ph + 16, 260, 56, home ? (this.nightNext() ? 'Wait for dark' : 'Call it a day') : spotDo(this.panel.id).go, () => this.finishLeg(false), { style: 'primary', size: 22, key: 'Enter|Space', sub: home && this.nightNext() ? 'Bully netting tonight' : null });
@@ -983,6 +984,8 @@ class SeaScene {
     ctx.fillStyle = 'rgba(3,22,32,0.82)'; ctx.fillRect(0, 0, W, H);
     UI.region('pause-bg', 0, 0, W, H, () => {});
     const c = this.c;
+    // a solo day isn't saved: leaving it from here asks first, like everywhere else
+    if (this.panel.leave) { askLeaveSolo(ctx, () => (this.panel = { kind: 'pause' }), () => { this.saveBoat(); Game.go(new TitleScene()); }); return; }
     if (this.panel.confirm) {
       text(ctx, c.mode === 'crew' ? 'End the trip early?' : 'Head home?', W / 2, 170, { display: true, size: 40, align: 'center', color: '#fff' });
       text(ctx, c.mode === 'crew' ? 'Scores so far go on the board.' : 'You can run home or skip the ride.', W / 2, 206, { size: 18, align: 'center', color: '#cfe3ea', weight: 600 });
@@ -997,7 +1000,7 @@ class SeaScene {
     UI.button(ctx, 'mute', W / 2 - 130, 294, 125, 50, SFX.muted ? 'Sound: off' : 'Sound: on', () => SFX.setMuted(!SFX.muted), { style: 'secondary', size: 17 });
     UI.button(ctx, 'music', W / 2 + 5, 294, 125, 50, Music.on ? 'Music: on' : 'Music: off', () => Music.setOn(!Music.on), { style: 'secondary', size: 17 });
     UI.button(ctx, 'endtrip', W / 2 - 130, 360, 125, 50, c.mode === 'crew' ? 'End the trip' : 'Head home', () => (this.panel = { kind: 'pause', confirm: true }), { style: 'coral', size: 17 });
-    UI.button(ctx, 'totitle', W / 2 + 5, 360, 125, 50, 'Quit to title', () => { this.saveBoat(); Game.go(new TitleScene()); }, { style: 'ghost', size: 17 });
+    UI.button(ctx, 'totitle', W / 2 + 5, 360, 125, 50, 'Quit to title', () => { if (c.mode !== 'crew') { this.panel = { kind: 'pause', leave: true }; return; } this.saveBoat(); Game.go(new TitleScene()); }, { style: 'ghost', size: 17 });
     GFX.pauseRow(ctx, W / 2, 422);
     text(ctx, c.mode !== 'crew' ? 'Solo days aren’t saved. Your logbook is.' : Store.failed ? 'This browser isn’t saving, so the trip ends if you leave.' : 'Your trip is saved. Resume it from the title screen.', W / 2, 496, { size: 15, align: 'center', color: '#9fb8c2', weight: 600 });
   }

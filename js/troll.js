@@ -234,6 +234,7 @@ class TrollScene extends SessionBase {
   pointerDown(p) { if (this.basePointerDown(p)) return; this.dragId = p.id; this.ty = clamp(p.y, 120, Game.H - 50); }
   pointerMove(p) { if (this.dragId === p.id) this.ty = clamp(p.y, 120, Game.H - 50); }
   pointerUp(p) { if (this.dragId === p.id) this.dragId = null; }
+  lastChance() { return !!this.strike; }   // a strike at the buzzer still gets fought
   keyDown(c) { this.baseKeyDown(c); }
   yAtDist(d) {
     const h = this.hist; if (d <= h[0].d) return h[0].y;

@@ -45,7 +45,8 @@ the reef line, and the Gulf Stream out past the drop-off. The far spots are 15 t
 - **The chart** (Chart button or M) shows every spot you know about. Across the top it asks what you want to catch:
   **Lobster**, **Reef & wreck**, **Offshore** or **Bayside** lights up those spots (and any ? that hides one) and picks
   the closest. Tap a spot and the chart draws the way there; anything on the other side of the islands says which creek
-  to go through. Then **Set course**: the autopilot drives the channels for you, and you can grab the wheel any time.
+  to go through. Then **Set course**: the autopilot drives the channels for you, and you can grab the wheel any time
+  (the Autopilot button, or O, turns it on and off; P pauses, like everywhere else).
   **Skip the ride** if you just want to fish: it goes straight to the hand-off, with no captain's points.
 - **The bay side and the ocean side.** The islands only open at the creeks and channels under the Overseas Highway
   (Tavernier Creek is right by the dock; Snake Creek, Whale Harbor, Channel Two and Channel Five are farther down). The
@@ -240,6 +241,7 @@ npm run test:smoke     # the built game plays: a crew trip by tapping, every spo
 npm run test:flow      # plays a whole crew trip by tapping the real buttons, phone-sized
 npm run test:nav       # clicks every way back to the title screen and checks where each button goes
 npm run test:night     # bully netting: a Night Run by tapping, how the net works, the day into the night, mouse and keys
+npm run test:fixes     # bugs that were fixed stay fixed (the flats, the buzzer, Move taps, the boat's keys, narrow cards)
 npm run test:sea       # screenshots around the map, and the autopilot to every spot
 npm run test:balance   # simulates hundreds of fights per species with players of different skill
 npm run test:3d        # screenshots of the 3D boat ride around the map (WebGL forced on, software-rendered)
@@ -250,7 +252,7 @@ npm run vendor         # rebuild js/vendor/three.min.js after changing tools/thr
 ```
 
 Every pull request runs `.github/workflows/check.yml`: the scripts parse, dist/ matches the source, the smoke test,
-the night run, the autopilot to every spot, and the 3D safeguards. The deploy to GitHub Pages runs the smoke test on the built page
+the night run, the fixed-bug checks, the autopilot to every spot, and the 3D safeguards. The deploy to GitHub Pages runs the smoke test on the built page
 first and stops if it fails, so the live game stays as it was. Every test exits non-zero when something fails.
 
 `node test/clip.mjs . out.mp4 3d autopilot 16` records a smooth video of the boat ride (needs ffmpeg).

@@ -12,7 +12,7 @@ class SessionBase {
     this.parts = new Particles(); this.fl = new Floaters(); this.child = null; this.music = 'boat';
   }
   tickTime(dt) {
-    if (this.timeLeft <= 0) return;
+    if (this.timeLeft <= 0 || this.ended) return;   // ended: "End my turn now" while a fish is on; that fish finishes, the clock is done
     const before = this.timeLeft; this.timeLeft = Math.max(0, this.timeLeft - dt);
     if (before > 10 && this.timeLeft <= 10) { Game.toast('10 seconds left!', { color: PAL.sun, size: 30, y: 110 }); SFX.play('warn'); }
     if (this.timeLeft <= 0 && this.child) Game.toast('Last fish! Land it!', { color: PAL.sun, size: 30, y: 110 });
@@ -49,10 +49,15 @@ class SessionBase {
     this.t += dt; this.parts.update(dt); this.fl.update(dt);
     if (this.ended) { this.endT += dt; if (this.endT > 1.7) this.finish(); return true; }
     this.tickTime(dt);
-    if (this.timeLeft <= 0 && !this.child) { this.end('time'); return true; }
+    if (this.timeLeft <= 0 && !this.child) {
+      // a hook-up already underway at the buzzer (a strike, a bite, an eat, a bug in the net: lastChance) is played out
+      if (this.lastChance && this.lastChance()) { if (!this.lastSaid) { this.lastSaid = true; Game.toast('Last one! Finish it!', { color: PAL.sun, size: 30, y: 110 }); } return false; }
+      this.end('time'); return true;
+    }
     return false;
   }
-  togglePause() { if (this.ended || this.leaving) return; this.setPaused(!this.paused); }
+  // a fish still on after "End my turn now" can be paused like any other
+  togglePause() { if ((this.ended && !this.child) || this.leaving) return; this.setPaused(!this.paused); }
   setPaused(on) { this.paused = on; this.quitAsk = false; SFX.setDrag(0); if (on) Game.toasts = []; }  // toasts draw above everything, so clear them off the menu
   // leave mid-turn: this turn never reaches the results. Trip.cur still points at this spot and angler,
   // so Resume trip on the title screen hands the phone right back to them.
@@ -113,7 +118,7 @@ class SessionBase {
   drawChildOrNull(ctx) {
     if (!this.child) return false;
     this.child.draw(ctx);
-    if (!this.ended && this.child.phase !== 'over') UI.button(ctx, 'pause', Game.W / 2 + 68, 14, 44, 40, '❚❚', () => this.togglePause(), { style: 'dark', size: 15, r: 14 });
+    if (this.child.phase !== 'over') UI.button(ctx, 'pause', Game.W / 2 + 68, 14, 44, 40, '❚❚', () => this.togglePause(), { style: 'dark', size: 15, r: 14 });
     if (this.paused) this.drawPause(ctx);
     return true;
   }

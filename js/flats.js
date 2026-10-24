@@ -733,6 +733,7 @@ class FlatsScene extends SessionBase {
     if (this.aim && this.aim.id === p.id) { this.aim.x = p.x; this.aim.y = p.y; }
   }
   pointerUp(p, cancel) {
+    if (this.paused || this.leaving || this.ended) { this.aim = null; this.pending = null; return; }   // let go under the pause menu: no cast
     if (this.pending && this.pending.id === p.id) { this.pending = null; this.strip(); return; }
     if (this.aim && this.aim.id === p.id) { const a = this.aim; this.aim = null; if (!cancel) this.doCast({ x: a.x + this.camX, y: a.y, t: a.t }); }
   }
@@ -763,9 +764,10 @@ class FlatsScene extends SessionBase {
   pickUp() {
     if (!this.lure) return;
     for (const f of this.fishList) if (f.state === 'follow' && dist(f.x, f.y, this.lure.x, this.lure.y) < 50 && chance(0.5)) this.spookFish(f, 'Ripped it out too close');
-    for (const f of this.fishList) if (f.state === 'follow') f.state = 'cruise';
+    for (const f of this.fishList) if (f.state === 'follow' || f.state === 'eat') f.state = 'cruise';   // an eat you pulled away from is over
     this.lure = null; this.eat = null;
   }
+  lastChance() { return !!this.eat; }   // it ate at the buzzer: you can still set the hook
   snagAt(x, y) {
     if (this.variant === 'bridge') return y < FL_DECK || (y < FL_DECK + 26 && this.pilings.some((p) => Math.abs(Math.abs(x - p.x) - 22) < 9));
     return y < this.shoreAt(x) - 4 || !!this.islandAt(x, y, -8);

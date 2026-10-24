@@ -429,6 +429,7 @@ class BottomScene extends SessionBase {
   }
   pointerMove(p) { if (this.drag && this.drag.id === p.id) this.setDepthFromY(p.y, this.drag.sonar); }
   pointerUp(p) { if (this.drag && this.drag.id === p.id) this.drag = null; }
+  lastChance() { const f = this.activeFish(); return !!(f && f.state === 'bite' && this.baitOn); }   // a bite at the buzzer can still be set
   keyDown(c) {
     if (this.baseKeyDown(c)) return;
     if (c === 'Space' || c === 'Enter') this.hookset(true);
@@ -458,6 +459,7 @@ class BottomScene extends SessionBase {
     if (!quiet) { Game.toast(msg || 'Bait stolen!', { color: PAL.warn, size: 32, y: 140, sub: 'Tap REBAIT and drop back down' }); SFX.play('fail'); }
   }
   rebait(type) {
+    if (this.ended) return;
     if (this.move) { if (type) this.baitType = type; this.baitOn = true; return; }   // rig a fresh one while you idle over
     if (this.rebaitT > 0 || this.reeling) { if (type) this.baitType = type; return; }
     if (type) this.baitType = type;
@@ -465,7 +467,7 @@ class BottomScene extends SessionBase {
     this.baitOn = false; this.reeling = true;
   }
   dropChum() {
-    if (this.chumCd > 0 || this.child) return;
+    if (this.chumCd > 0 || this.child || this.ended) return;
     this.chumT = 12; this.chumCd = 30; this.slickT = 26; SFX.play('splash');
     const sp = this.species;
     if (sp.includes('yellowtail')) { this.slickQ.push({ key: 'yellowtail', t: rand(3, 6) }); if (chance(0.4)) this.slickQ.push({ key: 'yellowtail', t: rand(7, 10) }); }
@@ -512,7 +514,7 @@ class BottomScene extends SessionBase {
       if (m.t > 0.7 && this.baitDepth <= 0.5) { m.phase = 'go'; m.t = 0; }
     } else if (m.phase === 'go') {
       const ptr = this.ptrHeld(m.dir);
-      if (ptr) { m.holdT += dt; if (m.holdT > 0.25) m.hold = true; }   // a long press steers; a quick tap adds another leg
+      if (ptr) { m.holdT += dt; if (m.holdT > 0.25) m.hold = true; } else m.holdT = 0;   // a long press steers; a quick tap adds another leg (each press counts on its own)
       if (ptr || this.keyHeld(m.dir)) m.want = Math.max(m.want, m.done + 50);
       const left = m.want - m.done;
       this.moveV = approach(this.moveV, Math.min(BOT.SPEED, left * 3.2 + 30), 4, dt);
