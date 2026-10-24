@@ -86,7 +86,7 @@ class BugHuntScene extends SessionBase {
     this.intro = { t: 0 };
     this.maxBreath = 24 * this.perks.breath; this.breath = this.maxBreath;
     this.bag = []; this.out = null; this.gauge = null; this.blackout = 0; this.beatT = 0;
-    this.joy = null; this.press = null; this.tickPtr = null; this.actionPtr = null; this.actionPress = false; this.cam = 0; this.camY = 0; this.goodReleases = 0;
+    this.joy = null; this.press = null; this.tickPtr = null; this.actionPtr = null; this.actionPress = false; this.cam = 0; this.camY = 0;
     this.net = { state: 'carry', t: 0, x: 0, y: 0, cool: 0 }; this.seek = null; this.swings = 0;
     let others = (Trip.cur && Trip.cur.crew ? Trip.cur.crew : CHAR_ORDER).filter((c) => c !== this.ch).slice(0, 2);
     if (!others.length) others = CHAR_ORDER.filter((c) => c !== this.ch);
@@ -578,40 +578,11 @@ class BugHuntScene extends SessionBase {
   }
   decide(keep) {
     const lob = this.gauge.lob; this.gauge = null;
-    const legal = lob.cl > GAUGE_IN && !lob.eggs;
-    if (keep) {
-      this.bag.push(lob); SFX.play('coin');
-      this.fl.add(this.diver.x - this.cam, this.diver.y - this.camY - 50, 'In the bag ' + this.bag.length + '/' + BH.BAG, '#fff', 22);
-      if (legal) { this.score += Math.round(lob.w * SPECIES.lobster.mult) * (lob.gold ? 3 : 1); this.say(lob.cl >= 4.4 ? 'big' : 'nice', lob.cl >= 4.4 ? 1 : 0.6); }
-      else this.say('short', 0.75);
-      if (this.bag.length >= BH.BAG) this.end('limit');
-    } else {
-      this.parts.burst(this.diver.x + this.diver.facing * 40, this.diver.y, 10, { kind: 'bubble', min: 20, max: 80, life: 1 });
-      if (!legal) { this.goodReleases++; this.addLine(lob.eggs ? 'Released an egg-bearing female' : 'Released a short (' + lob.cl.toFixed(2) + '")', 25); this.fl.add(this.diver.x - this.cam, this.diver.y - this.camY - 50, 'Good call +25', PAL.good, 22); SFX.play('coin'); }
-      else this.fl.add(this.diver.x - this.cam, this.diver.y - this.camY - 50, 'Let a keeper go', '#cfe3ea', 20);
-    }
+    const at = [this.diver.x - this.cam, this.diver.y - this.camY - 50];
+    if (!keep) this.parts.burst(this.diver.x + this.diver.facing * 40, this.diver.y, 10, { kind: 'bubble', min: 20, max: 80, life: 1 });
+    bagDecide(this, lob, keep, at);
   }
-  buildResult() {
-    const lines = [], catches = []; let fines = 0;
-    this.bag.forEach((lob, i) => {
-      const tag = 'Lobster ' + (i + 1) + ' · ' + lob.cl.toFixed(2) + '"';
-      if (lob.eggs) { lines.push({ label: tag + ' · eggs! FWC fine', pts: -300, bad: true }); fines++; }
-      else if (lob.cl <= GAUGE_IN) { lines.push({ label: tag + ' · short! FWC fine', pts: -250, bad: true }); fines++; }
-      else {
-        const extras = lob.cl >= 4.4 ? [{ label: 'Big boy bonus', pts: 100 }] : [];
-        if (lob.gold) extras.push({ label: 'Golden bug ×3', pts: Math.round(lob.w * SPECIES.lobster.mult) * 2 });
-        const c = makeCatch('lobster', lob.w, this.ch, this.spot, extras); c.cl = lob.cl; c.gold = !!lob.gold; catches.push(c);
-        lines.push({ label: tag + ' · ' + fmtLb(lob.w) + (lob.gold ? ' · GOLDEN' : ''), pts: c.pts, key: 'lobster', trophy: c.trophy });
-      }
-    });
-    for (const l of this.extraLines) lines.push(l);
-    if (this.bag.length >= BH.BAG) lines.push({ label: 'Limited out (6 bugs)', pts: 150 });
-    if (catches.length && !fines) lines.push({ label: 'Clean bag · the officer nods', pts: 100 });
-    if (!this.bag.length) lines.push({ label: 'Empty bag. The officer waves you through.', pts: 0 });
-    const total = Math.max(0, lines.reduce((a, l) => a + l.pts, 0));
-    let best = null; for (const c of catches) if (!best || c.pts > best.pts) best = c;
-    return { catches, lines, total, best, header: this.resultHeader, under: true };
-  }
+  buildResult() { return Object.assign(bagResult(this), { under: true }); }
 
   /* ---------- drawing ---------- */
   waterColor(wy) {
@@ -992,7 +963,7 @@ class BugHuntScene extends SessionBase {
       text(ctx, Game.touch ? 'Drag to swim · hold a hole to tickle · tap the bug to net it · ? for help' : 'WASD to swim · hold on a hole to tickle · click the bug to net it · H for help', 24, 132, { size: 17, color: '#fff', weight: 700, alpha: 0.85, stroke: 'rgba(0,0,0,0.4)', sw: 4, maxW: W - 200 });
     }
     if (this.coach && !this.paused && !this.help) this.drawCoach(ctx, W, H, t);
-    if (this.quip && !this.help && !(this.coachMsg() && !Game.toasts.length)) this.drawQuip(ctx, W);
+    if (this.quip && !this.help && !this.gauge && !(this.coachMsg() && !Game.toasts.length)) this.drawQuip(ctx, W);
     if (this.help) this.drawHelp(ctx, W, H);
   }
   coachMsg() {
@@ -1127,55 +1098,99 @@ class BugHuntScene extends SessionBase {
     text(ctx, C.name + ': ' + q.msg, qx + 48, qy + 28, { size: 16, color: PAL.ink, weight: 800, maxW: qw - 60 });
     ctx.restore();
   }
-  drawGauge(ctx, W, H) {
-    const g = this.gauge, lob = g.lob, k = easeOut(g.t / 0.3);
-    ctx.fillStyle = `rgba(3,22,32,${0.82 * k})`; ctx.fillRect(0, 0, W, H);
-    text(ctx, 'Gauge it', W / 2, 62, { display: true, size: 40, align: 'center', color: '#fff' });
-    if (lob.gold) text(ctx, 'RARE GOLDEN BUG · ×3 POINTS', W - 30, 58, { size: 16, align: 'right', color: PAL.sun, weight: 800 });
-    text(ctx, 'Legal if the back of the shell (dashed line) sits past the end of the 3" gauge, with no eggs under the tail.', W / 2, 92, { size: 17, align: 'center', color: '#cfe3ea', weight: 600, maxW: W - 60 });
-    const lw = Math.min(W * 0.58, 640), lx = 24, ly = 112, lh = 300;
-    panel(ctx, lx, ly, lw, lh, { r: 16, fill: 'rgba(20,90,120,0.95)' });
-    const ppi = Math.min(72, (lw - 150) / Math.max(lob.cl, 3.3));
-    const C = lob.cl * ppi, rearX = lx + 70, cy = ly + lh / 2 - 14, laneY = ly + lh - 32;
-    const front = rearX + C, gaugeEnd = front - GAUGE_IN * ppi, gw = GAUGE_IN * ppi;
-    const bg = ctx.createLinearGradient(0, laneY - 11, 0, laneY + 11); bg.addColorStop(0, '#f2d27a'); bg.addColorStop(1, '#b8892c');
-    const drawGaugeLane = () => {
-      ctx.fillStyle = 'rgba(0,0,0,0.3)'; rr(ctx, gaugeEnd + 2, laneY - 8, gw, 22, 6); ctx.fill();
-      ctx.fillStyle = bg; rr(ctx, gaugeEnd, laneY - 11, gw, 22, 6); ctx.fill();
-      ctx.strokeStyle = '#6b4c12'; ctx.lineWidth = 1.5;
-      for (let i = 0; i <= 12; i++) { const x = gaugeEnd + (i / 12) * gw; ctx.beginPath(); ctx.moveTo(x, laneY - 11); ctx.lineTo(x, laneY - 11 + (i % 4 ? 6 : 11)); ctx.stroke(); }
-      ctx.fillStyle = '#4a3510'; ctx.fillRect(gaugeEnd - 2, laneY - 18, 4, 36); ctx.fillRect(front - 2, laneY - 18, 4, 36);
-      ctx.strokeStyle = '#ffffff'; ctx.setLineDash([6, 5]); ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.moveTo(rearX, cy - C * 0.36); ctx.lineTo(rearX, laneY + 20); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(front, cy); ctx.lineTo(front, laneY + 20); ctx.stroke(); ctx.setLineDash([]);
-    };
-    ctx.save(); rr(ctx, lx, ly, lw, lh, 16); ctx.clip();
-    ctx.save(); ctx.translate(rearX, cy); drawLobsterTop(ctx, C, { t: this.t, gold: lob.gold }); ctx.restore();
-    drawGaugeLane();
-    text(ctx, '3" GAUGE', gaugeEnd + gw / 2, laneY + 5, { size: 13, align: 'center', color: '#3a2a0a', weight: 800 });
-    ctx.restore();
-    text(ctx, 'back of shell', rearX - 4, laneY + 34 > ly + lh ? laneY - 22 : laneY + 34, { size: 12, align: 'right', color: '#fff', weight: 800, alpha: 0.85 });
-    // 4x magnifier on the back end of the gauge, where close calls are decided
-    const zr = 64, zx = lx + lw - zr - 14, zy = ly + zr + 12, zs = 4;
-    ctx.save(); ell(ctx, zx, zy, zr, zr); ctx.clip();
-    ctx.fillStyle = '#1b6f92'; ctx.fillRect(zx - zr, zy - zr, zr * 2, zr * 2);
-    ctx.translate(zx, zy); ctx.scale(zs, zs); ctx.translate(-gaugeEnd, -laneY);
-    drawGaugeLane();
-    ctx.restore();
-    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ell(ctx, zx, zy, zr, zr); ctx.stroke();
-    text(ctx, 'END OF GAUGE · 4× ZOOM', zx, zy + zr + 16, { size: 11, align: 'center', color: '#cfe3ea', weight: 800 });
-    text(ctx, 'CARAPACE', lx + 16, ly + 26, { size: 15, color: '#cfe3ea', weight: 800 });
-    // underside
-    const rx = lx + lw + 16, rw = W - rx - 24;
-    panel(ctx, rx, ly, rw, lh, { r: 16, fill: 'rgba(20,90,120,0.95)' });
-    text(ctx, 'UNDER THE TAIL', rx + 16, ly + 26, { size: 15, color: '#cfe3ea', weight: 800 });
-    ctx.save(); rr(ctx, rx, ly, rw, lh, 16); ctx.clip();
-    const uc = Math.min(rw * 0.42, 110); ctx.translate(rx + rw * 0.72, ly + lh / 2 + 10); drawLobsterUnder(ctx, uc, lob.eggs, this.t);
-    ctx.restore();
-    const by = ly + lh + 22, bw = Math.min(220, (W - 72) / 2);
-    UI.button(ctx, 'keep', W / 2 - bw - 12, by, bw, 58, 'KEEP IT', () => this.decide(true), { style: 'primary', size: 24, sub: 'Bag ' + this.bag.length + '/' + BH.BAG, key: 'KeyK' });
-    UI.button(ctx, 'release', W / 2 + 12, by, bw, 58, 'LET IT GO', () => this.decide(false), { style: 'secondary', size: 24, sub: 'Back to the reef', key: 'KeyR' });
-    if (!Game.touch) text(ctx, 'K to keep · R to release', W / 2, by + 84, { size: 14, align: 'center', color: '#9fb8c2', weight: 700 });
-  }
+  drawGauge(ctx, W, H) { drawLobsterGauge(ctx, W, H, this.gauge, this.bag.length, (keep) => this.decide(keep), { t: this.t }); }
 }
 const C_GLOVE = (C) => C.gloves || '#2a2d33';
+
+/* ---------- shared by every lobster spot (the Bug Hunt and bully netting at night) ---------- */
+// The gauge: the bug from above against a 3" gauge, a 4x look at the close end, and the underside for eggs.
+// g: { lob, t }. bagN: bugs already in the bag. decide(keep) is called by KEEP IT / LET IT GO. o: t (the animation
+// clock), back (where LET IT GO puts it)
+function drawLobsterGauge(ctx, W, H, g, bagN, decide, o = {}) {
+  const lob = g.lob, k = easeOut(g.t / 0.3), t = o.t == null ? g.t : o.t;
+  ctx.fillStyle = `rgba(3,22,32,${0.82 * k})`; ctx.fillRect(0, 0, W, H);
+  text(ctx, 'Gauge it', W / 2, 62, { display: true, size: 40, align: 'center', color: '#fff' });
+  if (lob.gold) text(ctx, 'RARE GOLDEN BUG · ×3 POINTS', W - 30, 58, { size: 16, align: 'right', color: PAL.sun, weight: 800 });
+  text(ctx, 'Legal if the back of the shell (dashed line) sits past the end of the 3" gauge, with no eggs under the tail.', W / 2, 92, { size: 17, align: 'center', color: '#cfe3ea', weight: 600, maxW: W - 60 });
+  const lw = Math.min(W * 0.58, 640), lx = 24, ly = 112, lh = 300;
+  panel(ctx, lx, ly, lw, lh, { r: 16, fill: 'rgba(20,90,120,0.95)' });
+  const ppi = Math.min(72, (lw - 150) / Math.max(lob.cl, 3.3));
+  const C = lob.cl * ppi, rearX = lx + 70, cy = ly + lh / 2 - 14, laneY = ly + lh - 32;
+  const front = rearX + C, gaugeEnd = front - GAUGE_IN * ppi, gw = GAUGE_IN * ppi;
+  const bg = ctx.createLinearGradient(0, laneY - 11, 0, laneY + 11); bg.addColorStop(0, '#f2d27a'); bg.addColorStop(1, '#b8892c');
+  const drawGaugeLane = () => {
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'; rr(ctx, gaugeEnd + 2, laneY - 8, gw, 22, 6); ctx.fill();
+    ctx.fillStyle = bg; rr(ctx, gaugeEnd, laneY - 11, gw, 22, 6); ctx.fill();
+    ctx.strokeStyle = '#6b4c12'; ctx.lineWidth = 1.5;
+    for (let i = 0; i <= 12; i++) { const x = gaugeEnd + (i / 12) * gw; ctx.beginPath(); ctx.moveTo(x, laneY - 11); ctx.lineTo(x, laneY - 11 + (i % 4 ? 6 : 11)); ctx.stroke(); }
+    ctx.fillStyle = '#4a3510'; ctx.fillRect(gaugeEnd - 2, laneY - 18, 4, 36); ctx.fillRect(front - 2, laneY - 18, 4, 36);
+    ctx.strokeStyle = '#ffffff'; ctx.setLineDash([6, 5]); ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(rearX, cy - C * 0.36); ctx.lineTo(rearX, laneY + 20); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(front, cy); ctx.lineTo(front, laneY + 20); ctx.stroke(); ctx.setLineDash([]);
+  };
+  ctx.save(); rr(ctx, lx, ly, lw, lh, 16); ctx.clip();
+  ctx.save(); ctx.translate(rearX, cy); drawLobsterTop(ctx, C, { t, gold: lob.gold }); ctx.restore();
+  drawGaugeLane();
+  text(ctx, '3" GAUGE', gaugeEnd + gw / 2, laneY + 5, { size: 13, align: 'center', color: '#3a2a0a', weight: 800 });
+  ctx.restore();
+  text(ctx, 'back of shell', rearX - 4, laneY + 34 > ly + lh ? laneY - 22 : laneY + 34, { size: 12, align: 'right', color: '#fff', weight: 800, alpha: 0.85 });
+  // 4x magnifier on the back end of the gauge, where close calls are decided
+  const zr = 64, zx = lx + lw - zr - 14, zy = ly + zr + 12, zs = 4;
+  ctx.save(); ell(ctx, zx, zy, zr, zr); ctx.clip();
+  ctx.fillStyle = '#1b6f92'; ctx.fillRect(zx - zr, zy - zr, zr * 2, zr * 2);
+  ctx.translate(zx, zy); ctx.scale(zs, zs); ctx.translate(-gaugeEnd, -laneY);
+  drawGaugeLane();
+  ctx.restore();
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ell(ctx, zx, zy, zr, zr); ctx.stroke();
+  text(ctx, 'END OF GAUGE · 4× ZOOM', zx, zy + zr + 16, { size: 11, align: 'center', color: '#cfe3ea', weight: 800 });
+  text(ctx, 'CARAPACE', lx + 16, ly + 26, { size: 15, color: '#cfe3ea', weight: 800 });
+  // underside
+  const rx = lx + lw + 16, rw = W - rx - 24;
+  panel(ctx, rx, ly, rw, lh, { r: 16, fill: 'rgba(20,90,120,0.95)' });
+  text(ctx, 'UNDER THE TAIL', rx + 16, ly + 26, { size: 15, color: '#cfe3ea', weight: 800 });
+  ctx.save(); rr(ctx, rx, ly, rw, lh, 16); ctx.clip();
+  const uc = Math.min(rw * 0.42, 110); ctx.translate(rx + rw * 0.72, ly + lh / 2 + 10); drawLobsterUnder(ctx, uc, lob.eggs, t);
+  ctx.restore();
+  const by = ly + lh + 22, bw = Math.min(220, (W - 72) / 2);
+  UI.button(ctx, 'keep', W / 2 - bw - 12, by, bw, 58, 'KEEP IT', () => decide(true), { style: 'primary', size: 24, sub: 'Bag ' + bagN + '/' + BH.BAG, key: 'KeyK' });
+  UI.button(ctx, 'release', W / 2 + 12, by, bw, 58, 'LET IT GO', () => decide(false), { style: 'secondary', size: 24, sub: o.back || 'Back to the reef', key: 'KeyR' });
+  if (!Game.touch) text(ctx, 'K to keep · R to release', W / 2, by + 84, { size: 14, align: 'center', color: '#9fb8c2', weight: 700 });
+}
+
+// keep it or let it go: into the bag (legal bugs score now, the FWC check at the ramp settles the rest), or back
+// in the water (a short or an egg-bearing female let go is a good call). s: the scene (bag, score, say, fl, end);
+// at: where the floating note goes on screen.
+function bagDecide(s, lob, keep, at) {
+  const legal = lob.cl > GAUGE_IN && !lob.eggs;
+  if (keep) {
+    s.bag.push(lob); SFX.play('coin');
+    s.fl.add(at[0], at[1], 'In the bag ' + s.bag.length + '/' + BH.BAG, '#fff', 22);
+    if (legal) { s.score += Math.round(lob.w * SPECIES.lobster.mult) * (lob.gold ? 3 : 1); s.say(lob.cl >= 4.4 ? 'big' : 'nice', lob.cl >= 4.4 ? 1 : 0.6); }
+    else s.say('short', 0.75);
+    if (s.bag.length >= BH.BAG) s.end('limit');
+  } else if (!legal) { s.addLine(lob.eggs ? 'Released an egg-bearing female' : 'Released a short (' + lob.cl.toFixed(2) + '")', 25); s.fl.add(at[0], at[1], 'Good call +25', PAL.good, 22); SFX.play('coin'); }
+  else s.fl.add(at[0], at[1], 'Let a keeper go', '#cfe3ea', 20);
+}
+// the FWC check at the ramp: every bug in the bag is gauged again. Shorts and eggs are fines; a clean bag is a bonus.
+function bagResult(s) {
+  const lines = [], catches = []; let fines = 0;
+  s.bag.forEach((lob, i) => {
+    const tag = 'Lobster ' + (i + 1) + ' · ' + lob.cl.toFixed(2) + '"';
+    if (lob.eggs) { lines.push({ label: tag + ' · eggs! FWC fine', pts: -300, bad: true }); fines++; }
+    else if (lob.cl <= GAUGE_IN) { lines.push({ label: tag + ' · short! FWC fine', pts: -250, bad: true }); fines++; }
+    else {
+      const extras = lob.cl >= 4.4 ? [{ label: 'Big boy bonus', pts: 100 }] : [];
+      if (lob.gold) extras.push({ label: 'Golden bug ×3', pts: Math.round(lob.w * SPECIES.lobster.mult) * 2 });
+      const c = makeCatch('lobster', lob.w, s.ch, s.spot, extras); c.cl = lob.cl; c.gold = !!lob.gold; catches.push(c);
+      lines.push({ label: tag + ' · ' + fmtLb(lob.w) + (lob.gold ? ' · GOLDEN' : ''), pts: c.pts, key: 'lobster', trophy: c.trophy });
+    }
+  });
+  for (const l of s.extraLines) lines.push(l);
+  if (s.bag.length >= BH.BAG) lines.push({ label: 'Limited out (6 bugs)', pts: 150 });
+  if (catches.length && !fines) lines.push({ label: 'Clean bag · the officer nods', pts: 100 });
+  if (!s.bag.length) lines.push({ label: 'Empty bag. The officer waves you through.', pts: 0 });
+  const total = Math.max(0, lines.reduce((a, l) => a + l.pts, 0));
+  let best = null; for (const c of catches) if (!best || c.pts > best.pts) best = c;
+  return { catches, lines, total, best, header: s.resultHeader };
+}
+

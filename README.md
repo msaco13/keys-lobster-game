@@ -1,7 +1,8 @@
 # Keys Crew
 
 A lobstering and fishing game set in the Florida Keys, made for one phone passed around a boat.
-Three friends, one boat, the whole Upper Keys to run around in. Whoever brings in the most points is Captain of the Day.
+Three friends, one boat, the whole Upper Keys to run around in, and the flats after dark with a light and a bully net.
+Whoever brings in the most points is Captain of the Day.
 The captain who drives to a spot fishes it first, then the rest of the crew, so the first shot at the day's bounties moves around.
 
 It's plain HTML and JavaScript drawn on a canvas, and the boat ride and the fish fights are real 3D (three.js, bundled in).
@@ -59,8 +60,9 @@ the reef line, and the Gulf Stream out past the drop-off. The far spots are 15 t
   let dolphins ride the bow, and slow down for manatees. It all adds up to captain's points.
 - **Six spots are on the chart from the start.** The other six you have to find. The chart shows a ? and a rumor
   from the dock; run past it to discover the spot and put it on the chart for good.
-- When the day's spots are done, run home at sunset and tie up at the dock. The end of the day names the Captain of
-  the Day (or the tie).
+- When the day's spots are done, run home at sunset and tie up at the dock. With the night run on (the switch on the
+  setup screen, on by default) the crew heads back out after dark to bully net the flats; then the end of the day
+  names the Captain of the Day (or the tie).
 - Casting off a new crew trip while one is saved asks first, and says whose trip it is and how far along.
 
 ## Phones and graphics
@@ -105,6 +107,7 @@ Held upright, the game shows a small turning phone above it: it plays that way t
 | Florida Bay | Backcountry flats | The bay side, through Tavernier Creek from the dock |
 | Channel Five | Bridge fishing | Under the Channel Five bridge, down the Keys (find it) |
 | Flamingo | Everglades | All the way across Florida Bay (find it) |
+| Tavernier Flats | Bully netting, at night | The grass flats off Tavernier, after the run home (or Night Run on the title) |
 
 **Lobster (the Bug Hunt).** Free-dive for spiny lobster at five spots: two patch reefs (Hen & Chickens, the Islamorada
 Patches), the reef line (Pickles Reef, Alligator Reef: deeper, bigger bugs, more morays), and Bayside Rocks, a shallow
@@ -124,6 +127,22 @@ the crouch, and the pro move is to set the net down behind it and let it flip in
 shell sits past the end of the 3" gauge and there are no eggs under the tail. Six per person, and FWC checks your bag at the ramp.
 Watch your air (Alligator Reef is deeper), the jellyfish and the moray holes. Rare golden bugs score triple.
 And now and then a shark shows up, and you race it back to the boat while the crew heckles you.
+
+**Bully netting** (Tavernier Flats, at night). After dark the spiny lobster walk out in the open on the grass flats,
+and the crew idles along with a light on the bow while whoever's up works the bully net (a hoop on a long pole).
+Drag on the water (or move the mouse, or the arrow keys) to sweep the light. Two orange eyes glowing at the edge of the
+beam are a bug; tiny red sparks are shrimp, a close green pair is a crab, and a wide green pair is a nurse shark asleep
+on the bottom. Put the light on a bug and it freezes, the light stays on it when you let go, and your buddy at the wheel
+idles over and holds up when the net can reach (STOP, SLOW and IDLE set how fast the boat creeps along). The longer the boat
+sits close with the light on it, the closer it is to bolting for the nearest rock or sponge, and wary old bugs go fast.
+Lobsters shoot backward, so tap just behind the tail to drop the net (the pro move, +50): it backs right in. Right on
+top of it works on a calm bug, sometimes on a skittish one, never on a wary one; in front of it never works. Then wait
+for it to kick up into the bag and TWIST (tap anywhere, or the button): too soon or too late and it slips out under the
+rim. Gauge it like a dive, six per person, FWC at the ramp. Netting a ray costs 3 seconds and a nurse shark 5. The moon
+is tonight's real moon: on a dark night more bugs walk; under a bright one they're warier, but you can make out the
+bottom. The ? button (or H) shows how, and opens by itself on each angler's first night; until they bag a first bug, the
+night coaches them (an arrow to the eyes, where to tap, when to twist). Whoever's last on the board nets first. **Night
+Run** on the title is a night on its own: one or two rounds, with tonight's bounties.
 
 **Bottom fishing** (The Ledge, Eagle Wreck). The fish finder is your eyes: arches are fish (red means big),
 blue speckle is bait. Fish are scarce and hold on structure (ledge pockets, coral heads, the freighter's bow and stern),
@@ -181,6 +200,7 @@ js/bughunt.js     Bug Hunt (Hen & Chickens, Alligator Reef)
 js/bottom.js      bottom fishing (The Ledge, Eagle Wreck)
 js/troll.js       trolling (The Weedline, The Hump)
 js/flats.js       the backcountry (Florida Bay, Channel Five, Flamingo)
+js/bullynet.js    bully netting at night (Tavernier Flats): the light, the eyes in the dark, the net, the twist
 js/world.js       the Upper Keys map: islands, depths, channels, reefs, bridges, route finding
 js/chase.js       the behind-the-boat camera, and the classic 2D view for phones without 3D
 js/gl3d.js        the shared 3D renderer: the frame-rate safeguards and Graphics setting, the boat and crew models
@@ -188,7 +208,7 @@ js/sea3d.js       the boat ride in 3D: water, sky, islands, boats, wildlife
 js/fight3d.js     the fish fight in 3D, drawn from the same fight state as the 2D one
 js/vendor/        three.min.js: the parts of three.js the game uses (built by tools/vendor-three.mjs)
 js/sea.js         driving the boat around the map, the chart, discovering spots
-js/screens.js     title, crew pick, hand-offs, results, end of day, logbook, how-to
+js/screens.js     title, crew pick, hand-offs, nightfall, results, end of day, logbook, how-to
 js/main.js        boot
 tools/build.mjs   bundles everything into dist/keys-crew.html
 tools/vendor-three.mjs + three-entry.js   rebuild js/vendor/three.min.js (npm run vendor)
@@ -219,6 +239,7 @@ npm run build          # rebuild dist/keys-crew.html after changing js/ (and com
 npm run test:smoke     # the built game plays: a crew trip by tapping, every spot, broken saves, no storage (~1 min)
 npm run test:flow      # plays a whole crew trip by tapping the real buttons, phone-sized
 npm run test:nav       # clicks every way back to the title screen and checks where each button goes
+npm run test:night     # bully netting: a Night Run by tapping, how the net works, the day into the night, mouse and keys
 npm run test:sea       # screenshots around the map, and the autopilot to every spot
 npm run test:balance   # simulates hundreds of fights per species with players of different skill
 npm run test:3d        # screenshots of the 3D boat ride around the map (WebGL forced on, software-rendered)
@@ -229,7 +250,7 @@ npm run vendor         # rebuild js/vendor/three.min.js after changing tools/thr
 ```
 
 Every pull request runs `.github/workflows/check.yml`: the scripts parse, dist/ matches the source, the smoke test,
-the autopilot to every spot, and the 3D safeguards. The deploy to GitHub Pages runs the smoke test on the built page
+the night run, the autopilot to every spot, and the 3D safeguards. The deploy to GitHub Pages runs the smoke test on the built page
 first and stops if it fails, so the live game stays as it was. Every test exits non-zero when something fails.
 
 `node test/clip.mjs . out.mp4 3d autopilot 16` records a smooth video of the boat ride (needs ffmpeg).

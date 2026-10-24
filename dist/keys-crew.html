@@ -153,7 +153,7 @@ const SFX = {
       if (ac.state === 'suspended' && ac.resume) ac.resume().catch(() => {});
     } catch (e) { this.ac = null; this.master = null; return; }
     try { Music.attach(); } catch (e) { console.warn('music unavailable', e); }
-    if (this.wantAmb) this.setAmbient(this.wantAmb[0], this.wantAmb[1]);   // a scene asked for the sea before the first tap
+    if (this.wantAmb) this.setAmbient(this.wantAmb[0], this.wantAmb[1], this.wantAmb[2]);   // a scene asked for the sea before the first tap
     this.warm();
     if (!this.timer) this.timer = setInterval(() => { try { this.house(); } catch (e) { /* ambience never stops the game */ } }, 100);
     if (!this.vis) {
@@ -164,7 +164,7 @@ const SFX = {
   // the whole mixer, on any (Offline)AudioContext
   build(ac) {
     this.ac = ac; this.bank = {}; this.waves = {}; this.crk = null; this.engine = this.water = this.amb = this.drag = null;
-    this.st = { eng: [-1, -1], amb: [-1, false], drag: [-1, -1], hull: 0, hullAuto: 0, hullScene: null };
+    this.st = { eng: [-1, -1], amb: [-1, false, false], drag: [-1, -1], hull: 0, hullAuto: 0, hullScene: null };
     const sr = ac.sampleRate, G = (v, to) => { const g = ac.createGain(); g.gain.value = v; if (to) g.connect(to); return g; };
     const nb = ac.createBuffer(1, sr * 2, sr), d = nb.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; this.nb = nb;
     // slow random wander (−1..1, a new target every half second, eased): swells, wobble, gusts
@@ -204,7 +204,7 @@ const SFX = {
     const b = this[k]; if (!b) return; this[k] = null;
     for (const n of b.src) { try { n.stop(); } catch (e) { /* already stopped */ } }
     try { b.g.disconnect(); } catch (e) { /* gone */ }
-    if (k === 'engine') this.st.eng = [-1, -1]; else if (k === 'amb') this.st.amb = [-1, false]; else if (k === 'drag') this.st.drag = [-1, -1];
+    if (k === 'engine') this.st.eng = [-1, -1]; else if (k === 'amb') this.st.amb = [-1, false, false]; else if (k === 'drag') this.st.drag = [-1, -1];
   },
   warm() { // render the rest of the sample bank in small idle slices after the first tap, so no song or sound waits on it
     const q = ['steel', 'kick', 'shaker', 'rim', 'conga', 'marimba', 'bell', 'hat', 'snare', 'pluck', 'crash', 'tom', 'clap', 'cowbell', 'boom', 'ratchet', 'clave'];
@@ -300,7 +300,7 @@ const SFX = {
     const hg = G(0.08, top), hb = F('bandpass', 2400, 0.5, hg); n2.connect(hb); sw.connect(G(0.05, hg.gain));
     const ug = G(0.75, und), ul = F('lowpass', 210, 0.7, ug); n2.connect(ul); sw.connect(G(0.4, ug.gain));
     const cg = G(0.5, und), ch = F('highpass', 2200, 0.6, cg); B(this.crackle(), 1).connect(ch);   // snapping shrimp, far off on the reef
-    return { src, g, top, und, off: null, L: 0, under: false, nl: 0, ng: 0, nb: 0 };
+    return { src, g, top, und, off: null, L: 0, under: false, night: false, nl: 0, ng: 0, nb: 0, nc: 0, nh: 0, nm: 0 };
   },
   crackle() {
     if (this.crk) return this.crk;
@@ -308,12 +308,13 @@ const SFX = {
     for (let k = 0; k < 4 * 60; k++) { const i0 = randi(0, n - 40), a = Math.pow(Math.random(), 3) * (chance(0.5) ? 1 : -1); for (let j = 0; j < 24; j++) d[i0 + j] += a * Math.exp(-j / 3) * (j % 2 ? -1 : 1); }
     return (this.crk = b);
   },
-  setAmbient(level, under) {
-    this.wantAmb = [level, under];
-    if (!this.ac) return; const L = clamp(+level || 0, 0, 1), u = !!under, s = this.st;
-    if (Math.abs(L - s.amb[0]) < 0.01 && u === s.amb[1]) return; s.amb[0] = L; s.amb[1] = u;
+  // night: the same lapping water, but crickets and frogs off the mangroves and a night heron instead of the gulls
+  setAmbient(level, under, night) {
+    this.wantAmb = [level, under, night];
+    if (!this.ac) return; const L = clamp(+level || 0, 0, 1), u = !!under, n = !!night, s = this.st;
+    if (Math.abs(L - s.amb[0]) < 0.01 && u === s.amb[1] && n === s.amb[2]) return; s.amb[0] = L; s.amb[1] = u; s.amb[2] = n;
     let a = this.amb; if (!a) { if (!L) return; a = this.amb = this.mkAmb(); }
-    const t = this.ac.currentTime; a.off = L ? null : t; a.L = L; a.under = u;
+    const t = this.ac.currentTime; a.off = L ? null : t; a.L = L; a.under = u; a.night = n;
     a.g.gain.setTargetAtTime(L * 0.1, t, 0.4);
     a.top.gain.setTargetAtTime(u ? 0.0001 : 1, t, 0.15); a.und.gain.setTargetAtTime(u ? 1 : 0.0001, t, 0.15);
   },
@@ -326,9 +327,25 @@ const SFX = {
     } else {
       if (a.nl < now) a.nl = now + rand(0.2, 1.2);
       while (a.nl < end) { this.lapAt(a.nl, L); a.nl += rand(1.2, 3.4); }
-      if (a.ng < now) a.ng = now + rand(5, 16);
-      while (a.ng < end) { if (L > 0.25) this.gullAt(a.ng, 0.016 * L, rand(-0.85, 0.85), true); a.ng += rand(16, 38); }
+      if (a.night) {
+        if (a.nc < now) a.nc = now + rand(0.1, 0.6);
+        while (a.nc < end) { this.cricketAt(a.nc, L, rand(-0.9, 0.9)); a.nc += chance(0.3) ? rand(0.25, 0.45) : rand(0.6, 1.8); }
+        if (a.nh < now) a.nh = now + rand(8, 20);
+        while (a.nh < end) { this.heronAt(a.nh, 0.03 * L, rand(-0.8, 0.8)); a.nh += rand(18, 40); }
+        if (a.nm < now) a.nm = now + rand(6, 14);
+        while (a.nm < end) { this.noise(rand(0.25, 0.4), { at: a.nm, filter: 'lowpass', f: 1400, to: 300, vol: 0.03 * L, att: 0.006, pan: rand(-0.9, 0.9), verb: 0.5 }); a.nm += rand(9, 24); }   // a mullet jumping out in the dark
+      } else {
+        if (a.ng < now) a.ng = now + rand(5, 16);
+        while (a.ng < end) { if (L > 0.25) this.gullAt(a.ng, 0.016 * L, rand(-0.85, 0.85), true); a.ng += rand(16, 38); }
+      }
     }
+  },
+  cricketAt(t, L, pan) { // a field cricket: a few quick, bright pulses
+    const f = rand(4300, 4900), n = randi(2, 4);
+    for (let k = 0; k < n; k++) this.tone(f, 0.022, { at: t + k * 0.034, vol: 0.009 * L, att: 0.004, pan, bp: f, q: 4 });
+  },
+  heronAt(t, v, pan) { // a black-crowned night heron: one hoarse "quok" from the mangroves
+    this.tone(430, 0.16, { at: t, type: 'sawtooth', fseq: [[0, 470], [0.05, 520], [0.16, 300]], bp: 900, q: 1.6, vol: v, att: 0.01, pan, verb: 0.55 });
   },
   lapAt(t, L) { // a wave lapping the hull: soft swash, sometimes a little glug
     const v = L * rand(0.5, 1);
@@ -606,6 +623,24 @@ const SFX = {
     bump() { // hull thunk against a piling or the bottom
       this.tone(95, 0.3, { to: 45, vol: 0.3, att: 0.003 }); this.noise(0.12, { filter: 'lowpass', f: 500, vol: 0.24 }); this.tone(190, 0.09, { type: 'triangle', to: 120, vol: 0.1 });
       this.noise(0.35, { filter: 'bandpass', f: 900, to: 400, vol: 0.08, delay: 0.03 });
+    },
+    lighton() { // the spotlight's switch, and the lamp coming up
+      this.noise(0.012, { filter: 'highpass', f: 3500, vol: 0.12, att: 0.001 }); this.tone(1900, 0.03, { type: 'square', to: 1400, vol: 0.03, att: 0.001, lp: 4000 });
+      this.tone(120, 0.5, { type: 'sawtooth', lp: 300, vol: 0.025, att: 0.15, delay: 0.02 });
+    },
+    plunge() { // a bully net's hoop slapping down through the surface
+      this.noise(0.18, { filter: 'bandpass', f: 500, to: 1800, q: 1.4, vol: 0.18, att: 0.06 });
+      this.noise(0.4, { filter: 'lowpass', f: 2200, to: 260, vol: 0.28, att: 0.006, delay: 0.17 }); this.tone(170, 0.14, { to: 80, vol: 0.12, delay: 0.17 }); this.drops(3, 0.3, 0.6, 0.02);
+    },
+    flip() { // a lobster tail-flipping off the bottom: a thump and a puff of sand
+      this.tone(210, 0.07, { to: 90, vol: 0.12, att: 0.002 }); this.noise(0.12, { filter: 'lowpass', f: 900, to: 300, vol: 0.09, att: 0.003 });
+    },
+    twist() { // twisting the pole: the bag wraps round the hoop, the mesh rattles
+      this.noise(0.24, { filter: 'bandpass', f: 700, to: 2600, q: 1.8, vol: 0.2, att: 0.05 });
+      for (let k = 0; k < 4; k++) this.noise(0.03, { filter: 'bandpass', f: rand(2400, 3600), q: 3, vol: 0.06, delay: 0.1 + k * 0.045, att: 0.002 });
+    },
+    skitter() { // a houndfish skipping across the surface
+      for (let k = 0; k < 7; k++) this.noise(0.05, { filter: 'bandpass', f: rand(1600, 2600), q: 2, vol: 0.07 * (1 - k * 0.1), delay: k * 0.07, att: 0.003, pan: -0.6 + k * 0.2 });
     }
   }
 };
@@ -812,6 +847,8 @@ const SUNSET_B = [['F5', null, 'E5', null, 'D5', null, 'A5', null], ['G5', null,
 const SUNSET_FORM = ['A', 'M', 'B', 'M2', 'S', 'B2'];
 const REEF_MEL = [['A5', null, null, null, 'G5', null, 'E5', null], ['B5', null, null, null, 'G5', null, null, null], ['A5', null, 'F5', null, 'C6', null, null, null], ['B5', null, 'G5', null, 'E5', null, null, null]];
 const REEF_B = [['D6', null, null, 'C6', 'A5', null, null, null], ['C6', null, null, null, 'E5', null, 'G5', null], ['F5', null, 'G5', null, 'A5', null, 'Bb5', null], ['G5', null, null, null, null, null, null, null]];
+const NIGHT_MEL = [['A5', null, null, 'G5', 'F5', null, 'E5', null], ['D5', null, null, null, 'F5', null, null, null], ['C5', null, 'D5', null, 'E5', null, 'A5', null], ['G5', null, null, null, null, null, null, null]];
+const NIGHT_B = [['F5', null, 'E5', null, 'D5', null, 'A4', null], ['Bb4', null, 'D5', null, 'F5', null, 'A5', null], ['G5', null, 'F5', null, 'E5', null, 'C5', null], ['E5', null, null, 'D5', 'E5', null, null, null]];
 const SONGS = {
   // menus and the chart: bright calypso. Intro, A, A', B, B', A + harmony, a congas breakdown, A again
   title: { bpm: 116, vol: 0.8, swing: 0.05, fx: { l: 0.16, r: 0.1, lead: 0.22, dly: 0.1, dt: 0.75, fb: 0.25 }, step(i, t, M) {
@@ -894,6 +931,22 @@ const SONGS = {
     else M.mel(t, p, FIGHT_MEL[q], 0.052, { harm: KEY_EM, oct: k > 0.5 || q === 3 });
     if (fillBar) M.fill(t, p, 0.15, b === 15 ? 'tom' : 'snare');
     if (p === 0 && (b & 3) === 0 && bar > 0) M.crash(t, 0.04);
+  } },
+  // bully netting after dark: slow and low, a warm pad and a soft marimba, the steel pan drifting in and out on the echo.
+  // A (pads and the arpeggio), A + bells, B (new chords), B + a flute; the second time round the steel takes the tune
+  night: { bpm: 74, vol: 0.85, lp: 3400, fx: { c: 0.06, l: 0.28, r: 0.28, lead: 0.4, dly: 0.24, dt: 1.5, fb: 0.4 }, step(i, t, M) {
+    const bar = i >> 4, p = i & 15, b = bar & 15, sec = ['A', 'A2', 'B', 'B2'][b >> 2], q = b & 3, beat = 60 / 74, pass = (bar >> 4) & 1, rv = M.bv;
+    const [root, ch] = (sec[0] === 'B' ? [['G1', ['G2', 'Bb2', 'D3', 'F3']], ['A1', ['A2', 'C#3', 'E3', 'G3']], ['D2', ['D3', 'F3', 'A3', 'C4']], ['C2', ['C3', 'E3', 'G3', 'Bb3']]]
+      : [['D2', ['D3', 'F3', 'A3', 'C4']], ['Bb1', ['Bb2', 'D3', 'F3', 'A3']], ['F2', ['F3', 'A3', 'C4', 'E4']], ['C2', ['C3', 'E3', 'G3', 'D4']]])[q];
+    if (p === 0) { M.pad(t, ch, 0.02, beat * 4.2, { lp: 560 }); M.bass(t, nf(root), 0.26, beat * 1.4); }
+    if (p === 10) M.bass(t, nf(root) * 1.5, 0.14, beat * 0.8);
+    if (p % 4 === 2 && !(q === 3 && p > 8)) M.marimba(t, nf(ch[[0, 2, 1, 3][p >> 2]]) * 2, 0.03, p % 8 === 2 ? 'l' : 'r');
+    if (p === 8) M.rim(t, 0.045);
+    if (p % 4 === 3 && rv[1] < 0.7) M.shk(t, 0.012);
+    if (p === 14 && bar % 2) M.bell(t, nf(ch[3]) * 4, 0.01, 'r');
+    const row = sec === 'A2' ? NIGHT_MEL[q] : sec === 'B2' ? NIGHT_B[q] : null;
+    if (row) { if (pass) M.mel(t, p, row, 0.055, { roll: rv[3] < 0.5 }); else M.mel(t, p, row, sec === 'B2' ? 0.045 : 0.04, { voice: sec === 'B2' ? 'lead' : 'bell' }); }
+    if (q === 3 && p >= 12 && sec[0] === 'A') M.pluck(t, nf(ch[p - 12]) * 4, 0.018, 'r');
   } },
   // the shark is coming: two notes, faster as it gets closer; strings, booms and a high tick creep in with Music.intensity
   shark: { bpm: 100, vol: 0.95, lp: 7000, fx: { c: 0.06, l: 0.25, r: 0.25, lead: 0.3 }, step(i, t, M) {
@@ -1426,8 +1479,18 @@ const SPOTS = {
     tip: 'Snook hug the mangroves. Drum and reds tail on the mud. Cast tight to the roots.' }
 };
 const SPOT_ORDER = ['bughunt', 'bayrocks', 'pickles', 'alligator', 'patches', 'bottom', 'wreck', 'troll', 'hump', 'flats', 'bridge', 'flamingo'];
+// The night run: bully netting on the grass flats after dark. It isn't on the chart (you don't drive there by day): a
+// trip with a night run goes out after the run home, and Night Run on the title goes straight to it.
+const NIGHT_SPOT = 'bullynet';
+SPOTS.bullynet = { id: 'bullynet', name: 'Tavernier Flats', kind: 'Bully Netting', mode: 'bully', variant: 'night', depth: '3–6 ft', at: [8900, 900], r: 300, night: true, place: 'Tavernier, after dark',
+  species: ['lobster'],
+  blurb: 'The grass flats off Tavernier after dark. Idle along with a light on the bow, find the bugs walking in the open, and drop a bully net over them.',
+  tip: 'Sweep the light and look for two orange eyes. Drop the net just behind the tail: it shoots backward, right in. Twist when it kicks up into the bag.' };
+const isNightSpot = (id) => !!(SPOTS[id] && SPOTS[id].night);
+// how many turns the night run has: every angler, once per round (a Night Run can go two rounds)
+const nightTurns = (c) => c.crew.length * clamp(c.nightRounds | 0 || 1, 1, 3);
 // what you do at a spot, for the buttons that take you there: lobster spots are a dive, the rest are fishing
-const spotDo = (id) => (SPOTS[id] && SPOTS[id].mode === 'bughunt' ? { here: 'Dive for lobster', go: 'Let’s go lobstering' } : { here: 'Fish here', go: 'Let’s fish' });
+const spotDo = (id) => (SPOTS[id] && SPOTS[id].mode === 'bughunt' ? { here: 'Dive for lobster', go: 'Let’s go lobstering' } : SPOTS[id] && SPOTS[id].mode === 'bully' ? { here: 'Bully net', go: 'Let’s go bully netting' } : { here: 'Fish here', go: 'Let’s fish' });
 const spotMode = (id) => (SPOTS[id] ? SPOTS[id].mode : id);
 // Spots this device has found on the water (the charted ones are always on the chart)
 const Charts = {
@@ -1444,6 +1507,17 @@ const CAPTIONS = {
   generic: ['Chill 😎', 'Same crew, same water.', 'Keys therapy.', 'Tight lines and good friends.', 'Another one for the books.', 'Easy day on the water.', 'Ice chest is filling up.', 'Not a bad office.']
 };
 
+// Tonight's moon, from the date: age in days since new, phase 0..1 (0 new, 0.5 full), how much of it is lit, its name,
+// and what it means for bully netting. A dark night brings the bugs out walking; under a bright moon they lie low,
+// but you can make out the bottom.
+function moonPhase(d = new Date()) {
+  const syn = 29.530588853, ref = Date.UTC(2000, 0, 6, 18, 14);   // a known new moon
+  const age = ((((d.getTime ? d.getTime() : +d) - ref) / 86400000) % syn + syn) % syn, phase = age / syn, lit = (1 - Math.cos(phase * TAU)) / 2;
+  const name = ['New moon', 'Waxing crescent', 'First quarter', 'Waxing gibbous', 'Full moon', 'Waning gibbous', 'Last quarter', 'Waning crescent'][Math.floor(phase * 8 + 0.5) % 8];
+  const bugs = lit < 0.3 ? 'Dark night: the bugs are out walking' : lit < 0.75 ? 'Some moon: a fair night for it' : 'Bright moon: the bugs lie low, but you can see';
+  return { age, phase, lit, name, bugs, walk: lerp(1.25, 0.8, lit) };
+}
+
 function rollWeather() {
   const r = Math.random();
   if (r < 0.36) return { id: 'glass', name: 'Glass calm', wind: '0–5 kts', vis: 1.25, drift: 0, aim: 0.75, tag: '#Glass' };
@@ -1459,9 +1533,10 @@ const Trip = {
     this.cur = {
       id: Date.now(), mode: o.mode, crew: o.crew.slice(), plan: o.plan,
       spotsNeeded: o.plan === 'full' ? 4 : o.plan === 'half' ? 2 : 0,
+      night: !!o.night || o.plan === 'night', nightRounds: clamp(o.nightRounds | 0 || 1, 1, 3), nightDone: false,
       sessionLen: o.sessionLen, weather: o.weather || rollWeather(), date: new Date().toISOString(),
       done: [], spot: null, turn: 0, scores, catches: [], turns: [], legs: 0, boat: null, found: [],
-      bounties: o.bounties || Bounties.roll()   // the day's three goals (the briefing screen rolls them first so it can show them)
+      bounties: o.bounties || Bounties.roll(3, { night: !!o.night, plan: o.plan })   // the day's three goals (the briefing screen rolls them first so it can show them)
     };
     this.save();
   },
@@ -1475,7 +1550,8 @@ const Trip = {
     if (!ok) { if (t != null) this.clear(); return null; }
     const list = (v) => (Array.isArray(v) ? v : []);
     t.mode = t.mode === 'solo' ? 'solo' : 'crew';
-    t.plan = ['full', 'half', 'open', 'solo'].includes(t.plan) ? t.plan : t.mode === 'solo' ? 'solo' : 'full';
+    t.plan = ['full', 'half', 'open', 'solo', 'night'].includes(t.plan) ? t.plan : t.mode === 'solo' ? 'solo' : 'full';
+    t.night = !!t.night || t.plan === 'night'; t.nightDone = !!t.nightDone; t.nightRounds = clamp(t.nightRounds | 0 || 1, 1, 3);
     if (typeof t.spotsNeeded !== 'number') t.spotsNeeded = t.plan === 'full' ? 4 : t.plan === 'half' ? 2 : 0;
     if (!(t.sessionLen > 0)) t.sessionLen = 120;
     if (!t.weather || typeof t.weather !== 'object' || !t.weather.id) t.weather = rollWeather();
@@ -1483,7 +1559,7 @@ const Trip = {
     t.catches = list(t.catches).filter((k) => k && typeof k === 'object'); t.turns = list(t.turns).filter((x) => x && typeof x === 'object');
     if (!t.scores || typeof t.scores !== 'object') t.scores = {};
     for (const c of t.crew) if (typeof t.scores[c] !== 'number') t.scores[c] = 0;
-    t.turn = clamp(t.turn | 0, 0, t.crew.length - 1); t.first = clamp(t.first | 0, 0, t.crew.length - 1); t.legs = Math.max(0, t.legs | 0);
+    t.turn = clamp(t.turn | 0, 0, (isNightSpot(t.spot) ? nightTurns(t) : t.crew.length) - 1); t.first = clamp(t.first | 0, 0, t.crew.length - 1); t.legs = Math.max(0, t.legs | 0);
     if (t.boat && !(Number.isFinite(t.boat.x) && Number.isFinite(t.boat.y) && Number.isFinite(t.boat.h))) t.boat = null;
     if (t.bounties != null) t.bounties = list(t.bounties).filter((b) => b && BOUNTY_DEFS[b.id]);
     if (t.steered != null && (typeof t.steered !== 'object' || Array.isArray(t.steered))) t.steered = {};
@@ -1538,7 +1614,7 @@ const Records = {
 const bountyBowed = (k) => !!(k.lines && k.lines.some((l) => /^Bowed/.test(l.label)));
 const bountyLanded = (keys, min = 0) => (turn) => turn.some((k) => keys.includes(k.key) && k.weight >= min);
 const BOUNTY_DEFS = {
-  bugs3: { group: 'bugs', text: 'Bag 3 legal lobsters in one dive', short: '3 legal bugs', bonus: 200, icon: 'lobster', sp: ['lobster'], test: (turn) => turn.filter((k) => k.key === 'lobster').length >= 3 },
+  bugs3: { group: 'bugs', text: 'Bag 3 legal lobsters in one turn', short: '3 legal bugs', bonus: 200, icon: 'lobster', sp: ['lobster'], test: (turn) => turn.filter((k) => k.key === 'lobster').length >= 3 },
   bigbug: { group: 'bugs', text: 'Gauge a lobster 4 inches or bigger', short: 'A 4-inch bug', bonus: 250, icon: 'lobster', sp: ['lobster'], test: (turn) => turn.some((k) => k.key === 'lobster' && k.cl >= 4) },
   grouper: { group: 'reef', text: 'Land a grouper', short: 'A grouper', bonus: 150, icon: 'redgrouper', sp: ['redgrouper', 'blackgrouper', 'goliath'], test: bountyLanded(['redgrouper', 'blackgrouper', 'goliath']) },
   hogfish: { group: 'reef', text: 'Land a hogfish', short: 'A hogfish', bonus: 150, icon: 'hogfish', sp: ['hogfish'], test: bountyLanded(['hogfish']) },
@@ -1560,34 +1636,53 @@ const BOUNTY_DEFS = {
   newsp: { group: 'any', text: 'Catch a species you’ve never logged', short: 'A new species', bonus: 200, icon: 'new', need: (known, rec) => SPECIES_ORDER.some((k) => !rec[k]), test: (turn) => turn.some((k) => k.isNew) },
   newspot: { group: 'any', text: 'Find a new spot', short: 'Find a new spot', bonus: 200, icon: 'chart', sea: true, need: (known) => known.size < SPOT_ORDER.length },
   five: { group: 'any', text: 'Land 5 fish in one turn', short: '5 fish in a turn', bonus: 150, icon: 'five', test: (turn) => turn.filter((k) => k.key !== 'lobster').length >= 5 },
-  big50: { group: 'any', text: 'Land a fish over 50 lb', short: 'A 50-pounder', bonus: 250, icon: 'big', test: (turn) => turn.some((k) => k.key !== 'lobster' && k.weight >= 50) }
+  big50: { group: 'any', text: 'Land a fish over 50 lb', short: 'A 50-pounder', bonus: 250, icon: 'big', test: (turn) => turn.some((k) => k.key !== 'lobster' && k.weight >= 50) },
+  // the night run (bully netting): only rolled for a trip that goes out after dark
+  night3: { group: 'night', night: true, text: 'Bully-net 3 legal bugs in one night turn', short: '3 bugs by night', bonus: 200, icon: 'moon', test: (turn, day, res, spot) => isNightSpot(spot) && turn.filter((k) => k.key === 'lobster').length >= 3 },
+  nightpro: { group: 'night', night: true, text: 'Back a bug into the bully net', short: 'Back one in', bonus: 200, icon: 'moon', test: (turn, day, res, spot) => isNightSpot(spot) && !!(res.lines && res.lines.some((l) => /^Backed it into the net/.test(l.label))) },
+  nightlimit: { group: 'night', night: true, text: 'Limit out on the night run: 6 legal bugs', short: 'A night limit', bonus: 400, icon: 'moon', w: 0.45, test: (turn, day, res, spot) => isNightSpot(spot) && turn.filter((k) => k.key === 'lobster').length >= 6 }
 };
 const BOUNTY_GROUPS = ['bugs', 'reef', 'offshore', 'flats'];
 
 const Bounties = {
   DEFS: BOUNTY_DEFS,
-  // where a bounty can be done: the spots whose water holds its species ([] means anywhere)
-  spotsFor(id) { const d = BOUNTY_DEFS[id]; return d && d.sp ? SPOT_ORDER.filter((s) => SPOTS[s].species.some((k) => d.sp.includes(k))) : []; },
-  make(id) { const d = BOUNTY_DEFS[id]; return { id, text: d.text, short: d.short, bonus: d.bonus, icon: d.icon, group: d.group, where: this.spotsFor(id), done: false, by: null, spot: null }; },
-  // three for the day, from different parts of the Keys: usually two places plus one you can do anywhere
-  roll(n = 3) {
+  // where a bounty can be done: the spots whose water holds its species ([] means anywhere). night: the trip goes out
+  // after dark too, so a lobster bounty can be done on the night run
+  spotsFor(id, night) {
+    const d = BOUNTY_DEFS[id]; if (!d) return [];
+    if (d.night) return [NIGHT_SPOT];
+    const at = d.sp ? SPOT_ORDER.filter((s) => SPOTS[s].species.some((k) => d.sp.includes(k))) : [];
+    return night && d.sp && d.sp.includes('lobster') ? at.concat([NIGHT_SPOT]) : at;
+  },
+  make(id, night) { const d = BOUNTY_DEFS[id]; return { id, text: d.text, short: d.short, bonus: d.bonus, icon: d.icon, group: d.group, where: this.spotsFor(id, night), done: false, by: null, spot: null }; },
+  // three for the day, from different parts of the Keys: usually two places plus one you can do anywhere. o.night: the
+  // trip has a night run, so one can be for the night; o.plan 'night': a Night Run, all lobster and night bounties
+  roll(n = 3, o = {}) {
     const known = Charts.known(), rec = Records.all();
     const ok = (id) => { const d = BOUNTY_DEFS[id]; return !d.need || d.need(known, rec); };
-    const groups = BOUNTY_GROUPS.slice().sort(() => Math.random() - 0.5).slice(0, chance(0.7) ? n - 1 : n);
+    if (o.plan === 'night') {
+      const nights = Object.keys(BOUNTY_DEFS).filter((id) => BOUNTY_DEFS[id].night).sort(() => Math.random() - 0.5);
+      return ['bigbug'].concat(nights).slice(0, n).map((id) => this.make(id, true));
+    }
+    const groups = BOUNTY_GROUPS.concat(o.night ? ['night'] : []).sort(() => Math.random() - 0.5).slice(0, chance(0.7) ? n - 1 : n);
     if (groups.length < n) groups.push('any');
     return groups.map((g) => {
       const ids = Object.keys(BOUNTY_DEFS).filter((id) => BOUNTY_DEFS[id].group === g && ok(id));
       // weighted; a goal that only lives at spots nobody has found yet comes up less
       const wt = (id) => (BOUNTY_DEFS[id].w || 1) * (this.spotsFor(id).length && !this.spotsFor(id).some((s) => known.has(s)) ? 0.4 : 1);
       let r = Math.random() * ids.reduce((a, id) => a + wt(id), 0);
-      for (const id of ids) { r -= wt(id); if (r <= 0) return this.make(id); }
-      return this.make(ids[ids.length - 1]);
+      for (const id of ids) { r -= wt(id); if (r <= 0) return this.make(id, o.night); }
+      return this.make(ids[ids.length - 1], o.night);
     });
   },
   list(c = Trip.cur) { return (c && c.bounties) || []; },
   open(c = Trip.cur) { return this.list(c).filter((b) => !b.done); },
-  // can this bounty still be finished at this spot?
-  here(b, spot) { if (b.done) return false; const d = BOUNTY_DEFS[b.id]; if (d && d.sea) return false; return !b.where || !b.where.length || b.where.includes(spot); },
+  // can this bounty still be finished at this spot? At night it's lobster or nothing.
+  here(b, spot) {
+    if (b.done) return false; const d = BOUNTY_DEFS[b.id]; if (d && d.sea) return false;
+    if (isNightSpot(spot)) return !!d && (!!d.night || (d.sp ? d.sp.includes('lobster') : b.id === 'newsp' && !Records.all().lobster));
+    return !b.where || !b.where.length || b.where.includes(spot);
+  },
   // a finished turn: returns the bounties it completes and marks them done for ch. Touches no scores.
   check(ch, spot, res, c = Trip.cur) {
     if (!c || !c.bounties || !res) return [];
@@ -1596,7 +1691,7 @@ const Bounties = {
     const got = [];
     for (const b of c.bounties) {
       const d = BOUNTY_DEFS[b.id]; if (b.done || !d || !d.test) continue;
-      let ok = false; try { ok = !!d.test(turn, day, res); } catch (e) { ok = false; }
+      let ok = false; try { ok = !!d.test(turn, day, res, spot); } catch (e) { ok = false; }
       if (ok) { b.done = true; b.by = ch; b.spot = spot; got.push(b); }
     }
     return got;
@@ -1978,25 +2073,27 @@ function drawLobsterSide(ctx, len, o = {}) {
   ctx.restore();
 }
 // Dorsal view. Origin = rear edge of the carapace, head toward +x. C = carapace length in px.
+// o: t, gold, walk (legs stepping), curl 0..1 (tail tucked under for a tail-flip), ant (antennae swept back 0..1)
 function drawLobsterTop(ctx, C, o = {}) {
-  const t = o.t || 0, LP = o.gold ? LOBPAL.gold : LOBPAL.normal;
+  const t = o.t || 0, LP = o.gold ? LOBPAL.gold : LOBPAL.normal, tk = 1 - 0.55 * (o.curl || 0), sweep = o.ant || 0;
   ctx.save();
-  for (const s of [-1, 1]) drawAntenna(ctx, C * 1.02, s * C * 0.13, C * 2.7, s * (0.3 + Math.sin(t * 1.4 + s) * 0.04), C * 0.085, s, LP);
+  for (const s of [-1, 1]) drawAntenna(ctx, C * 1.02, s * C * 0.13, C * 2.7, s * (0.3 + sweep * 0.9 + Math.sin(t * 1.4 + s) * 0.04), C * 0.085, s, LP);
   ctx.strokeStyle = '#f2dcae'; ctx.lineWidth = C * 0.02;
   for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(C * 1.0, s * C * 0.05); ctx.lineTo(C * 1.35, s * C * 0.12); ctx.lineTo(C * 1.5, s * C * 0.08); ctx.stroke(); }
   ctx.lineCap = 'round';
   for (const s of [-1, 1]) for (let i = 0; i < 5; i++) {
-    const lx = C * (0.12 + i * 0.17), kx = lx + C * 0.12, ky = s * C * 0.58, fx = lx + C * 0.32, fy = s * C * 0.72;
+    const st = o.walk ? Math.sin(t * 11 + i * 1.9 + (s > 0 ? Math.PI : 0)) * C * 0.09 : 0;   // alternate legs step
+    const lx = C * (0.12 + i * 0.17), kx = lx + C * 0.12 + st * 0.5, ky = s * C * 0.58, fx = lx + C * 0.32 + st, fy = s * C * 0.72;
     ctx.strokeStyle = LP.leg; ctx.lineWidth = C * 0.05; ctx.beginPath(); ctx.moveTo(lx, s * C * 0.3); ctx.lineTo(kx, ky); ctx.lineTo(fx, fy); ctx.stroke();
     ctx.strokeStyle = LP.legS; ctx.lineWidth = C * 0.022; ctx.beginPath(); ctx.moveTo(kx, ky); ctx.lineTo((kx + fx) / 2, (ky + fy) / 2); ctx.stroke();
   }
   for (let i = 0; i < 6; i++) {
-    const x0 = -i * C * 0.2, w = C * (0.62 - i * 0.03);
+    const x0 = -i * C * 0.2 * tk, w = C * (0.62 - i * 0.03);
     ctx.fillStyle = i % 2 ? LP.t1 : LP.t2; rr(ctx, x0 - C * 0.215, -w / 2, C * 0.225, w, C * 0.08); ctx.fill();
     ctx.strokeStyle = 'rgba(80,30,10,0.4)'; ctx.lineWidth = C * 0.012; ctx.stroke();
     ctx.fillStyle = LP.spot; ell(ctx, x0 - C * 0.1, -w * 0.26, C * 0.04, C * 0.035); ctx.fill(); ell(ctx, x0 - C * 0.1, w * 0.26, C * 0.04, C * 0.035); ctx.fill();
   }
-  ctx.save(); ctx.translate(-C * 1.2, 0);
+  ctx.save(); ctx.translate(-C * 1.2 * tk, 0);
   for (let k = -2; k <= 2; k++) { ctx.save(); ctx.rotate(Math.PI + k * 0.32); ctx.fillStyle = LP.fan; ell(ctx, C * 0.2, 0, C * 0.22, C * 0.1); ctx.fill(); ctx.strokeStyle = LP.fanE; ctx.lineWidth = C * 0.03; ctx.stroke(); ctx.restore(); }
   ctx.restore();
   const cg = ctx.createLinearGradient(0, -C * 0.4, 0, C * 0.4); cg.addColorStop(0, LP.c2); cg.addColorStop(0.5, LP.cm); cg.addColorStop(1, LP.c2);
@@ -2455,10 +2552,41 @@ function drawSkiffTop(ctx, x, y, s, o = {}) {
 /* ================= SCENERY ================= */
 function drawSky(ctx, W, h, mood = 'day') {
   const g = ctx.createLinearGradient(0, 0, 0, h);
-  if (mood === 'sunset') { g.addColorStop(0, '#2b3d74'); g.addColorStop(0.45, '#c8577a'); g.addColorStop(0.8, '#f59a52'); g.addColorStop(1, '#ffd08a'); }
+  if (mood === 'night') { g.addColorStop(0, '#040a1c'); g.addColorStop(0.55, '#0b1838'); g.addColorStop(0.9, '#1a2a52'); g.addColorStop(1, '#2a3560'); }
+  else if (mood === 'sunset') { g.addColorStop(0, '#2b3d74'); g.addColorStop(0.45, '#c8577a'); g.addColorStop(0.8, '#f59a52'); g.addColorStop(1, '#ffd08a'); }
   else if (mood === 'dawn') { g.addColorStop(0, '#3b7fcf'); g.addColorStop(0.6, '#9fd0f0'); g.addColorStop(1, '#ffe4b0'); }
   else { g.addColorStop(0, '#2f7fd6'); g.addColorStop(0.65, '#8fcbf1'); g.addColorStop(1, '#d6eefa'); }
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, h);
+}
+// The moon, lit the way it is tonight. phase: 0 new, 0.25 first quarter (lit on the right), 0.5 full, 0.75 last quarter.
+// A soft glow grows with how much of it is lit; the dark part keeps a faint earthshine.
+function drawMoon(ctx, x, y, r, phase, o = {}) {
+  const lit = (1 - Math.cos(phase * TAU)) / 2;
+  ctx.save();
+  if (o.glow !== false) {
+    const g = ctx.createRadialGradient(x, y, r * 0.6, x, y, r * (2.2 + 2.6 * lit)); g.addColorStop(0, `rgba(220,230,255,${0.1 + 0.32 * lit})`); g.addColorStop(1, 'rgba(220,230,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(x - r * 5, y - r * 5, r * 10, r * 10);
+  }
+  ctx.fillStyle = 'rgba(70,82,110,0.55)'; ell(ctx, x, y, r, r); ctx.fill();
+  ctx.translate(x, y); if (phase > 0.5) ctx.scale(-1, 1);
+  const k = Math.cos(phase * TAU);   // 1 new, 0 quarter, -1 full: how far the terminator bulges
+  if (lit > 0.01) {
+    ctx.beginPath(); ctx.arc(0, 0, r, -Math.PI / 2, Math.PI / 2); ctx.ellipse(0, 0, Math.max(0.01, Math.abs(k) * r), r, 0, Math.PI / 2, -Math.PI / 2, k > 0); ctx.closePath();
+    const mg = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.1, 0, 0, r); mg.addColorStop(0, '#fffdf2'); mg.addColorStop(1, '#d9dccb');
+    ctx.fillStyle = mg; ctx.fill();
+    ctx.save(); ctx.clip(); ctx.fillStyle = 'rgba(150,150,130,0.28)';
+    for (const [mx, my, mr] of [[-0.3, -0.25, 0.22], [0.25, 0.1, 0.16], [-0.05, 0.38, 0.13], [0.35, -0.38, 0.1], [-0.42, 0.2, 0.09]]) { ell(ctx, mx * r, my * r, mr * r, mr * r); ctx.fill(); }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+// a sky full of stars, fixed in place (seeded), twinkling. a: how bright (a full moon washes them out)
+function drawStars(ctx, W, h, t, a = 1, n = 120) {
+  const rng = mulberry(4242);
+  for (let i = 0; i < n; i++) {
+    const x = rng() * W, y = Math.pow(rng(), 1.3) * h, r = rng() < 0.08 ? 1.6 : rng() < 0.4 ? 1.1 : 0.7, tw = 0.6 + 0.4 * Math.sin(t * (1 + rng() * 2.5) + i);
+    ctx.fillStyle = `rgba(235,240,255,${(a * tw * (1 - y / h * 0.6)).toFixed(3)})`; ctx.fillRect(x, y, r, r);
+  }
 }
 function drawSun(ctx, x, y, r, color = '#fff6c9') {
   const g = ctx.createRadialGradient(x, y, r * 0.2, x, y, r * 3); g.addColorStop(0, 'rgba(255,248,210,0.9)'); g.addColorStop(0.3, 'rgba(255,236,170,0.35)'); g.addColorStop(1, 'rgba(255,236,170,0)');
@@ -2513,7 +2641,11 @@ function drawBragCard(ctx, x, y, w, c, o = {}) {
   const iy = y + 58, ih = w * 0.8;
   ctx.save(); ctx.beginPath(); ctx.rect(x, iy, w, ih); ctx.clip(); ctx.translate(x, iy);
   if (o.under) { const g = ctx.createLinearGradient(0, 0, 0, ih); g.addColorStop(0, '#3fb6d6'); g.addColorStop(1, '#0d5f86'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, ih); }
-  if (!o.under) {
+  if (o.night) {   // a flash photo on the boat after dark: the stars, the moon, black water, and everything up close lit white
+    drawSky(ctx, w, ih * 0.6, 'night'); drawStars(ctx, w, ih * 0.6, t, 0.8, 50); drawMoon(ctx, w * 0.82, ih * 0.16, w * 0.045, o.moon == null ? 0.5 : o.moon);
+    const sg = ctx.createLinearGradient(0, ih * 0.58, 0, ih); sg.addColorStop(0, '#0a1630'); sg.addColorStop(1, '#030812'); ctx.fillStyle = sg; ctx.fillRect(0, ih * 0.58, w, ih * 0.42);
+    ctx.fillStyle = 'rgba(255,250,220,0.35)'; for (let i = 0; i < 9; i++) ctx.fillRect(w * 0.82 - 10 + Math.sin(i * 2.3) * 12, ih * 0.62 + i * ih * 0.04, 20 - i, 1.5);
+  } else if (!o.under) {
     drawSky(ctx, w, ih * 0.52, 'day');
     drawCloud(ctx, w * 0.2, ih * 0.16, 0.6, 0.85); drawCloud(ctx, w * 0.8, ih * 0.1, 0.45, 0.75);
     const sg = ctx.createLinearGradient(0, ih * 0.5, 0, ih); sg.addColorStop(0, '#1d72b8'); sg.addColorStop(1, '#0b3f6e'); ctx.fillStyle = sg; ctx.fillRect(0, ih * 0.5, w, ih * 0.5);
@@ -2523,6 +2655,7 @@ function drawBragCard(ctx, x, y, w, c, o = {}) {
   }
   const s = w * 0.085;
   drawHeroShot(ctx, c.ch, c.key === 'lobster' ? { kind: 'lobster', cl: c.cl } : { kind: 'fish', key: c.key, weight: c.weight }, w * 0.5, ih * 0.42, s, t);
+  if (o.night) { const fg = ctx.createRadialGradient(w * 0.5, ih * 0.45, ih * 0.15, w * 0.5, ih * 0.45, ih * 0.8); fg.addColorStop(0, 'rgba(0,0,0,0)'); fg.addColorStop(1, 'rgba(0,4,16,0.5)'); ctx.fillStyle = fg; ctx.fillRect(0, 0, w, ih); }
   ctx.restore();
   const ay = iy + ih + 26;
   const heart = (hx, hy, r, fill) => { ctx.beginPath(); ctx.moveTo(hx, hy + r * 0.9); ctx.bezierCurveTo(hx - r * 1.4, hy - r * 0.1, hx - r * 0.6, hy - r * 1.2, hx, hy - r * 0.4); ctx.bezierCurveTo(hx + r * 0.6, hy - r * 1.2, hx + r * 1.4, hy - r * 0.1, hx, hy + r * 0.9); ctx.closePath(); if (fill) { ctx.fillStyle = '#ff3b5c'; ctx.fill(); } else { ctx.strokeStyle = '#111'; ctx.lineWidth = 2.2; ctx.stroke(); } };
@@ -4051,7 +4184,7 @@ class BugHuntScene extends SessionBase {
     this.intro = { t: 0 };
     this.maxBreath = 24 * this.perks.breath; this.breath = this.maxBreath;
     this.bag = []; this.out = null; this.gauge = null; this.blackout = 0; this.beatT = 0;
-    this.joy = null; this.press = null; this.tickPtr = null; this.actionPtr = null; this.actionPress = false; this.cam = 0; this.camY = 0; this.goodReleases = 0;
+    this.joy = null; this.press = null; this.tickPtr = null; this.actionPtr = null; this.actionPress = false; this.cam = 0; this.camY = 0;
     this.net = { state: 'carry', t: 0, x: 0, y: 0, cool: 0 }; this.seek = null; this.swings = 0;
     let others = (Trip.cur && Trip.cur.crew ? Trip.cur.crew : CHAR_ORDER).filter((c) => c !== this.ch).slice(0, 2);
     if (!others.length) others = CHAR_ORDER.filter((c) => c !== this.ch);
@@ -4543,40 +4676,11 @@ class BugHuntScene extends SessionBase {
   }
   decide(keep) {
     const lob = this.gauge.lob; this.gauge = null;
-    const legal = lob.cl > GAUGE_IN && !lob.eggs;
-    if (keep) {
-      this.bag.push(lob); SFX.play('coin');
-      this.fl.add(this.diver.x - this.cam, this.diver.y - this.camY - 50, 'In the bag ' + this.bag.length + '/' + BH.BAG, '#fff', 22);
-      if (legal) { this.score += Math.round(lob.w * SPECIES.lobster.mult) * (lob.gold ? 3 : 1); this.say(lob.cl >= 4.4 ? 'big' : 'nice', lob.cl >= 4.4 ? 1 : 0.6); }
-      else this.say('short', 0.75);
-      if (this.bag.length >= BH.BAG) this.end('limit');
-    } else {
-      this.parts.burst(this.diver.x + this.diver.facing * 40, this.diver.y, 10, { kind: 'bubble', min: 20, max: 80, life: 1 });
-      if (!legal) { this.goodReleases++; this.addLine(lob.eggs ? 'Released an egg-bearing female' : 'Released a short (' + lob.cl.toFixed(2) + '")', 25); this.fl.add(this.diver.x - this.cam, this.diver.y - this.camY - 50, 'Good call +25', PAL.good, 22); SFX.play('coin'); }
-      else this.fl.add(this.diver.x - this.cam, this.diver.y - this.camY - 50, 'Let a keeper go', '#cfe3ea', 20);
-    }
+    const at = [this.diver.x - this.cam, this.diver.y - this.camY - 50];
+    if (!keep) this.parts.burst(this.diver.x + this.diver.facing * 40, this.diver.y, 10, { kind: 'bubble', min: 20, max: 80, life: 1 });
+    bagDecide(this, lob, keep, at);
   }
-  buildResult() {
-    const lines = [], catches = []; let fines = 0;
-    this.bag.forEach((lob, i) => {
-      const tag = 'Lobster ' + (i + 1) + ' · ' + lob.cl.toFixed(2) + '"';
-      if (lob.eggs) { lines.push({ label: tag + ' · eggs! FWC fine', pts: -300, bad: true }); fines++; }
-      else if (lob.cl <= GAUGE_IN) { lines.push({ label: tag + ' · short! FWC fine', pts: -250, bad: true }); fines++; }
-      else {
-        const extras = lob.cl >= 4.4 ? [{ label: 'Big boy bonus', pts: 100 }] : [];
-        if (lob.gold) extras.push({ label: 'Golden bug ×3', pts: Math.round(lob.w * SPECIES.lobster.mult) * 2 });
-        const c = makeCatch('lobster', lob.w, this.ch, this.spot, extras); c.cl = lob.cl; c.gold = !!lob.gold; catches.push(c);
-        lines.push({ label: tag + ' · ' + fmtLb(lob.w) + (lob.gold ? ' · GOLDEN' : ''), pts: c.pts, key: 'lobster', trophy: c.trophy });
-      }
-    });
-    for (const l of this.extraLines) lines.push(l);
-    if (this.bag.length >= BH.BAG) lines.push({ label: 'Limited out (6 bugs)', pts: 150 });
-    if (catches.length && !fines) lines.push({ label: 'Clean bag · the officer nods', pts: 100 });
-    if (!this.bag.length) lines.push({ label: 'Empty bag. The officer waves you through.', pts: 0 });
-    const total = Math.max(0, lines.reduce((a, l) => a + l.pts, 0));
-    let best = null; for (const c of catches) if (!best || c.pts > best.pts) best = c;
-    return { catches, lines, total, best, header: this.resultHeader, under: true };
-  }
+  buildResult() { return Object.assign(bagResult(this), { under: true }); }
 
   /* ---------- drawing ---------- */
   waterColor(wy) {
@@ -4957,7 +5061,7 @@ class BugHuntScene extends SessionBase {
       text(ctx, Game.touch ? 'Drag to swim · hold a hole to tickle · tap the bug to net it · ? for help' : 'WASD to swim · hold on a hole to tickle · click the bug to net it · H for help', 24, 132, { size: 17, color: '#fff', weight: 700, alpha: 0.85, stroke: 'rgba(0,0,0,0.4)', sw: 4, maxW: W - 200 });
     }
     if (this.coach && !this.paused && !this.help) this.drawCoach(ctx, W, H, t);
-    if (this.quip && !this.help && !(this.coachMsg() && !Game.toasts.length)) this.drawQuip(ctx, W);
+    if (this.quip && !this.help && !this.gauge && !(this.coachMsg() && !Game.toasts.length)) this.drawQuip(ctx, W);
     if (this.help) this.drawHelp(ctx, W, H);
   }
   coachMsg() {
@@ -5092,58 +5196,102 @@ class BugHuntScene extends SessionBase {
     text(ctx, C.name + ': ' + q.msg, qx + 48, qy + 28, { size: 16, color: PAL.ink, weight: 800, maxW: qw - 60 });
     ctx.restore();
   }
-  drawGauge(ctx, W, H) {
-    const g = this.gauge, lob = g.lob, k = easeOut(g.t / 0.3);
-    ctx.fillStyle = `rgba(3,22,32,${0.82 * k})`; ctx.fillRect(0, 0, W, H);
-    text(ctx, 'Gauge it', W / 2, 62, { display: true, size: 40, align: 'center', color: '#fff' });
-    if (lob.gold) text(ctx, 'RARE GOLDEN BUG · ×3 POINTS', W - 30, 58, { size: 16, align: 'right', color: PAL.sun, weight: 800 });
-    text(ctx, 'Legal if the back of the shell (dashed line) sits past the end of the 3" gauge, with no eggs under the tail.', W / 2, 92, { size: 17, align: 'center', color: '#cfe3ea', weight: 600, maxW: W - 60 });
-    const lw = Math.min(W * 0.58, 640), lx = 24, ly = 112, lh = 300;
-    panel(ctx, lx, ly, lw, lh, { r: 16, fill: 'rgba(20,90,120,0.95)' });
-    const ppi = Math.min(72, (lw - 150) / Math.max(lob.cl, 3.3));
-    const C = lob.cl * ppi, rearX = lx + 70, cy = ly + lh / 2 - 14, laneY = ly + lh - 32;
-    const front = rearX + C, gaugeEnd = front - GAUGE_IN * ppi, gw = GAUGE_IN * ppi;
-    const bg = ctx.createLinearGradient(0, laneY - 11, 0, laneY + 11); bg.addColorStop(0, '#f2d27a'); bg.addColorStop(1, '#b8892c');
-    const drawGaugeLane = () => {
-      ctx.fillStyle = 'rgba(0,0,0,0.3)'; rr(ctx, gaugeEnd + 2, laneY - 8, gw, 22, 6); ctx.fill();
-      ctx.fillStyle = bg; rr(ctx, gaugeEnd, laneY - 11, gw, 22, 6); ctx.fill();
-      ctx.strokeStyle = '#6b4c12'; ctx.lineWidth = 1.5;
-      for (let i = 0; i <= 12; i++) { const x = gaugeEnd + (i / 12) * gw; ctx.beginPath(); ctx.moveTo(x, laneY - 11); ctx.lineTo(x, laneY - 11 + (i % 4 ? 6 : 11)); ctx.stroke(); }
-      ctx.fillStyle = '#4a3510'; ctx.fillRect(gaugeEnd - 2, laneY - 18, 4, 36); ctx.fillRect(front - 2, laneY - 18, 4, 36);
-      ctx.strokeStyle = '#ffffff'; ctx.setLineDash([6, 5]); ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.moveTo(rearX, cy - C * 0.36); ctx.lineTo(rearX, laneY + 20); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(front, cy); ctx.lineTo(front, laneY + 20); ctx.stroke(); ctx.setLineDash([]);
-    };
-    ctx.save(); rr(ctx, lx, ly, lw, lh, 16); ctx.clip();
-    ctx.save(); ctx.translate(rearX, cy); drawLobsterTop(ctx, C, { t: this.t, gold: lob.gold }); ctx.restore();
-    drawGaugeLane();
-    text(ctx, '3" GAUGE', gaugeEnd + gw / 2, laneY + 5, { size: 13, align: 'center', color: '#3a2a0a', weight: 800 });
-    ctx.restore();
-    text(ctx, 'back of shell', rearX - 4, laneY + 34 > ly + lh ? laneY - 22 : laneY + 34, { size: 12, align: 'right', color: '#fff', weight: 800, alpha: 0.85 });
-    // 4x magnifier on the back end of the gauge, where close calls are decided
-    const zr = 64, zx = lx + lw - zr - 14, zy = ly + zr + 12, zs = 4;
-    ctx.save(); ell(ctx, zx, zy, zr, zr); ctx.clip();
-    ctx.fillStyle = '#1b6f92'; ctx.fillRect(zx - zr, zy - zr, zr * 2, zr * 2);
-    ctx.translate(zx, zy); ctx.scale(zs, zs); ctx.translate(-gaugeEnd, -laneY);
-    drawGaugeLane();
-    ctx.restore();
-    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ell(ctx, zx, zy, zr, zr); ctx.stroke();
-    text(ctx, 'END OF GAUGE · 4× ZOOM', zx, zy + zr + 16, { size: 11, align: 'center', color: '#cfe3ea', weight: 800 });
-    text(ctx, 'CARAPACE', lx + 16, ly + 26, { size: 15, color: '#cfe3ea', weight: 800 });
-    // underside
-    const rx = lx + lw + 16, rw = W - rx - 24;
-    panel(ctx, rx, ly, rw, lh, { r: 16, fill: 'rgba(20,90,120,0.95)' });
-    text(ctx, 'UNDER THE TAIL', rx + 16, ly + 26, { size: 15, color: '#cfe3ea', weight: 800 });
-    ctx.save(); rr(ctx, rx, ly, rw, lh, 16); ctx.clip();
-    const uc = Math.min(rw * 0.42, 110); ctx.translate(rx + rw * 0.72, ly + lh / 2 + 10); drawLobsterUnder(ctx, uc, lob.eggs, this.t);
-    ctx.restore();
-    const by = ly + lh + 22, bw = Math.min(220, (W - 72) / 2);
-    UI.button(ctx, 'keep', W / 2 - bw - 12, by, bw, 58, 'KEEP IT', () => this.decide(true), { style: 'primary', size: 24, sub: 'Bag ' + this.bag.length + '/' + BH.BAG, key: 'KeyK' });
-    UI.button(ctx, 'release', W / 2 + 12, by, bw, 58, 'LET IT GO', () => this.decide(false), { style: 'secondary', size: 24, sub: 'Back to the reef', key: 'KeyR' });
-    if (!Game.touch) text(ctx, 'K to keep · R to release', W / 2, by + 84, { size: 14, align: 'center', color: '#9fb8c2', weight: 700 });
-  }
+  drawGauge(ctx, W, H) { drawLobsterGauge(ctx, W, H, this.gauge, this.bag.length, (keep) => this.decide(keep), { t: this.t }); }
 }
 const C_GLOVE = (C) => C.gloves || '#2a2d33';
+
+/* ---------- shared by every lobster spot (the Bug Hunt and bully netting at night) ---------- */
+// The gauge: the bug from above against a 3" gauge, a 4x look at the close end, and the underside for eggs.
+// g: { lob, t }. bagN: bugs already in the bag. decide(keep) is called by KEEP IT / LET IT GO. o: t (the animation
+// clock), back (where LET IT GO puts it)
+function drawLobsterGauge(ctx, W, H, g, bagN, decide, o = {}) {
+  const lob = g.lob, k = easeOut(g.t / 0.3), t = o.t == null ? g.t : o.t;
+  ctx.fillStyle = `rgba(3,22,32,${0.82 * k})`; ctx.fillRect(0, 0, W, H);
+  text(ctx, 'Gauge it', W / 2, 62, { display: true, size: 40, align: 'center', color: '#fff' });
+  if (lob.gold) text(ctx, 'RARE GOLDEN BUG · ×3 POINTS', W - 30, 58, { size: 16, align: 'right', color: PAL.sun, weight: 800 });
+  text(ctx, 'Legal if the back of the shell (dashed line) sits past the end of the 3" gauge, with no eggs under the tail.', W / 2, 92, { size: 17, align: 'center', color: '#cfe3ea', weight: 600, maxW: W - 60 });
+  const lw = Math.min(W * 0.58, 640), lx = 24, ly = 112, lh = 300;
+  panel(ctx, lx, ly, lw, lh, { r: 16, fill: 'rgba(20,90,120,0.95)' });
+  const ppi = Math.min(72, (lw - 150) / Math.max(lob.cl, 3.3));
+  const C = lob.cl * ppi, rearX = lx + 70, cy = ly + lh / 2 - 14, laneY = ly + lh - 32;
+  const front = rearX + C, gaugeEnd = front - GAUGE_IN * ppi, gw = GAUGE_IN * ppi;
+  const bg = ctx.createLinearGradient(0, laneY - 11, 0, laneY + 11); bg.addColorStop(0, '#f2d27a'); bg.addColorStop(1, '#b8892c');
+  const drawGaugeLane = () => {
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'; rr(ctx, gaugeEnd + 2, laneY - 8, gw, 22, 6); ctx.fill();
+    ctx.fillStyle = bg; rr(ctx, gaugeEnd, laneY - 11, gw, 22, 6); ctx.fill();
+    ctx.strokeStyle = '#6b4c12'; ctx.lineWidth = 1.5;
+    for (let i = 0; i <= 12; i++) { const x = gaugeEnd + (i / 12) * gw; ctx.beginPath(); ctx.moveTo(x, laneY - 11); ctx.lineTo(x, laneY - 11 + (i % 4 ? 6 : 11)); ctx.stroke(); }
+    ctx.fillStyle = '#4a3510'; ctx.fillRect(gaugeEnd - 2, laneY - 18, 4, 36); ctx.fillRect(front - 2, laneY - 18, 4, 36);
+    ctx.strokeStyle = '#ffffff'; ctx.setLineDash([6, 5]); ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(rearX, cy - C * 0.36); ctx.lineTo(rearX, laneY + 20); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(front, cy); ctx.lineTo(front, laneY + 20); ctx.stroke(); ctx.setLineDash([]);
+  };
+  ctx.save(); rr(ctx, lx, ly, lw, lh, 16); ctx.clip();
+  ctx.save(); ctx.translate(rearX, cy); drawLobsterTop(ctx, C, { t, gold: lob.gold }); ctx.restore();
+  drawGaugeLane();
+  text(ctx, '3" GAUGE', gaugeEnd + gw / 2, laneY + 5, { size: 13, align: 'center', color: '#3a2a0a', weight: 800 });
+  ctx.restore();
+  text(ctx, 'back of shell', rearX - 4, laneY + 34 > ly + lh ? laneY - 22 : laneY + 34, { size: 12, align: 'right', color: '#fff', weight: 800, alpha: 0.85 });
+  // 4x magnifier on the back end of the gauge, where close calls are decided
+  const zr = 64, zx = lx + lw - zr - 14, zy = ly + zr + 12, zs = 4;
+  ctx.save(); ell(ctx, zx, zy, zr, zr); ctx.clip();
+  ctx.fillStyle = '#1b6f92'; ctx.fillRect(zx - zr, zy - zr, zr * 2, zr * 2);
+  ctx.translate(zx, zy); ctx.scale(zs, zs); ctx.translate(-gaugeEnd, -laneY);
+  drawGaugeLane();
+  ctx.restore();
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ell(ctx, zx, zy, zr, zr); ctx.stroke();
+  text(ctx, 'END OF GAUGE · 4× ZOOM', zx, zy + zr + 16, { size: 11, align: 'center', color: '#cfe3ea', weight: 800 });
+  text(ctx, 'CARAPACE', lx + 16, ly + 26, { size: 15, color: '#cfe3ea', weight: 800 });
+  // underside
+  const rx = lx + lw + 16, rw = W - rx - 24;
+  panel(ctx, rx, ly, rw, lh, { r: 16, fill: 'rgba(20,90,120,0.95)' });
+  text(ctx, 'UNDER THE TAIL', rx + 16, ly + 26, { size: 15, color: '#cfe3ea', weight: 800 });
+  ctx.save(); rr(ctx, rx, ly, rw, lh, 16); ctx.clip();
+  const uc = Math.min(rw * 0.42, 110); ctx.translate(rx + rw * 0.72, ly + lh / 2 + 10); drawLobsterUnder(ctx, uc, lob.eggs, t);
+  ctx.restore();
+  const by = ly + lh + 22, bw = Math.min(220, (W - 72) / 2);
+  UI.button(ctx, 'keep', W / 2 - bw - 12, by, bw, 58, 'KEEP IT', () => decide(true), { style: 'primary', size: 24, sub: 'Bag ' + bagN + '/' + BH.BAG, key: 'KeyK' });
+  UI.button(ctx, 'release', W / 2 + 12, by, bw, 58, 'LET IT GO', () => decide(false), { style: 'secondary', size: 24, sub: o.back || 'Back to the reef', key: 'KeyR' });
+  if (!Game.touch) text(ctx, 'K to keep · R to release', W / 2, by + 84, { size: 14, align: 'center', color: '#9fb8c2', weight: 700 });
+}
+
+// keep it or let it go: into the bag (legal bugs score now, the FWC check at the ramp settles the rest), or back
+// in the water (a short or an egg-bearing female let go is a good call). s: the scene (bag, score, say, fl, end);
+// at: where the floating note goes on screen.
+function bagDecide(s, lob, keep, at) {
+  const legal = lob.cl > GAUGE_IN && !lob.eggs;
+  if (keep) {
+    s.bag.push(lob); SFX.play('coin');
+    s.fl.add(at[0], at[1], 'In the bag ' + s.bag.length + '/' + BH.BAG, '#fff', 22);
+    if (legal) { s.score += Math.round(lob.w * SPECIES.lobster.mult) * (lob.gold ? 3 : 1); s.say(lob.cl >= 4.4 ? 'big' : 'nice', lob.cl >= 4.4 ? 1 : 0.6); }
+    else s.say('short', 0.75);
+    if (s.bag.length >= BH.BAG) s.end('limit');
+  } else if (!legal) { s.addLine(lob.eggs ? 'Released an egg-bearing female' : 'Released a short (' + lob.cl.toFixed(2) + '")', 25); s.fl.add(at[0], at[1], 'Good call +25', PAL.good, 22); SFX.play('coin'); }
+  else s.fl.add(at[0], at[1], 'Let a keeper go', '#cfe3ea', 20);
+}
+// the FWC check at the ramp: every bug in the bag is gauged again. Shorts and eggs are fines; a clean bag is a bonus.
+function bagResult(s) {
+  const lines = [], catches = []; let fines = 0;
+  s.bag.forEach((lob, i) => {
+    const tag = 'Lobster ' + (i + 1) + ' · ' + lob.cl.toFixed(2) + '"';
+    if (lob.eggs) { lines.push({ label: tag + ' · eggs! FWC fine', pts: -300, bad: true }); fines++; }
+    else if (lob.cl <= GAUGE_IN) { lines.push({ label: tag + ' · short! FWC fine', pts: -250, bad: true }); fines++; }
+    else {
+      const extras = lob.cl >= 4.4 ? [{ label: 'Big boy bonus', pts: 100 }] : [];
+      if (lob.gold) extras.push({ label: 'Golden bug ×3', pts: Math.round(lob.w * SPECIES.lobster.mult) * 2 });
+      const c = makeCatch('lobster', lob.w, s.ch, s.spot, extras); c.cl = lob.cl; c.gold = !!lob.gold; catches.push(c);
+      lines.push({ label: tag + ' · ' + fmtLb(lob.w) + (lob.gold ? ' · GOLDEN' : ''), pts: c.pts, key: 'lobster', trophy: c.trophy });
+    }
+  });
+  for (const l of s.extraLines) lines.push(l);
+  if (s.bag.length >= BH.BAG) lines.push({ label: 'Limited out (6 bugs)', pts: 150 });
+  if (catches.length && !fines) lines.push({ label: 'Clean bag · the officer nods', pts: 100 });
+  if (!s.bag.length) lines.push({ label: 'Empty bag. The officer waves you through.', pts: 0 });
+  const total = Math.max(0, lines.reduce((a, l) => a + l.pts, 0));
+  let best = null; for (const c of catches) if (!best || c.pts > best.pts) best = c;
+  return { catches, lines, total, best, header: s.resultHeader };
+}
+
 
 /* ---- js/bottom.js ---- */
 'use strict';
@@ -8692,6 +8840,1109 @@ class FlatsScene extends SessionBase {
     ctx.fillStyle = '#fff'; ell(ctx, mx + this.bx / WW * mw, my + (Game.H - 70) / Game.H * mh, 2.4, 3.2); ctx.fill();
     ctx.restore();
     ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1.5; rr(ctx, mx, my, mw, mh, 7); ctx.stroke();
+  }
+}
+
+/* ---- js/bullynet.js ---- */
+'use strict';
+/* Keys Crew — bully netting at night. The skiff idles along the grass flats off Tavernier after dark with a light on
+   the bow, seen from straight above. Spiny lobster walk out in the open at night: sweep the light (drag, or move the
+   mouse) and look for two orange eyes glowing at the edge of the beam. Put the light on a bug and it freezes, and
+   your buddy at the wheel idles over and holds up. Drop the bully net just behind its tail: a lobster shoots
+   backward, right into the hoop. Then wait for it to kick up into the bag and TWIST the pole to close it.
+   Gauge it like a dive (over 3", no eggs). Six per person. Don't net the rays and the sleeping nurse sharks. */
+
+const BN = { TILE: 256, REACH: 250, LIGHT: 380, LIGHT_MIN: 64, CORE: 92, HALO: 2.7, HOOP: 36, DROP: 0.36, SET: 0.85, LIFT: 0.42, TAP: 80, SENSE: 140, LOOK: 185, BOAT: 0.86, BOW: 72 };
+const BN_SPEED = [{ name: 'STOP', v: 0, say: 'holding still' }, { name: 'SLOW', v: 24, say: 'creeping along' }, { name: 'IDLE', v: 46, say: 'idling along' }];
+// how a bug takes the light and the net, on top of its Bug Hunt temperament (TEMPER: the tag's name and color).
+//   shy: how fast the light wears on it (it freezes, then bolts at 1); react: how far into a net's drop it sees one
+//   coming from in front (1 = only when it lands); crouch: seconds it gathers itself before it shoots backward;
+//   sense: chance a net landing close by spooks it; walk: px/s; flip: px/s off the bottom; kick: seconds it sits up in
+//   the bag (the window to twist); hoop: how forgiving the hoop is; misses: spooks before it's gone for good
+const BN_TEMPER = {
+  calm: { shy: 0.2, react: 0.95, crouch: 0.12, sense: 0.55, walk: 9, flip: 470, kick: 0.85, hoop: 1.12, misses: 3 },
+  skittish: { shy: 0.34, react: 0.45, crouch: 0.07, sense: 0.85, walk: 13, flip: 520, kick: 0.62, hoop: 1, misses: 3 },
+  wary: { shy: 0.6, react: 0.3, crouch: 0.05, sense: 1, walk: 17, flip: 580, kick: 0.45, hoop: 0.9, misses: 2 }
+};
+const bnTemper = (b) => BN_TEMPER[b && b.temper] || BN_TEMPER.skittish;
+// the flats at night: lots of shorts, the odd big one
+const BN_SITE = { short: 0.36, big: 0.9, gold: 0.8 };
+// tonight's crew, from the boat. {c} is a clock position from the bow.
+const BN_QUIPS = {
+  spot: ['Eyes! Bug at {c} o’clock!', 'I see eyes at {c} o’clock!', 'Bug! {c} o’clock!', 'Orange eyes, {c} o’clock!'],
+  nice: ['Nice bug!', 'In the bucket!', 'That’s a keeper!', 'Look at the size of him!'],
+  big: ['THAT’S a big boy!', 'Whoa. Monster bug.', 'Now THAT’S a bug!'],
+  short: ['Uh… that looked short.', 'FWC loves a short bug.', 'Gauge it again, bro.'],
+  pro: ['Backed it right in!', 'Textbook.', 'That’s how it’s done!'],
+  miss: ['It shot backward!', 'Behind it, bro! BEHIND it!', 'So close!'],
+  rim: ['It went out under the rim!', 'Twist it! Too late.', 'Gotta twist faster!'],
+  early: ['Wait for it to kick up!', 'Too soon, bro!'],
+  ray: ['That’s a ray, bro!', 'Don’t net the ray!', 'Leave the stingray alone!'],
+  shark: ['That’s a nurse shark!', 'You netted a SHARK?!', 'Let the shark sleep, man.'],
+  crab: ['That’s a crab.', 'Crab. Toss it.', 'Nice crab, wrong bug.'],
+  bolt: ['It’s walking off!', 'Get on it, it’s leaving!', 'Too long in the light!'],
+  den: ['It went under the rock.', 'It’s under the sponge. Leave it.'],
+  hold: ['Holding up!', 'Stopping!', 'Got it, holding.'],
+  far: ['Too far, I’ll bring you over.', 'Hang on, getting closer.'],
+  quiet: ['Who brought the bug spray?', 'No-see-ums, man.', 'Nice night for it.', 'Sweep wide. They’re out here.', 'Slow down, slow down.', 'Check the grass edges.'],
+  moon: ['Look at that moon.', 'Bright out tonight.'],
+  dark: ['Dark as it gets. Perfect.', 'Can’t see my hand out here.'],
+  houndfish: ['Houndfish! Watch your face!', 'Whoa! Needlefish!'],
+  gold: ['Is that… GOLD?!', 'A golden bug! No way!']
+};
+// eyeshine: what glows back at the light, and in what color
+const BN_EYE = { bug: '#ff9a2e', shrimp: '#ff3b4a', crab: '#b9ffcf', shark: '#d7ff7a', fish: '#e9fbff' };
+
+function bnHash(ix, iy, s) { return Math.floor(flHash(ix, iy, s) * 4294967295) | 0; }
+function bnPoisson(rng, lam) { let k = 0, p = Math.exp(-lam), F = p; const u = rng(); while (u > F && k < 12) { k++; p *= lam / k; F += p; } return k; }
+const BN_SPRITES = {};
+// a soft glowing dot, rendered once per color and reused for every eye in the dark
+function bnGlow(col) {
+  if (BN_SPRITES[col]) return BN_SPRITES[col];
+  const c = document.createElement('canvas'), S = 32; c.width = S; c.height = S;
+  const g = c.getContext('2d'), rg = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  rg.addColorStop(0, 'rgba(255,248,225,1)'); rg.addColorStop(0.16, rgba(col, 1)); rg.addColorStop(0.42, rgba(col, 0.35)); rg.addColorStop(1, rgba(col, 0));
+  g.fillStyle = rg; g.fillRect(0, 0, S, S);
+  return (BN_SPRITES[col] = c);
+}
+
+class BullyNetScene extends SessionBase {
+  constructor(o) {
+    super(o);
+    this.music = 'night';
+    this.resultHeader = 'FWC check at the ramp';
+    this.moon = o.moon || moonPhase();
+    this.seed = randi(1, 999983);
+    this.boat = { x: 0, y: 0, h: -Math.PI / 2, v: 0 };
+    this.camH = this.boat.h; this.cam = { x: 0, y: -BN.LOOK };
+    this.notch = 1; this.windA = rand(0, TAU);
+    const bow = this.bow();
+    this.light = { x: bow.x, y: bow.y - 220, tx: bow.x, ty: bow.y - 220, ox: 0, oy: -220 - BN.BOW, a: -Math.PI / 2, st: 1.2, on: false, lock: null, lockHover: null, still: 0 };
+    this.tiles = new Map(); this.chunks = new Map(); this.tileRes = 1;
+    this.bugs = []; this.crits = []; this.shrimp = []; this.puffs = []; this.nid = 0;
+    this.bait = []; for (let i = 0; i < 12; i++) this.bait.push({ x: rand(-80, 80), y: rand(-300, -150), vx: 0, vy: 0, ph: rand(0, TAU) });
+    this.jellies = []; this.snow = []; for (let i = 0; i < 60; i++) this.snow.push({ x: rand(-700, 700), y: rand(-500, 400), z: rand(0.3, 1), ph: rand(0, TAU) });
+    this.bio = new Particles();
+    this.net = { state: 'carry', t: 0, x: 0, y: 0, cool: 0 };
+    this.bag = []; this.gauge = null; this.drops = 0;
+    this.press = null; this.drag = null; this.actionPtr = null; this.actionPress = false; this.lastHover = null;
+    this.quip = null; this.callCool = 4; this.quietT = rand(14, 22); this.houndT = rand(18, 34); this.hound = null; this.dirT = 1; this.dry = 0; this.holdSaid = false;
+    let others = (Trip.cur && Trip.cur.crew ? Trip.cur.crew : CHAR_ORDER).filter((c) => c !== this.ch);
+    if (!others.length) others = CHAR_ORDER.filter((c) => c !== this.ch);
+    this.others = others.slice(0, 2); this.driver = this.others[0];
+    // the coaching (an arrow to the first eyes, where to drop the net, when to twist, the steps) stays on until this angler
+    // nets a first bug at night; the how-to card opens by itself on their first night (and any time from ?)
+    this.coach = !Store.get('coach_bullynet_' + this.ch, false); this.coachSaw = {};
+    this.help = !Store.get('coach_bully1_' + this.ch, false) ? { t: 0 } : null;
+    this.intro = { t: 0 };
+    this.ensureChunks();
+    // the first bug of a learner's night is a calm, legal one, close ahead and turned sideways, so the tail is plain
+    if (this.coach) { const f = this.fwd(), b = this.addBug(bow.x + f.x * 250 - f.y * 70, bow.y + f.y * 250 + f.x * 70, { temper: 'calm', cl: rand(3.3, 3.8), eggs: false, gold: false, h: this.boat.h + Math.PI / 2 * (chance(0.5) ? 1 : -1) }); b.first = true; }
+  }
+  enter() {
+    SFX.setAmbient(0.6, false, true); Music.play('night');
+    // low, between the light and the boat: the top of the picture is where the bugs are
+    Game.toast(SPOTS[this.spot] ? SPOTS[this.spot].name : 'Bully netting', { color: PAL.sun, size: 36, y: 352, dur: 2.2, sub: Game.touch ? 'Drag to sweep the light. Look for orange eyes.' : 'Move the mouse to sweep the light. Look for orange eyes.' });
+    if (this.help) Store.set('coach_bully1_' + this.ch, true);
+  }
+  exit() {
+    SFX.setAmbient(0); SFX.setEngine(0);
+    for (const c of this.tiles.values()) { c.width = 1; c.height = 1; }   // hand the bitmaps back now (mobile Safari caps canvas memory)
+    this.tiles.clear(); if (this.dark) { this.dark.width = 1; this.dark.height = 1; this.dark = null; }
+  }
+  say(kind, p = 1, c) {
+    if (!chance(p) || !BN_QUIPS[kind]) return;
+    this.quip = { who: kind === 'hold' || kind === 'far' ? this.driver : pick(this.others), msg: pick(BN_QUIPS[kind]).replace('{c}', c || '12'), t: 2.8 };
+  }
+
+  /* ---------- where things are ---------- */
+  fwd() { return { x: Math.cos(this.boat.h), y: Math.sin(this.boat.h) }; }
+  bow() { const f = this.fwd(); return { x: this.boat.x + f.x * BN.BOW, y: this.boat.y + f.y * BN.BOW }; }
+  hands() { const f = this.fwd(); return { x: this.boat.x + f.x * 50, y: this.boat.y + f.y * 50 }; }
+  carryPos() { const f = this.fwd(); return { x: this.boat.x + f.x * (BN.BOW + 8) - f.y * 30, y: this.boat.y + f.y * (BN.BOW + 8) + f.x * 30 }; }   // held up off the starboard bow
+  toWorld(p) { return [p.x + this.cam.x - Game.W / 2, p.y + this.cam.y - Game.H / 2]; }
+  toScreen(x, y) { return [x - this.cam.x + Game.W / 2, y - this.cam.y + Game.H / 2]; }
+  // how brightly the light falls on a point: 1 in the middle of the spot, fading out across the halo to 0
+  lightAt(x, y) {
+    const L = this.light; if (!L.on) return 0;
+    const dx = x - L.x, dy = y - L.y, ca = Math.cos(L.a), sa = Math.sin(L.a);
+    const u = (dx * ca + dy * sa) / (BN.CORE * L.st), v = (-dx * sa + dy * ca) / BN.CORE, d = Math.hypot(u, v);
+    return d < 1 ? 1 - 0.25 * d * d : d < BN.HALO ? 0.75 * Math.pow((BN.HALO - d) / (BN.HALO - 1), 2) : 0;
+  }
+  grassAt(x, y) { return flStep(0.44, 0.53, flFbm(x * 0.0042 + 11, y * 0.0042 + 7, this.seed % 1000)) * (1 - flStep(0.74, 0.8, flNoise(x * 0.011, y * 0.011, (this.seed + 5) % 1000))); }
+  reachable(x, y) { const b = this.bow(); return dist(b.x, b.y, x, y) <= BN.REACH; }
+  // the clock position of a point from the bow: 12 dead ahead
+  clockOf(x, y) { const a = angleDiff(this.boat.h, Math.atan2(y - this.boat.y, x - this.boat.x)); return String(((Math.round(a / (TAU / 12)) % 12) + 12) % 12 || 12); }
+  // a bug you can see and work: not hiding, not already in the net
+  open(b) { return !b.gone && b.st !== 'den' && b.st !== 'bag' && b.st !== 'pinned'; }
+
+  /* ---------- the flat: decor per chunk (dens and all), critters and bugs as you get near ---------- */
+  chunkDecor(ix, iy) {
+    const key = ix + ',' + iy; let ch = this.chunks.get(key);
+    if (ch) return ch;
+    const T = BN.TILE, rng = mulberry(bnHash(ix, iy, this.seed)), decor = [], at = () => [ix * T + rng() * T, iy * T + rng() * T];
+    const put = (kind, n, o = {}) => { for (let i = 0; i < n; i++) { const [x, y] = at(), g = this.grassAt(x, y); if (o.sand && g > 0.5) continue; if (o.grass && g < 0.4) continue; decor.push(Object.assign({ kind, x, y, r: rand(o.r[0], o.r[1]) * 1, a: rng() * TAU, s: rng(), c: o.cols ? o.cols[Math.floor(rng() * o.cols.length)] : null }, o.extra || {})); } };
+    put('rock', rng() < 0.45 ? 1 : rng() < 0.2 ? 2 : 0, { r: [16, 28] });
+    put('loggerhead', rng() < 0.3 ? 1 : 0, { r: [14, 22] });
+    put('vase', Math.floor(rng() * 2.4), { r: [6, 10], cols: ['#d9772e', '#a85fc0', '#c9a23a'] });
+    put('ball', Math.floor(rng() * 3), { r: [4, 7], cols: ['#e5a531', '#d0602c', '#e9c94a'] });
+    put('rod', Math.floor(rng() * 3), { r: [8, 14], grass: true, cols: ['#8a4fb8', '#7a4a3a', '#b0643a'] });
+    put('urchin', Math.floor(rng() * 3), { r: [4, 6.5] });
+    put('star', rng() < 0.35 ? 1 : 0, { r: [8, 12], sand: true, cols: ['#e8742c', '#d9532f', '#f0a23a'] });
+    put('cuke', Math.floor(rng() * 2), { r: [7, 10] });
+    put('conch', rng() < 0.18 ? 1 : 0, { r: [7, 9], sand: true });
+    put('biscuit', Math.floor(rng() * 2), { r: [4, 6], sand: true });
+    ch = { decor, dens: decor.filter((d) => d.kind === 'rock' || d.kind === 'loggerhead'), lived: false };
+    this.chunks.set(key, ch);
+    return ch;
+  }
+  // bugs, crabs, shrimp, rays and the odd sleeping nurse shark, once per chunk as the boat comes near
+  populate(ix, iy) {
+    const ch = this.chunkDecor(ix, iy); if (ch.lived) return; ch.lived = true;
+    const T = BN.TILE, rng = mulberry(bnHash(ix, iy, this.seed + 77)), at = () => [ix * T + rng() * T, iy * T + rng() * T];
+    const b0 = this.boat;
+    if (Math.abs(ix * T + T / 2 - b0.x) < T * 1.2 && Math.abs(iy * T + T / 2 - b0.y) < T * 1.2) return;   // nothing under the boat at the start
+    const lam = 0.42 * this.moon.walk * Math.sqrt(this.perks.bite);
+    for (let i = bnPoisson(rng, lam); i > 0; i--) { const [x, y] = at(); this.addBug(x, y); }
+    for (let i = bnPoisson(rng, 0.32); i > 0; i--) { const [x, y] = at(); this.crits.push({ kind: 'crab', x, y, h: rng() * TAU, t: rng() * 9, sp: 0, flee: 0, side: rng() < 0.5 ? 1 : -1 }); }
+    for (let i = bnPoisson(rng, 0.55); i > 0; i--) { const [x, y] = at(), dots = []; for (let k = randi(4, 9); k > 0; k--) dots.push({ dx: rand(-40, 40), dy: rand(-40, 40), ph: rand(0, TAU), gone: 0 }); this.shrimp.push({ x, y, dots }); }
+    if (rng() < 0.05) { const [x, y] = at(); if (this.grassAt(x, y) < 0.45) this.crits.push({ kind: 'ray', x, y, h: rng() * TAU, t: 0, v: 0, flee: 0, s: rand(0.8, 1.05) }); }
+    if (rng() < 0.03) { const [x, y] = at(); this.crits.push({ kind: 'nurse', x, y, h: rng() * TAU, t: 0, v: 0, flee: 0, len: rand(120, 160) }); }
+    if (rng() < 0.12) { const [x, y] = at(); this.jellies.push({ x, y, ph: rng() * TAU, r: rand(10, 16) }); }
+  }
+  addBug(x, y, o = {}) {
+    const cl = o.cl != null ? o.cl : rollCL(this.perks, BN_SITE);
+    const b = { kind: 'bug', id: ++this.nid, x, y, h: o.h != null ? o.h : rand(0, TAU), cl, w: lobsterWeight(cl), eggs: o.eggs != null ? o.eggs : cl > 3.0 && chance(0.14),
+      gold: o.gold != null ? o.gold : cl > 3.0 && chance(0.035 * this.perks.trophy * BN_SITE.gold), st: 'walk', stT: rand(1.5, 4), sp: 0, stress: 0, lit: 0, eyes: 0, misses: 0, vx: 0, vy: 0, t: rand(0, 9), seen: false, gone: false };
+    const r = Math.random();
+    b.temper = o.temper || (b.gold || (cl >= 4.2 && chance(0.55)) ? 'wary' : cl < 3 && chance(0.6) ? 'calm' : r < 0.5 ? 'calm' : r < 0.85 ? 'skittish' : 'wary');
+    b.C = 6.5 + cl * 3.4;
+    this.bugs.push(b);
+    return b;
+  }
+  ensureChunks() {
+    const T = BN.TILE, W = Game.W, H = Game.H, x0 = Math.floor((this.cam.x - W / 2 - 360) / T), x1 = Math.floor((this.cam.x + W / 2 + 360) / T), y0 = Math.floor((this.cam.y - H / 2 - 420) / T), y1 = Math.floor((this.cam.y + H / 2 + 300) / T);
+    for (let iy = y0; iy <= y1; iy++) for (let ix = x0; ix <= x1; ix++) this.populate(ix, iy);
+  }
+  // keeps the night moving: when there's been nothing ahead of the boat for a while, a bug walks out of the dark ahead
+  director(dt) {
+    this.dirT -= dt; if (this.dirT > 0) return; this.dirT = 1;
+    const b = this.boat, f = this.fwd();
+    const ahead = this.bugs.some((g) => this.open(g) && dist(g.x, g.y, b.x, b.y) < 720 && (g.x - b.x) * f.x + (g.y - b.y) * f.y > 60);
+    this.dry = ahead ? 0 : this.dry + 1;
+    if (this.dry >= 5) { this.dry = 0; const k = rand(380, 520), s = rand(-200, 200); this.addBug(b.x + f.x * k - f.y * s, b.y + f.y * k + f.x * s); }
+    // forget what's far behind
+    if (this.bugs.length > 60) this.bugs = this.bugs.filter((g) => !g.gone && dist(g.x, g.y, b.x, b.y) < 1600);
+    if (this.crits.length > 50) this.crits = this.crits.filter((g) => dist(g.x, g.y, b.x, b.y) < 1600);
+    if (this.shrimp.length > 50) this.shrimp = this.shrimp.filter((g) => dist(g.x, g.y, b.x, b.y) < 1600);
+  }
+
+  /* ---------- input ---------- */
+  actionZone() { return { x: Game.W - 96, y: Game.H - 96, r: 66 }; }
+  // the NET / TWIST button only shows (and only takes touches) when there's something to do with it
+  actionShown() { return this.net.state === 'pin' || (this.net.state === 'carry' && !!this.netTarget()); }
+  inAction(x, y) { const a = this.actionZone(); return this.actionShown() && dist(x, y, a.x, a.y) < a.r + 8; }
+  busy() { return !!(this.gauge || this.help || this.intro || this.ended); }
+  pointerDown(p) {
+    if (this.basePointerDown(p) || this.busy()) return;
+    if (this.inAction(p.x, p.y)) { this.actionPtr = p.id; this.actionPress = true; return; }
+    if (this.net.state === 'pin') { this.twist(); return; }   // anywhere on the water twists
+    this.press = { id: p.id, sx: p.x, sy: p.y, t0: this.t };
+  }
+  pointerMove(p) {
+    if (this.press && this.press.id === p.id && dist(p.x, p.y, this.press.sx, this.press.sy) > 12) { this.drag = { id: p.id, x: p.x, y: p.y }; this.press = null; this.unlock(); }
+    if (this.drag && this.drag.id === p.id) { this.drag.x = p.x; this.drag.y = p.y; }
+  }
+  pointerUp(p) {
+    if (this.press && this.press.id === p.id) { const [wx, wy] = this.toWorld(p); this.press = null; this.tapAt(wx, wy); }
+    if (this.drag && this.drag.id === p.id) { this.drag = null; this.light.still = 0; }
+    if (this.actionPtr === p.id) this.actionPtr = null;
+  }
+  keyDown(c) {
+    if (this.help) { if (['Space', 'Enter', 'Escape', 'KeyH'].includes(c)) this.closeHelp(); return; }
+    if (this.baseKeyDown(c) || this.busy()) return;
+    if (c === 'KeyH') { this.openHelp(); return; }
+    if (c === 'Space' || c === 'KeyE' || c === 'KeyF') this.actionPress = true;
+  }
+  setNotch(n) { const was = this.notch; this.notch = clamp(n, 0, BN_SPEED.length - 1); if (was !== this.notch) { SFX.play('click'); this.holdSaid = false; } }
+  openHelp() { if (!this.gauge && !this.ended && !this.paused && this.net.state === 'carry') { this.help = { t: 0 }; this.press = null; this.drag = null; this.actionPtr = null; } }
+  closeHelp() { this.help = null; this.press = null; this.drag = null; this.actionPtr = null; }
+  // a tap on the water: on (or just behind) a bug you can see and reach, the net drops there. Anywhere else, the light
+  // swings there; on a bug too far away, the light goes on it and your buddy brings you over.
+  tapAt(wx, wy) {
+    if (this.net.state === 'pin') { this.twist(); return; }
+    if (this.net.state !== 'carry' || this.net.cool > 0) return;
+    const near = this.thingNear(wx, wy, 0.3);
+    if (near && this.reachable(wx, wy)) { this.dropNet(wx, wy); return; }
+    if (near) {
+      this.aimLight(near.x, near.y, near.kind === 'bug' ? near : null);
+      if (!this.coachSaw.far) { this.coachSaw.far = true; Game.toast('Too far for the net', { color: PAL.warn, size: 28, y: 170, sub: 'Keep the light on it. Your buddy idles you over.' }); }
+      this.say('far', 0.5);
+      return;
+    }
+    const bug = this.thingNear(wx, wy, 0.01, true);   // only its eyes showing: light it up first
+    if (bug) this.aimLight(bug.x, bug.y, bug); else this.aimLight(wx, wy, null);
+  }
+  // the nearest thing at a point you could see well enough to net (minI: how lit it has to be). bugsOnly: eyes count.
+  thingNear(wx, wy, minI, bugsOnly) {
+    let best = null, bd = 1e9;
+    for (const b of this.bugs) {
+      if (!this.open(b)) continue;
+      const d = dist(wx, wy, b.x, b.y); if (d > BN.TAP || d >= bd) continue;
+      if (bugsOnly ? b.eyes < 0.25 : this.lightAt(b.x, b.y) < minI) continue;
+      best = b; bd = d;
+    }
+    if (bugsOnly) return best;
+    for (const c of this.crits) {
+      const size = c.kind === 'nurse' ? c.len * 0.42 : c.kind === 'ray' ? 34 : 10, d = Math.max(0, dist(wx, wy, c.x, c.y) - size);
+      if (d > BN.TAP * 0.6 || d >= bd || this.lightAt(c.x, c.y) < minI) continue;
+      best = c; bd = d;
+    }
+    return best;
+  }
+  aimLight(x, y, bug) {
+    const L = this.light, bw = this.bow();
+    L.ox = x - this.boat.x; L.oy = y - this.boat.y; L.lock = bug || null; L.lockHover = bug && Input.hover ? { x: Input.hover.x, y: Input.hover.y } : null;
+    if (dist(bw.x, bw.y, x, y) > BN.LIGHT) { const a = Math.atan2(y - bw.y, x - bw.x); L.ox = bw.x + Math.cos(a) * BN.LIGHT - this.boat.x; L.oy = bw.y + Math.sin(a) * BN.LIGHT - this.boat.y; }
+    L.still = 0;
+  }
+  unlock() { const L = this.light; if (L.lock) { L.ox = L.x - this.boat.x; L.oy = L.y - this.boat.y; } L.lock = null; L.lockHover = null; }
+  // the bug the NET button goes after: the one in the light (the locked one first) within the net's reach
+  netTarget() {
+    if (this.net.state !== 'carry') return null;
+    const L = this.light, ok = (b) => b && this.open(b) && b.st !== 'flip' && this.reachable(b.x, b.y) && this.lightAt(b.x, b.y) > 0.35;
+    if (ok(L.lock)) return L.lock;
+    let best = null, bi = 0.35;
+    for (const b of this.bugs) { if (!ok(b)) continue; const I = this.lightAt(b.x, b.y); if (I > bi) { bi = I; best = b; } }
+    return best;
+  }
+  actionHeld() { return this.actionPtr != null || Input.held('Space', 'KeyE'); }
+
+  /* ---------- the net ---------- */
+  dropNet(tx, ty) {
+    const n = this.net; if (n.state !== 'carry' || n.cool > 0) return;
+    const bw = this.bow(), d = dist(bw.x, bw.y, tx, ty);
+    if (d > BN.REACH) { tx = bw.x + (tx - bw.x) * BN.REACH / d; ty = bw.y + (ty - bw.y) * BN.REACH / d; }
+    const h = this.carryPos();
+    this.net = { state: 'drop', t: 0, fx: h.x, fy: h.y, tx, ty, x: h.x, y: h.y, cool: 0, splashed: false, spooked: [] };
+    for (const b of this.bugs) { b.react = false; b.rx = 0; }
+    this.drops++; this.press = null; this.drag = null;
+    SFX.play('swish'); Game.vibrate(15);
+  }
+  landNet() {
+    const n = this.net; n.state = 'set'; n.t = 0; n.x = n.tx; n.y = n.ty;
+    this.puff(n.x, n.y, 16);
+    // what's under the hoop: a bug pinned (a flipping one backed itself in), or something you shouldn't have netted
+    let best = null, bd = 1e9;
+    for (const b of this.bugs) {
+      if (!this.open(b)) continue;
+      const d = dist(b.x, b.y, n.x, n.y), r = BN.HOOP * bnTemper(b).hoop * (1 + (this.perks.window - 1) * 0.4);
+      if (d < r * 0.95 && d < bd) { bd = d; best = b; }
+    }
+    // the pro move: the hoop came down behind its tail (or it shot back into it), so it backed itself into the net
+    if (best) { this.pin(best, (n.x - best.x) * Math.cos(best.h) + (n.y - best.y) * Math.sin(best.h) < -best.C * 0.45); return; }
+    for (const c of this.crits) { const size = c.kind === 'nurse' ? c.len * 0.4 : c.kind === 'ray' ? 30 : 8; if (dist(c.x, c.y, n.x, n.y) < BN.HOOP + size * 0.6) { this.netCritter(c); return; } }
+    for (const d of this.densNear(n.x, n.y, 60)) if (dist(d.x, d.y, n.x, n.y) < d.r + 10 && this.bugs.some((b) => b.st === 'den' && b.den === d)) { this.say('den'); break; }
+    // the hoop hitting the bottom close by: it feels that and shoots backward (into the hoop, if you dropped it behind)
+    for (const b of this.bugs) {
+      if (!this.open(b) || b.st === 'crouch' || b.st === 'flip') continue;
+      if (dist(b.x, b.y, n.x, n.y) < BN.SENSE && chance(0.1 + 0.9 * bnTemper(b).sense)) this.spook(b);
+    }
+  }
+  spook(b) { b.st = 'crouch'; b.stT = bnTemper(b).crouch; b.spooked = true; this.net.spooked && this.net.spooked.push(b); }
+  pin(b, pro) {
+    const n = this.net, T = bnTemper(b);
+    n.state = 'pin'; n.t = 0; n.bug = b; n.pro = !!pro; n.kicks = 0; n.kick = 0; n.nextKick = rand(0.3, 0.55);
+    n.win = T.kick * this.perks.window * (this.grassAt(n.x, n.y) > 0.6 ? 0.85 : 1) * (this.coach ? 1.35 : 1);
+    b.st = 'pinned'; b.vx = 0; b.vy = 0; b.sp = 0; this.light.lock = b;
+    SFX.play('net'); Game.vibrate(30);
+    if (b.gold) this.say('gold');
+  }
+  // TWIST (a tap anywhere, or the button) while the bug is in the hoop: right when it kicks up into the bag, it's yours
+  twist() {
+    const n = this.net; if (n.state !== 'pin') return;
+    const b = n.bug;
+    if (n.kick > 0) {
+      SFX.play('twist'); SFX.play('coin'); Game.vibrate(40);
+      if (n.pro) { this.addLine('Backed it into the net', 50); this.fl.add(...this.toScreen(n.x, n.y - 46), 'PRO MOVE +50', PAL.sun, 24); this.say('pro'); }
+      else if (!b.misses) { this.addLine('One drop, one bug', 25); this.fl.add(...this.toScreen(n.x, n.y - 46), 'CLEAN DROP +25', PAL.sun, 22); }
+      b.st = 'bag'; n.state = 'lift'; n.t = 0; n.caught = b; this.light.lock = null;
+      this.coach = false; Store.set('coach_bullynet_' + this.ch, true);
+      return;
+    }
+    if (this.coach) { Game.toast('Not yet!', { color: PAL.warn, size: 30, y: 170, sub: 'Wait for it to kick up into the bag, then TWIST' }); return; }
+    this.say('early', 0.8);
+    this.slip(b, 'Too soon! It slipped out under the rim', 'Wait for it to kick up into the bag, then twist.');
+  }
+  // out under the rim: it shoots off away from the boat
+  slip(b, msg, sub) {
+    const n = this.net, away = Math.atan2(b.y - this.boat.y, b.x - this.boat.x) + rand(-0.8, 0.8);
+    b.h = away + Math.PI; b.st = 'flip'; b.vx = Math.cos(away) * bnTemper(b).flip; b.vy = Math.sin(away) * bnTemper(b).flip; b.spooked = false;
+    this.missed(b, true); SFX.play('flip'); this.puff(b.x, b.y, 10);
+    n.state = 'lift'; n.t = 0; n.caught = null; this.light.lock = null;
+    Game.toast(msg, { color: PAL.warn, size: 28, y: 170, sub: b.wise ? 'That bug’s gone. Find another.' : sub });
+  }
+  missed(b, quiet) {
+    b.misses++; b.stress = 1;
+    if (b.misses >= bnTemper(b).misses) b.wise = true;   // it's had enough: no more freezing in the light, it heads for cover
+    if (!quiet) this.say('miss', 0.6);
+  }
+  netCritter(c) {
+    const n = this.net; n.state = 'lift'; n.t = 0; n.caught = null;
+    if (c.kind === 'crab') { Game.toast('Just a crab', { color: '#cfe3ea', size: 28, y: 170, sub: 'Shake it out. Orange eyes are bugs.' }); this.say('crab'); c.flee = 3; c.side = chance(0.5) ? 1 : -1; return; }
+    const shark = c.kind === 'nurse', lose = shark ? 5 : 3;
+    this.timeLeft = Math.max(0, this.timeLeft - lose); c.flee = 6; c.v = shark ? 70 : 90; c.h = Math.atan2(c.y - this.boat.y, c.x - this.boat.x);
+    SFX.play('bigsplash'); Game.shake(shark ? 8 : 5, 0.4); Game.vibrate(shark ? 120 : 60);
+    Game.toast(shark ? 'NURSE SHARK!' : 'That’s a stingray!', { color: PAL.bad, size: 34, y: 160, sub: (shark ? 'It thrashed the net and took off.' : 'Don’t net the rays.') + ' (−' + lose + ' sec)' });
+    this.say(shark ? 'shark' : 'ray');
+    this.puff(c.x, c.y, 26);
+  }
+  updateNet(dt) {
+    const n = this.net; n.cool = Math.max(0, (n.cool || 0) - dt);
+    if (n.state === 'carry') { const p = this.carryPos(); n.x = p.x; n.y = p.y; return; }
+    n.t += dt;
+    if (n.state === 'drop') {
+      const k = easeInOut(clamp(n.t / BN.DROP, 0, 1)); n.x = lerp(n.fx, n.tx, k); n.y = lerp(n.fy, n.ty, k);
+      if (!n.splashed && n.t > BN.DROP * 0.55) {
+        n.splashed = true; SFX.play('plunge');
+        this.parts.add({ kind: 'ring', x: n.x, y: n.y, size: BN.HOOP * 0.8, grow: 70, life: 0.7, color: 'rgba(230,245,255,0.6)', lw: 2.5 });
+        for (let i = 0; i < 14; i++) this.bio.add({ x: n.x + rand(-30, 30), y: n.y + rand(-30, 30), vx: rand(-20, 20), vy: rand(-20, 20), drag: 2, life: rand(0.6, 1.4), size: rand(1, 2.4), color: '#8ff6ff' });
+        for (const f of this.bait) { const a = Math.atan2(f.y - n.y, f.x - n.x); f.vx += Math.cos(a) * 260; f.vy += Math.sin(a) * 260; }
+      }
+      // the bugs that see it coming (it's in front of them, or right on top): they shoot backward before it lands
+      for (const b of this.bugs) {
+        if (b.react || !this.open(b) || b.st === 'crouch' || b.st === 'flip') continue;
+        if (dist(b.x, b.y, n.tx, n.ty) > BN.SENSE) continue;
+        const T = bnTemper(b);
+        if (n.t < T.react * (b.st === 'freeze' ? 1.25 : 1) * BN.DROP * (b.rx || (b.rx = rand(0.8, 1.2)))) continue;
+        b.react = true;
+        const front = (n.tx - b.x) * Math.cos(b.h) + (n.ty - b.y) * Math.sin(b.h) > -BN.HOOP * 0.3;
+        if (front && chance(T.sense)) this.spook(b);
+      }
+      if (n.t >= BN.DROP) this.landNet();
+    } else if (n.state === 'set') {
+      // a bug shooting backward into the hoop (moving toward its middle, not out past the rim) is caught
+      for (const b of this.bugs) if (b.st === 'flip' && !b.gone && dist(b.x, b.y, n.x, n.y) < BN.HOOP * bnTemper(b).hoop * 0.95 && b.vx * (n.x - b.x) + b.vy * (n.y - b.y) > 0) { this.pin(b, b.spooked); return; }
+      if (n.t > BN.SET) {
+        n.state = 'lift'; n.t = 0; n.caught = null;
+        const sp = (n.spooked || []).filter((b) => !b.gone);
+        for (const b of sp) this.missed(b, true);
+        if (sp.length) {
+          const b = sp[0], behind = (n.x - b.x) * Math.cos(b.h) + (n.y - b.y) * Math.sin(b.h) < 0;
+          this.say('miss', 0.7); this.coachSaw.behind = true;
+          Game.toast(behind ? 'Missed! It shot off sideways' : 'Missed! It shot backward', { color: PAL.warn, size: 28, y: 170, sub: b.wise ? 'That bug’s gone. Find another.' : b.misses === 1 ? 'Lobsters shoot BACKWARD. Drop the net just behind the tail.' : 'One more miss and it’s gone' });
+        }
+      }
+    } else if (n.state === 'pin') {
+      const b = n.bug;
+      b.x = approach(b.x, n.x, 6, dt); b.y = approach(b.y, n.y, 6, dt); b.t += dt;
+      if (n.kick > 0) {
+        n.kick -= dt;
+        if (n.kick <= 0) { n.kicks++; n.nextKick = rand(0.4, 0.7); if (n.kicks >= 3) { this.say('rim', 0.8); this.slip(b, 'It slipped out under the rim!', 'Tap TWIST the moment it kicks up into the bag.'); } }
+      } else {
+        n.nextKick -= dt;
+        if (n.nextKick <= 0) { n.kick = n.win; SFX.play('flip'); this.puff(n.x, n.y, 6); }
+      }
+    } else if (n.state === 'lift') {
+      const p = this.carryPos(), k = easeOut(clamp(n.t / BN.LIFT, 0, 1));
+      n.x = lerp(n.tx, p.x, k); n.y = lerp(n.ty, p.y, k);
+      if (n.caught) { n.caught.x = n.x; n.caught.y = n.y; }
+      if (n.t >= BN.LIFT) {
+        const b = n.caught; this.net = { state: 'carry', t: 0, x: p.x, y: p.y, cool: 0.2 };
+        for (let i = 0; i < 8; i++) this.parts.add({ x: p.x + rand(-14, 14), y: p.y + rand(-10, 10), vx: rand(-10, 10), vy: rand(10, 40), life: 0.6, size: rand(1, 2), color: 'rgba(220,240,255,0.8)' });
+        if (b) { b.gone = true; this.gauge = { lob: b, t: 0 }; Game.toasts = []; this.drag = null; this.press = null; }
+      }
+    }
+  }
+  decide(keep) {
+    const lob = this.gauge.lob; this.gauge = null;
+    bagDecide(this, lob, keep, this.toScreen(this.boat.x, this.boat.y - 70));
+    if (!keep) SFX.play('plop');
+  }
+  buildResult() { return bagResult(this); }
+  // time's up with the net in the water (a bug in the hoop, or on its way down): that drop gets finished first
+  end(reason) {
+    const n = this.net;
+    if (reason === 'time' && !this.ended && (n.state === 'drop' || n.state === 'set' || n.state === 'pin' || (n.state === 'lift' && n.caught) || this.gauge)) {
+      if (!this.lastDrop) { this.lastDrop = true; Game.toast('Last drop! Finish it!', { color: PAL.sun, size: 30, y: 110 }); }
+      return;
+    }
+    super.end(reason);
+  }
+
+  /* ---------- update ---------- */
+  update(dt) {
+    if (this.gauge) { if (!this.paused) { this.gauge.t += dt; this.t += dt; } Game.toasts = []; SFX.setEngine(0.35, 0); return; }
+    if (this.help) { this.help.t += dt; this.t += dt; Game.toasts = []; return; }   // the clock stops while you read
+    if (this.baseUpdate(dt)) {
+      if (this.ended) { this.updateWorld(dt, true); return; }
+      if (!this.lastDrop || this.paused) return;   // out of time with the net in the water: let it finish (see end)
+    }
+    if (this.quip) { this.quip.t -= dt; if (this.quip.t <= 0) this.quip = null; }
+    if (this.intro) {
+      const I = this.intro; I.t += dt;
+      this.light.on = I.t > 0.35 && !(I.t > 0.45 && I.t < 0.52) && !(I.t > 0.6 && I.t < 0.64);
+      if (I.t > 0.35 && !I.click) { I.click = true; SFX.play('lighton'); }
+      if (I.t > 0.9) { this.intro = null; this.light.on = true; }
+    }
+    this.updateLight(dt);
+    this.updateWorld(dt, false);
+    this.updateNet(dt);
+    if (this.actionPress) {
+      this.actionPress = false;
+      if (this.net.state === 'pin') this.twist();
+      else { const b = this.netTarget(); if (b) this.dropNet(b.x, b.y); }
+    }
+    // the crew: calls when eyes show up at the edge of the light, chatter when it's quiet
+    this.callCool -= dt; this.quietT -= dt;
+    if (this.callCool <= 0 && !this.coach) {
+      const b = this.bugs.find((g) => this.open(g) && !g.seen && g.eyes > 0.45 && g.lit < 0.6);
+      if (b) { b.seen = true; this.callCool = rand(6, 10); this.say('spot', 0.75, this.clockOf(b.x, b.y)); }
+    }
+    for (const b of this.bugs) if (b.eyes > 0.5) b.seen = true;
+    if (this.quietT <= 0) { this.quietT = rand(20, 32); if (!this.quip) this.say(chance(0.3) ? (this.moon.lit > 0.7 ? 'moon' : this.moon.lit < 0.25 ? 'dark' : 'quiet') : 'quiet', 0.6); }
+    // the engine idling under it all
+    const v = this.boat.v; SFX.setEngine(0.32 + 0.2 * clamp(v / 46, 0, 1), 0.015 + 0.09 * clamp(v / 46, 0, 1));
+  }
+  updateLight(dt) {
+    const L = this.light, b = this.boat, bw = this.bow();
+    if (this.intro) { L.still = 0; }
+    // where the light wants to be: under the finger while you drag; on the locked bug; or riding along with the boat
+    let moved = false;
+    if (this.drag) { const [wx, wy] = this.toWorld(this.drag); L.ox = wx - b.x; L.oy = wy - b.y; L.lock = null; moved = true; }
+    else if (!Game.touch && Input.hover && !this.press) {
+      const h = Input.hover, last = this.lastHover;
+      if (!last || dist(h.x, h.y, last.x, last.y) > 0.5) {
+        this.lastHover = { x: h.x, y: h.y };
+        const overUI = !!UI.hit(h.x, h.y) || this.inAction(h.x, h.y);
+        if (last && !overUI && (!L.lock || !L.lockHover || dist(h.x, h.y, L.lockHover.x, L.lockHover.y) > 26)) { const [wx, wy] = this.toWorld(h); L.ox = wx - b.x; L.oy = wy - b.y; L.lock = null; moved = true; }
+      }
+    }
+    let kx = 0, ky = 0;
+    if (Input.held('ArrowLeft', 'KeyA')) kx -= 1; if (Input.held('ArrowRight', 'KeyD')) kx += 1;
+    if (Input.held('ArrowUp', 'KeyW')) ky -= 1; if (Input.held('ArrowDown', 'KeyS')) ky += 1;
+    if (kx || ky) { this.unlock(); L.ox += kx * 320 * dt; L.oy += ky * 320 * dt; moved = true; }
+    if (L.lock && (!this.open(L.lock) && L.lock.st !== 'pinned' || dist(bw.x, bw.y, L.lock.x, L.lock.y) > BN.LIGHT + 40)) this.unlock();
+    let tx = b.x + L.ox, ty = b.y + L.oy;
+    if (L.lock) { tx = L.lock.x; ty = L.lock.y; }
+    // keep it out from the bow and within the lamp's throw
+    const d = dist(bw.x, bw.y, tx, ty), a = Math.atan2(ty - bw.y, tx - bw.x);
+    if (d > BN.LIGHT || d < BN.LIGHT_MIN) { const k = clamp(d, BN.LIGHT_MIN, BN.LIGHT); tx = bw.x + Math.cos(a) * k; ty = bw.y + Math.sin(a) * k; if (!L.lock) { L.ox = tx - b.x; L.oy = ty - b.y; } }
+    L.tx = tx; L.ty = ty;
+    L.x = approach(L.x, tx, 9, dt); L.y = approach(L.y, ty, 9, dt);
+    L.a = Math.atan2(L.y - bw.y, L.x - bw.x); L.st = 1 + 0.4 * clamp(dist(bw.x, bw.y, L.x, L.y) / BN.LIGHT, 0, 1);
+    // hold the light still on a bug and it stays on it (lift your finger, the light keeps tracking it)
+    L.still = moved ? 0 : L.still + dt;
+    if (!L.lock && !this.drag && L.still > 0.25 && this.net.state === 'carry') {
+      let best = null, bd = BN.CORE * 0.6;
+      for (const g of this.bugs) { if (!this.open(g) || g.st === 'flip') continue; const dd = dist(g.x, g.y, L.x, L.y); if (dd < bd) { bd = dd; best = g; } }
+      if (best) { L.lock = best; L.lockHover = Input.hover && !Game.touch ? { x: Input.hover.x, y: Input.hover.y } : null; }
+    }
+  }
+  updateWorld(dt, frozen) {
+    const t = this.t;
+    if (!frozen) { this.updateBoat(dt); this.updateCam(dt); this.ensureChunks(); this.director(dt); }
+    this.bio.update(dt);   // (the session's own particles and floaters tick in baseUpdate)
+    const b0 = this.boat;
+    for (const b of this.bugs) { if (b.gone || dist(b.x, b.y, b0.x, b0.y) > 1300) continue; this.updateBug(b, dt); }
+    for (const c of this.crits) { if (dist(c.x, c.y, b0.x, b0.y) > 1300) continue; this.updateCrit(c, dt); }
+    for (const s of this.shrimp) for (const d of s.dots) { d.ph += dt; if (d.gone > 0) d.gone -= dt; else if (this.lightAt(s.x + d.dx, s.y + d.dy) > 0.6) { d.gone = rand(4, 9); if (chance(0.3)) this.puff(s.x + d.dx, s.y + d.dy, 2); } }
+    for (const j of this.jellies) { j.ph += dt; j.x += Math.cos(this.windA) * 4 * dt; j.y += Math.sin(this.windA) * 4 * dt + Math.sin(j.ph) * 3 * dt; }
+    // glass minnows crowd the light
+    const L = this.light;
+    for (const f of this.bait) {
+      f.ph += dt;
+      const tx = L.x + Math.cos(f.ph * 0.7 + f.x * 0.01) * 50, ty = L.y + Math.sin(f.ph * 0.9) * 40;
+      if (L.on) { f.vx += (tx - f.x) * 1.6 * dt; f.vy += (ty - f.y) * 1.6 * dt; }
+      f.vx *= Math.exp(-1.6 * dt); f.vy *= Math.exp(-1.6 * dt); f.x += f.vx * dt; f.y += f.vy * dt;
+      if (dist(f.x, f.y, L.x, L.y) > 900) { f.x = L.x + rand(-60, 60); f.y = L.y + rand(-60, 60); }
+    }
+    for (const p of this.puffs) { p.t += dt; p.r += dt * 26; }
+    this.puffs = this.puffs.filter((p) => p.t < p.life);
+    // bioluminescence: the prop wash and the bow wave sparkle when the boat moves
+    if (!frozen && b0.v > 4 && chance(dt * (6 + b0.v * 0.4))) {
+      const f = this.fwd(), s = rand(-1, 1), back = rand(-70, -86);
+      this.bio.add({ x: b0.x + f.x * back - f.y * s * 12, y: b0.y + f.y * back + f.x * s * 12, vx: -f.x * 10 + rand(-6, 6), vy: -f.y * 10 + rand(-6, 6), drag: 1, life: rand(0.8, 1.8), size: rand(0.8, 2), color: chance(0.5) ? '#7ff0ff' : '#b8fff2' });
+    }
+    // a houndfish skips across the light now and then
+    if (!frozen) {
+      this.houndT -= dt;
+      if (this.houndT <= 0 && !this.hound && L.on) {
+        this.houndT = rand(28, 46); const a = rand(0, TAU), side = chance(0.5) ? 1 : -1;
+        this.hound = { x: L.x - Math.cos(a) * 340 * side, y: L.y - Math.sin(a) * 340 * side, vx: Math.cos(a) * 560 * side, vy: Math.sin(a) * 560 * side, t: 0 };
+        SFX.play('skitter'); this.say('houndfish', 0.6);
+      }
+    }
+    if (this.hound) { const h = this.hound; h.t += dt; h.x += h.vx * dt; h.y += h.vy * dt; if (chance(dt * 30)) this.parts.add({ kind: 'ring', x: h.x, y: h.y, size: 2, grow: 30, life: 0.5, color: 'rgba(230,245,255,0.5)', lw: 1.2 }); if (h.t > 1.3) this.hound = null; }
+    void t;
+  }
+  updateBoat(dt) {
+    const b = this.boat, L = this.light, bw = this.bow(), n = this.net;
+    let want = BN_SPEED[this.notch].v;
+    const lk = L.lock && this.open(L.lock) ? L.lock : null;
+    if (lk) {
+      // your buddy follows the light to the bug, and holds up once the net can reach it
+      const d = dist(bw.x, bw.y, lk.x, lk.y);
+      if (d < BN.REACH * 0.72) { want = 0; if (!this.holdSaid && b.v > 6) { this.holdSaid = true; this.say('hold', 0.6); } }
+      else { want = Math.min(Math.max(want, 24), d < BN.REACH * 1.3 ? 22 : 44); this.holdSaid = false; }
+      if (this.notch === 0) want = 0;
+    } else if (this.netTarget()) want *= 0.4;   // a bug in the light: easing off
+    if (n.state !== 'carry' || this.intro) want = 0;   // the net's in the water: hold up
+    const toL = dist(bw.x, bw.y, L.tx, L.ty), aim = Math.atan2(L.ty - b.y, L.tx - b.x), diff = angleDiff(b.h, aim);
+    if (toL > 80 && this.notch > 0 && n.state === 'carry') { const rate = 0.55 * clamp(b.v / 20, 0.3, 1); b.h += clamp(diff, -rate * dt, rate * dt); }
+    b.v = approach(b.v, want * (1 - 0.45 * Math.min(1, Math.abs(diff) / 1.5)), want < b.v ? 2.2 : 1.1, dt);
+    const drift = this.weather.drift * 6 * (n.state === 'carry' ? 1 : 0.3), dx = Math.cos(b.h) * b.v * dt + Math.cos(this.windA) * drift * dt, dy = Math.sin(b.h) * b.v * dt + Math.sin(this.windA) * drift * dt;
+    b.x += dx; b.y += dy;
+    if (!L.lock) { L.x += dx; L.y += dy; }   // the light rides along with the boat
+  }
+  updateCam(dt) {
+    const b = this.boat; this.camH += angleDiff(this.camH, b.h) * (1 - Math.exp(-1.5 * dt));
+    this.cam.x = approach(this.cam.x, b.x + Math.cos(this.camH) * BN.LOOK, 3, dt); this.cam.y = approach(this.cam.y, b.y + Math.sin(this.camH) * BN.LOOK, 3, dt);
+  }
+  densNear(x, y, r) {
+    const T = BN.TILE, out = [], ix0 = Math.floor((x - r - 30) / T), ix1 = Math.floor((x + r + 30) / T), iy0 = Math.floor((y - r - 30) / T), iy1 = Math.floor((y + r + 30) / T);
+    for (let iy = iy0; iy <= iy1; iy++) for (let ix = ix0; ix <= ix1; ix++) for (const d of this.chunkDecor(ix, iy).dens) if (dist(d.x, d.y, x, y) < r + d.r) out.push(d);
+    return out;
+  }
+  bolt(b, loud) {
+    const L = this.light, T = bnTemper(b);
+    b.st = 'bolt'; b.stT = rand(2.2, 3.2) * (b.wise ? 2 : 1); b.stress = b.wise ? 1 : 0.35;
+    b.goal = Math.atan2(b.y - L.y, b.x - L.x) + rand(-0.5, 0.5);
+    const den = this.densNear(b.x, b.y, 220).sort((p, q) => dist(p.x, p.y, b.x, b.y) - dist(q.x, q.y, b.x, b.y))[0];
+    b.den = den && !this.bugs.some((g) => g.st === 'den' && g.den === den) ? den : null;
+    if (loud && b.lit > 0.5) this.say('bolt', 0.5);
+    void T;
+  }
+  updateBug(b, dt) {
+    const T = bnTemper(b), I = this.lightAt(b.x, b.y);
+    b.t += dt; b.lit = I;
+    // eyeshine: the light coming straight back off its eyes, strongest when it faces the lamp
+    const bw = this.bow(), face = Math.max(0, Math.cos(angleDiff(b.h, Math.atan2(bw.y - b.y, bw.x - b.x))));
+    b.eyes = b.st === 'pinned' || b.st === 'bag' ? 0 : clamp((I - 0.008) / 0.18, 0, 1) * (0.55 + 0.45 * face) * (b.st === 'den' ? 0.7 : 1);
+    if (b.st === 'pinned' || b.st === 'bag') return;
+    const mv = (sp, turnTo, rate) => { if (turnTo != null) b.h += clamp(angleDiff(b.h, turnTo), -rate * dt, rate * dt); b.sp = approach(b.sp, sp, 4, dt); b.x += Math.cos(b.h) * b.sp * dt; b.y += Math.sin(b.h) * b.sp * dt; };
+    switch (b.st) {
+      case 'walk':
+        b.h += (flNoise(b.t * 0.35, b.id * 3.1, 7) - 0.5) * 1.8 * dt; mv(T.walk, null, 0);
+        if ((b.stT -= dt) <= 0) { b.st = 'idle'; b.stT = rand(0.8, 2.6); }
+        break;
+      case 'idle':
+        mv(0, null, 0);
+        if ((b.stT -= dt) <= 0) { b.st = 'walk'; b.stT = rand(2, 5); b.h += rand(-1.2, 1.2); }
+        break;
+      case 'freeze':
+        mv(0, null, 0);
+        break;
+      case 'bolt': {
+        const goal = b.den ? Math.atan2(b.den.y - b.y, b.den.x - b.x) : b.goal;
+        mv(T.walk * 2.6, goal, 4);
+        if (b.den && dist(b.x, b.y, b.den.x, b.den.y) < b.den.r * 0.7) { b.st = 'den'; b.stT = b.wise ? 1e9 : rand(9, 16); b.sp = 0; if (b.lit > 0.3) this.say('den', 0.5); break; }
+        if ((b.stT -= dt) <= 0) { b.st = 'walk'; b.stT = rand(2, 4); b.stress = b.wise ? 1 : 0.2; }
+        break;
+      }
+      case 'den':
+        if ((b.stT -= dt) <= 0 && dist(b.x, b.y, this.boat.x, this.boat.y) > 420) { b.st = 'walk'; b.stT = rand(2, 4); b.h = Math.atan2(b.y - b.den.y, b.x - b.den.x); b.den = null; b.stress = 0; }
+        break;
+      case 'crouch':
+        b.sp = 0;
+        if ((b.stT -= dt) <= 0) { b.st = 'flip'; b.vx = -Math.cos(b.h) * T.flip; b.vy = -Math.sin(b.h) * T.flip; SFX.play('flip'); this.puff(b.x, b.y, 8); }
+        break;
+      case 'flip': {
+        b.x += b.vx * dt; b.y += b.vy * dt; const k = Math.exp(-6.5 * dt); b.vx *= k; b.vy *= k;
+        if (Math.hypot(b.vx, b.vy) < 40) { b.vx = 0; b.vy = 0; this.bolt(b, false); }
+        break;
+      }
+    }
+    // the light: a bug in the middle of it freezes. It holds still while the boat is far off; the closer the boat
+    // comes (and the brighter the moon), the sooner it bolts
+    if (b.st === 'walk' || b.st === 'idle' || b.st === 'freeze') {
+      if (b.wise) { if (I > 0.3) this.bolt(b, false); }
+      else if (I > 0.62) {
+        b.st = 'freeze'; b.unfreeze = 0;
+        const near = clamp(1 - (dist(bw.x, bw.y, b.x, b.y) - 120) / 260, 0.12, 1);
+        b.stress += dt * T.shy * near / (this.perks.window * (b.first ? 2.5 : 1)) * (0.9 + 0.3 * this.moon.lit);
+        if (b.stress >= 1) this.bolt(b, true);
+      } else if (b.st === 'freeze') { b.unfreeze = (b.unfreeze || 0) + dt; if (b.unfreeze > 0.7) { b.st = 'walk'; b.stT = rand(1, 3); } }
+      if (I < 0.3) b.stress = Math.max(0, b.stress - dt * 0.2);
+    }
+  }
+  updateCrit(c, dt) {
+    c.t += dt; const I = this.lightAt(c.x, c.y);
+    if (c.kind === 'crab') {
+      if (I > 0.55 && c.flee <= 0) { c.flee = rand(1.2, 2); c.side = chance(0.5) ? 1 : -1; }
+      const sp = c.flee > 0 ? 70 : (Math.sin(c.t * 0.7 + c.x) > 0.3 ? 12 : 0); c.flee -= dt;
+      c.x += -Math.sin(c.h) * sp * c.side * dt; c.y += Math.cos(c.h) * sp * c.side * dt;   // crabs go sideways
+      c.moving = sp > 1;
+    } else {
+      if (c.flee > 0) { c.flee -= dt; c.x += Math.cos(c.h) * c.v * dt; c.y += Math.sin(c.h) * c.v * dt; c.v = approach(c.v, c.flee > 1 ? c.v : 0, 0.8, dt); }
+      else if (I > 0.7) { c.lit = (c.lit || 0) + dt; if (c.lit > 5) { c.flee = 4; c.v = 40; c.lit = 0; } }   // tired of the light: glides off
+    }
+  }
+  puff(x, y, n) { this.puffs.push({ x, y, r: 6 + n * 0.6, t: 0, life: 1.1, a: Math.min(0.55, 0.12 + n * 0.025) }); }
+
+  /* ---------- the ground: soft tiles of sand and turtle grass with everything that lives on it, made once ---------- */
+  tileAt(ix, iy) {
+    const key = ix + ',' + iy; let c = this.tiles.get(key);
+    if (c) return c;
+    const T = BN.TILE, res = this.tileRes, N = T / 4 + 2;
+    c = document.createElement('canvas'); c.width = Math.ceil(T * res); c.height = Math.ceil(T * res);
+    const g = c.getContext('2d');
+    if (!this.cell) { this.cell = document.createElement('canvas'); this.cell.width = N; this.cell.height = N; }
+    const cg = this.cell.getContext('2d'), img = cg.createImageData(N, N), s3 = (this.seed + 3) % 1000;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const wx = ix * T + (i - 1) * 4 + 2, wy = iy * T + (j - 1) * 4 + 2, gk = this.grassAt(wx, wy), n = flNoise(wx * 0.08, wy * 0.08, s3), m = flNoise(wx * 0.02, wy * 0.02, s3 + 9);
+      const sand = [206 + 16 * m, 196 + 14 * m, 160 + 8 * m], grass = [50 + 20 * m, 86 + 26 * m, 58 + 14 * m], col = flMix(sand, grass, gk), k = 0.86 + 0.2 * n, p = (j * N + i) * 4;
+      img.data[p] = col[0] * k; img.data[p + 1] = col[1] * k; img.data[p + 2] = col[2] * k; img.data[p + 3] = 255;
+    }
+    cg.putImageData(img, 0, 0);
+    g.imageSmoothingEnabled = true; g.drawImage(this.cell, 0, 0, N, N, -4 * res, -4 * res, (T + 8) * res, (T + 8) * res);
+    g.scale(res, res); g.translate(-ix * T, -iy * T);
+    const rng = mulberry(bnHash(ix, iy, this.seed + 11));
+    // turtle grass: flat blades leaning with the current, darker underneath
+    g.lineCap = 'round';
+    for (let k = 0; k < 900; k++) {
+      const x = ix * T + rng() * T, y = iy * T + rng() * T, gk = this.grassAt(x, y);
+      if (rng() > gk * 1.1) continue;
+      const a = -2.2 + (rng() - 0.5) * 0.9, l = 5 + rng() * 8, sh = rng();
+      g.strokeStyle = sh < 0.4 ? 'rgba(28,58,36,0.75)' : sh < 0.8 ? 'rgba(74,122,70,0.8)' : 'rgba(120,160,90,0.7)'; g.lineWidth = 1.4 + rng() * 1.2;
+      g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + Math.cos(a) * l * 0.5 + 1.5, y + Math.sin(a) * l * 0.5, x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+    }
+    // bits of shell on the sand
+    for (let k = 0; k < 70; k++) { const x = ix * T + rng() * T, y = iy * T + rng() * T; if (this.grassAt(x, y) > 0.4) continue; g.fillStyle = rng() < 0.5 ? 'rgba(250,244,226,0.75)' : 'rgba(120,110,86,0.35)'; ell(g, x, y, 0.8 + rng() * 1.4, 0.6 + rng()); g.fill(); }
+    for (let jy = iy - 1; jy <= iy + 1; jy++) for (let jx = ix - 1; jx <= ix + 1; jx++) for (const d of this.chunkDecor(jx, jy).decor) {
+      if (d.x < ix * T - 40 || d.x > ix * T + T + 40 || d.y < iy * T - 40 || d.y > iy * T + T + 40) continue;
+      this.drawDecor(g, d);
+    }
+    this.tiles.set(key, c);
+    if (this.tiles.size > 64) { for (const [k, v] of this.tiles) { const [a, b2] = k.split(',').map(Number); if (Math.abs(a * T - this.cam.x) > 1400 || Math.abs(b2 * T - this.cam.y) > 1000) { v.width = 1; v.height = 1; this.tiles.delete(k); } } }
+    return c;
+  }
+  drawDecor(g, d) {
+    const { x, y, r, a } = d;
+    g.save(); g.translate(x, y); g.rotate(a);
+    if (d.kind === 'rock') {
+      g.fillStyle = 'rgba(20,28,20,0.35)'; ell(g, 3, 4, r * 1.1, r * 0.85); g.fill();
+      const rng = mulberry(Math.floor(d.s * 1e6)); g.beginPath();
+      for (let i = 0; i <= 10; i++) { const an = (i / 10) * TAU, rr2 = r * (0.78 + rng() * 0.3); i ? g.lineTo(Math.cos(an) * rr2, Math.sin(an) * rr2 * 0.8) : g.moveTo(Math.cos(an) * rr2, Math.sin(an) * rr2 * 0.8); }
+      g.closePath(); const rg = g.createRadialGradient(-r * 0.3, -r * 0.3, 2, 0, 0, r); rg.addColorStop(0, '#9c917a'); rg.addColorStop(1, '#5e5644'); g.fillStyle = rg; g.fill();
+      g.fillStyle = 'rgba(30,26,18,0.85)'; g.beginPath(); g.ellipse(r * 0.55, 0, r * 0.32, r * 0.42, 0, -Math.PI / 2, Math.PI / 2); g.fill();   // the hole under the ledge
+      g.fillStyle = 'rgba(160,110,150,0.55)'; for (let i = 0; i < 4; i++) { ell(g, (rng() - 0.6) * r, (rng() - 0.5) * r * 0.9, 2 + rng() * 2.5, 2 + rng() * 2); g.fill(); }
+    } else if (d.kind === 'loggerhead') {
+      g.fillStyle = 'rgba(20,28,20,0.35)'; ell(g, 3, 4, r * 1.05, r * 1.05); g.fill();
+      const rg = g.createRadialGradient(-r * 0.3, -r * 0.3, 2, 0, 0, r); rg.addColorStop(0, '#7a6244'); rg.addColorStop(1, '#4a3a26'); g.fillStyle = rg; ell(g, 0, 0, r, r); g.fill();
+      g.fillStyle = '#2a2016'; ell(g, 0, 0, r * 0.38, r * 0.38); g.fill(); g.strokeStyle = 'rgba(160,130,90,0.5)'; g.lineWidth = 1.2; ell(g, 0, 0, r * 0.7, r * 0.7); g.stroke();
+    } else if (d.kind === 'vase') {
+      g.fillStyle = d.c; ell(g, 0, 0, r, r); g.fill(); g.fillStyle = 'rgba(30,20,20,0.75)'; ell(g, 0, 0, r * 0.5, r * 0.5); g.fill();
+    } else if (d.kind === 'ball') {
+      g.fillStyle = d.c; for (let i = 0; i < 3; i++) { ell(g, Math.cos(i * 2.1) * r * 0.6, Math.sin(i * 2.1) * r * 0.6, r * 0.7, r * 0.7); g.fill(); }
+    } else if (d.kind === 'rod') {
+      g.strokeStyle = d.c; g.lineCap = 'round'; g.lineWidth = 2;
+      for (let i = 0; i < 4; i++) { const an = i * 1.6 + d.s * 3; g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(Math.cos(an) * r * 0.5, Math.sin(an) * r * 0.5 + 3, Math.cos(an + 0.3) * r, Math.sin(an + 0.3) * r); g.stroke(); }
+      g.fillStyle = '#3a2a2a'; ell(g, 0, 0, 2.5, 2.5); g.fill();
+    } else if (d.kind === 'urchin') {
+      g.strokeStyle = '#121418'; g.lineWidth = 1; for (let i = 0; i < 14; i++) { const an = (i / 14) * TAU; g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(an) * r * 2.2, Math.sin(an) * r * 2.2); g.stroke(); }
+      g.fillStyle = '#1b1d24'; ell(g, 0, 0, r, r); g.fill(); g.fillStyle = 'rgba(255,255,255,0.25)'; ell(g, -r * 0.3, -r * 0.3, r * 0.3, r * 0.3); g.fill();
+    } else if (d.kind === 'star') {
+      g.fillStyle = d.c; g.beginPath(); for (let i = 0; i < 10; i++) { const an = (i / 10) * TAU, rr2 = i % 2 ? r * 0.55 : r; g.lineTo(Math.cos(an) * rr2, Math.sin(an) * rr2); } g.closePath(); g.fill();
+      g.fillStyle = 'rgba(255,230,180,0.6)'; for (let i = 0; i < 5; i++) { const an = (i / 5) * TAU; ell(g, Math.cos(an) * r * 0.45, Math.sin(an) * r * 0.45, 1.2, 1.2); g.fill(); }
+    } else if (d.kind === 'cuke') {
+      g.fillStyle = '#4a3622'; rr(g, -r, -r * 0.38, r * 2, r * 0.76, r * 0.38); g.fill(); g.fillStyle = 'rgba(200,160,110,0.45)'; for (let i = 0; i < 5; i++) { ell(g, -r * 0.7 + i * r * 0.35, -r * 0.12, 1.3, 1.3); g.fill(); }
+    } else if (d.kind === 'conch') {
+      g.fillStyle = '#e8c4a8'; g.beginPath(); g.moveTo(r, 0); g.quadraticCurveTo(0, -r * 0.9, -r, -r * 0.2); g.quadraticCurveTo(-r * 0.4, r * 0.7, r, 0); g.fill();
+      g.fillStyle = '#f2a0a0'; ell(g, r * 0.1, r * 0.1, r * 0.4, r * 0.22); g.fill();
+    } else if (d.kind === 'biscuit') {
+      g.fillStyle = '#ece4cc'; ell(g, 0, 0, r, r * 0.9); g.fill(); g.strokeStyle = 'rgba(150,130,100,0.6)'; g.lineWidth = 0.8; for (let i = 0; i < 5; i++) { const an = (i / 5) * TAU; g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(an) * r * 0.6, Math.sin(an) * r * 0.6); g.stroke(); }
+    }
+    g.restore();
+  }
+
+  /* ---------- drawing ---------- */
+  draw(ctx) {
+    const W = Game.W, H = Game.H, t = this.t;
+    const res = clamp(Math.round(Game.scale * Game.dpr * 4) / 4, 0.75, 2);
+    if (res !== this.tileRes) { for (const c of this.tiles.values()) { c.width = 1; c.height = 1; } this.tiles.clear(); this.tileRes = res; }
+    ctx.save(); ctx.translate(W / 2 - this.cam.x, H / 2 - this.cam.y);
+    // the bottom
+    const T = BN.TILE, x0 = Math.floor((this.cam.x - W / 2) / T), x1 = Math.floor((this.cam.x + W / 2) / T), y0 = Math.floor((this.cam.y - H / 2) / T), y1 = Math.floor((this.cam.y + H / 2) / T);
+    for (let iy = y0; iy <= y1; iy++) for (let ix = x0; ix <= x1; ix++) ctx.drawImage(this.tileAt(ix, iy), ix * T, iy * T, T + 0.6, T + 0.6);
+    const vis = (x, y, pad) => Math.abs(x - this.cam.x) < W / 2 + pad && Math.abs(y - this.cam.y) < H / 2 + pad;
+    for (const p of this.puffs) { if (!vis(p.x, p.y, 60)) continue; ctx.fillStyle = `rgba(214,200,160,${(p.a * (1 - p.t / p.life)).toFixed(3)})`; ell(ctx, p.x, p.y, p.r, p.r * 0.85); ctx.fill(); }
+    for (const c of this.crits) if (vis(c.x, c.y, 180)) this.drawCrit(ctx, c, t);
+    for (const s of this.shrimp) { if (!vis(s.x, s.y, 60)) continue; ctx.fillStyle = 'rgba(230,200,180,0.5)'; for (const d of s.dots) if (d.gone <= 0) { ell(ctx, s.x + d.dx, s.y + d.dy, 2.4, 1.1, d.ph * 0.2); ctx.fill(); } }
+    for (const b of this.bugs) if (!b.gone && b.st !== 'bag' && vis(b.x, b.y, 120)) this.drawBug(ctx, b, t);
+    if (this.net.state === 'set' || this.net.state === 'pin') this.drawHoop(ctx, this.net, t, false);
+    // the water over it all: a little green, and the glass minnows and jellies in it
+    ctx.fillStyle = 'rgba(8,52,60,0.2)'; ctx.fillRect(this.cam.x - W / 2, this.cam.y - H / 2, W, H);
+    for (const j of this.jellies) { if (!vis(j.x, j.y, 40)) continue; ctx.fillStyle = 'rgba(230,240,255,0.22)'; ell(ctx, j.x, j.y, j.r * (1 + Math.sin(j.ph * 2) * 0.08), j.r); ctx.fill(); ctx.strokeStyle = 'rgba(255,190,230,0.5)'; ctx.lineWidth = 1.2; for (let k = 0; k < 4; k++) { ell(ctx, j.x + Math.cos(k * 1.57) * j.r * 0.35, j.y + Math.sin(k * 1.57) * j.r * 0.35, j.r * 0.22, j.r * 0.22); ctx.stroke(); } }
+    for (const f of this.bait) { ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(Math.atan2(f.vy, f.vx || 0.01)); ctx.fillStyle = 'rgba(200,225,230,0.32)'; ell(ctx, 0, 0, 3.4, 1); ctx.fill(); ctx.restore(); }
+    if (this.hound) { const h = this.hound; ctx.save(); ctx.translate(h.x, h.y); ctx.rotate(Math.atan2(h.vy, h.vx)); ctx.fillStyle = 'rgba(220,240,245,0.85)'; ell(ctx, 0, 0, 26, 2.4); ctx.fill(); ctx.fillStyle = 'rgba(120,200,190,0.8)'; ctx.fillRect(-26, -0.8, 30, 1.6); ctx.restore(); }
+    this.parts.draw(ctx);
+    if (this.net.state === 'drop' || this.net.state === 'lift' || this.net.state === 'carry') this.drawHoop(ctx, this.net, t, true);
+    this.drawBoat(ctx, t);
+    this.drawPole(ctx);
+    ctx.restore();
+    this.drawDark(ctx, W, H, t);
+    // what shows up in the dark: the warm spill of the lamp, eyes shining back, the boat's lights, the plankton
+    ctx.save(); ctx.translate(W / 2 - this.cam.x, H / 2 - this.cam.y);
+    this.drawGlow(ctx, t, vis);
+    ctx.restore();
+    this.fl.draw(ctx);
+    this.drawHud(ctx, W, H, t);
+    if (this.gauge) drawLobsterGauge(ctx, W, H, this.gauge, this.bag.length, (keep) => this.decide(keep), { t: this.t, back: 'Back on the flat' });
+    if (this.paused) this.drawPause(ctx);
+  }
+  drawBug(ctx, b, t) {
+    const C = b.C;
+    ctx.save(); ctx.translate(b.x, b.y);
+    if (b.st === 'den') {   // tucked under the rock: only the antennae poke out
+      ctx.rotate(b.h + Math.PI); ctx.globalAlpha = 0.85;
+      for (const s of [-1, 1]) drawAntenna(ctx, 0, s * C * 0.12, C * 2.2, s * (0.25 + Math.sin(t * 1.3 + s + b.id) * 0.08), C * 0.07, s, b.gold ? LOBPAL.gold : LOBPAL.normal);
+      ctx.restore(); return;
+    }
+    ctx.rotate(b.h);
+    const flip = b.st === 'flip' ? clamp(Math.hypot(b.vx, b.vy) / 300, 0, 1) : b.st === 'crouch' ? 0.45 : 0;
+    ctx.fillStyle = 'rgba(10,20,14,0.3)'; ell(ctx, -C * 0.2 + 3, 3, C * 1.5, C * 0.55); ctx.fill();
+    if (b.st === 'pinned') ctx.translate(Math.sin(t * 30) * 1.2, Math.cos(t * 27) * 1.2);
+    ctx.translate(C * 0.3, 0);
+    drawLobsterTop(ctx, C, { t: b.t, gold: b.gold, walk: (b.st === 'walk' || b.st === 'bolt') && b.sp > 3, curl: flip, ant: flip * 0.6 });
+    ctx.restore();
+  }
+  drawCrit(ctx, c, t) {
+    ctx.save(); ctx.translate(c.x, c.y);
+    if (c.kind === 'crab') {
+      ctx.rotate(c.h); const w = 1, step = c.moving ? Math.sin(c.t * 16) * 2 : 0;
+      ctx.strokeStyle = '#3d6f7a'; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+      for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const lx = -4 + i * 3; ctx.beginPath(); ctx.moveTo(lx, s * 4); ctx.lineTo(lx - 2 + (i % 2 ? step : -step), s * 11); ctx.stroke(); }
+      ctx.fillStyle = '#3f7c88'; ctx.beginPath(); ctx.moveTo(-6 * w, 0); ctx.quadraticCurveTo(-5, -8, 0, -7); ctx.lineTo(4, -12); ctx.lineTo(5, -6); ctx.quadraticCurveTo(8, 0, 5, 6); ctx.lineTo(4, 12); ctx.lineTo(0, 7); ctx.quadraticCurveTo(-5, 8, -6, 0); ctx.fill();
+      ctx.strokeStyle = '#5aa0d8'; ctx.lineWidth = 2.4; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(5, s * 3); ctx.lineTo(10, s * 7); ctx.lineTo(14, s * 3); ctx.stroke(); }
+      ctx.fillStyle = '#e8584a'; for (const s of [-1, 1]) { ell(ctx, 14.5, s * 3, 1.6, 1.2); ctx.fill(); }
+    } else if (c.kind === 'ray') {
+      ctx.globalAlpha = c.flee > 0 ? 1 : 0.88; drawRayTop(ctx, 0, 0, c.s, c.h, { t: c.flee > 0 ? c.t : 0, depth: 0 });
+      if (c.flee <= 0) { ctx.fillStyle = 'rgba(214,200,160,0.35)'; ell(ctx, 0, 0, 30 * c.s, 14 * c.s, c.h); ctx.fill(); }   // half buried in the sand
+    } else if (c.kind === 'nurse') {
+      ctx.rotate(c.h); const L = c.len, sw = c.flee > 0 ? Math.sin(c.t * 5) * 0.25 : Math.sin(c.t * 0.6) * 0.04;
+      ctx.fillStyle = 'rgba(10,20,14,0.3)'; ell(ctx, 4, 5, L * 0.5, L * 0.13); ctx.fill();
+      ctx.fillStyle = '#9a7a52';
+      ctx.save(); ctx.translate(-L * 0.3, 0); ctx.rotate(sw); ctx.beginPath(); ctx.moveTo(0, -L * 0.04); ctx.quadraticCurveTo(-L * 0.25, -L * 0.03, -L * 0.36, -L * 0.08); ctx.lineTo(-L * 0.3, L * 0.02); ctx.quadraticCurveTo(-L * 0.15, L * 0.05, 0, L * 0.04); ctx.fill(); ctx.restore();
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(L * 0.18, s * L * 0.08); ctx.lineTo(L * 0.02, s * L * 0.22); ctx.lineTo(L * 0.06, s * L * 0.07); ctx.fill(); ctx.beginPath(); ctx.moveTo(-L * 0.12, s * L * 0.05); ctx.lineTo(-L * 0.2, s * L * 0.12); ctx.lineTo(-L * 0.2, s * L * 0.04); ctx.fill(); }
+      const g = ctx.createLinearGradient(0, -L * 0.1, 0, L * 0.1); g.addColorStop(0, '#8a6a44'); g.addColorStop(0.5, '#b08e60'); g.addColorStop(1, '#8a6a44');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(L * 0.42, 0); ctx.quadraticCurveTo(L * 0.42, -L * 0.1, L * 0.25, -L * 0.1); ctx.quadraticCurveTo(-L * 0.05, -L * 0.1, -L * 0.32, -L * 0.03); ctx.lineTo(-L * 0.32, L * 0.03); ctx.quadraticCurveTo(-L * 0.05, L * 0.1, L * 0.25, L * 0.1); ctx.quadraticCurveTo(L * 0.42, L * 0.1, L * 0.42, 0); ctx.fill();
+      ctx.fillStyle = '#7a5c3c'; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-L * 0.02, s * L * 0.02); ctx.lineTo(-L * 0.1, s * L * 0.01); ctx.lineTo(-L * 0.06, 0); ctx.fill(); }
+      ctx.strokeStyle = '#7a5c3c'; ctx.lineWidth = 1.4; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(L * 0.41, s * L * 0.025); ctx.lineTo(L * 0.46, s * L * 0.03); ctx.stroke(); }
+    }
+    ctx.restore();
+  }
+  // the hoop and its bag. inAir: on its way down or coming back up (bigger, with a shadow below it)
+  drawHoop(ctx, n, t, inAir) {
+    const R = BN.HOOP;
+    let lift = 0;
+    if (n.state === 'carry') lift = 1; else if (n.state === 'drop') lift = 1 - clamp(n.t / BN.DROP, 0, 1) * 1.05; else if (n.state === 'lift') lift = clamp(n.t / BN.LIFT, 0, 1);
+    lift = clamp(lift, 0, 1);
+    // held up, the hoop stands on edge (a thin ellipse from above); it swings flat as it comes down
+    const sc = 1 + lift * 0.18, x = n.x, y = n.y - lift * 14, edge = 1 - 0.78 * easeInOut(lift), h = this.hands(), pa = Math.atan2(n.y - h.y, n.x - h.x);
+    if (inAir && lift > 0.05) { ctx.fillStyle = `rgba(0,10,10,${0.25 * lift})`; ell(ctx, n.x + 10 * lift, n.y + 12 * lift, R, R * Math.max(edge, 0.25), pa); ctx.fill(); }
+    ctx.save(); ctx.translate(x, y); ctx.rotate(pa); ctx.scale(sc, sc * edge); ctx.rotate(-pa);
+    // the bag: mesh inside the hoop (twisted shut once it's caught)
+    ctx.save(); ell(ctx, 0, 0, R, R); ctx.clip();
+    ctx.fillStyle = n.state === 'lift' && n.caught ? 'rgba(20,30,30,0.35)' : 'rgba(220,235,235,0.08)'; ctx.fillRect(-R, -R, R * 2, R * 2);
+    ctx.strokeStyle = 'rgba(225,235,235,0.38)'; ctx.lineWidth = 0.9;
+    const tw = n.state === 'lift' && n.caught ? 0.6 : 0;
+    ctx.rotate(tw);
+    for (let i = -R; i <= R; i += 7) { ctx.beginPath(); ctx.moveTo(i, -R); ctx.lineTo(i + R * 0.4, R); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-R, i); ctx.lineTo(R, i + R * 0.4); ctx.stroke(); }
+    ctx.restore();
+    if (n.state === 'pin' && n.kick > 0) { const k = clamp(n.kick / (n.win || 0.6), 0, 1); ctx.fillStyle = `rgba(95,224,138,${0.18 + 0.2 * k})`; ell(ctx, 0, 0, R, R); ctx.fill(); }
+    ctx.strokeStyle = '#dfe5e8'; ctx.lineWidth = 3.2; ell(ctx, 0, 0, R, R); ctx.stroke();
+    ctx.strokeStyle = 'rgba(80,90,95,0.6)'; ctx.lineWidth = 1; ell(ctx, 0, 0, R - 2, R - 2); ctx.stroke();
+    ctx.restore();
+    // a bug kicking up into the bag: it rises toward you and looks bigger
+    if (n.state === 'pin' && n.kick > 0 && n.bug) {
+      const b = n.bug; ctx.save(); ctx.translate(n.x, n.y - 6); ctx.rotate(b.h); ctx.scale(1.15, 1.15); ctx.translate(b.C * 0.3, 0);
+      drawLobsterTop(ctx, b.C, { t: this.t, gold: b.gold, curl: 0.7, ant: 0.4 }); ctx.restore();
+      ctx.save(); ctx.translate(n.x, n.y - 6); ell(ctx, 0, 0, R, R); ctx.clip(); ctx.strokeStyle = 'rgba(225,235,235,0.45)'; ctx.lineWidth = 0.9; for (let i = -R; i <= R; i += 7) { ctx.beginPath(); ctx.moveTo(i, -R); ctx.lineTo(i + R * 0.4, R); ctx.stroke(); } ctx.restore();
+    }
+    if (n.state === 'lift' && n.caught) { const b = n.caught; ctx.save(); ctx.translate(x, y); ctx.rotate(b.h + 0.6); ctx.scale(0.8, 0.8); drawLobsterTop(ctx, b.C, { t: this.t, gold: b.gold, curl: 0.9, ant: 0.8 }); ctx.restore(); }
+  }
+  drawPole(ctx) {
+    const n = this.net, h = this.hands(), R = BN.HOOP;
+    let lift = n.state === 'carry' ? 1 : n.state === 'drop' ? clamp(1 - n.t / BN.DROP, 0, 1) : n.state === 'lift' ? clamp(n.t / BN.LIFT, 0, 1) : 0;
+    const a = Math.atan2(n.y - lift * 14 - h.y, n.x - h.x), ex = n.x - Math.cos(a) * R * (1 + lift * 0.18), ey = n.y - lift * 14 - Math.sin(a) * R * (1 + lift * 0.18);
+    ctx.strokeStyle = '#2a3036'; ctx.lineWidth = 4.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(h.x, h.y); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.strokeStyle = '#c3cbd1'; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.moveTo(h.x, h.y); ctx.lineTo(ex, ey); ctx.stroke();
+  }
+  drawBoat(ctx, t) {
+    const b = this.boat, crew = [this.driver, this.others[1] || null, this.ch];
+    drawCenterConsoleTop(ctx, b.x, b.y, BN.BOAT, b.h, { crew, t, hull: '#f2f4f2', top: '#26344a' });
+    // the lamp on the bow, pointed down the beam
+    const f = this.fwd(), lx = b.x + f.x * 62, ly = b.y + f.y * 62, L = this.light;
+    ctx.save(); ctx.translate(lx, ly); ctx.rotate(L.a); ctx.fillStyle = '#2a2f35'; rr(ctx, -6, -5, 12, 10, 3); ctx.fill(); ctx.fillStyle = L.on ? '#fff6d8' : '#6a6f74'; rr(ctx, 4, -4, 3, 8, 1.5); ctx.fill(); ctx.restore();
+  }
+  // the dark: everything outside the light, drawn on a small canvas and stretched (soft edges for free)
+  drawDark(ctx, W, H, t) {
+    const q = 0.5, cw = Math.ceil(W * q), ch = Math.ceil(H * q);
+    if (!this.dark || this.dark.width !== cw || this.dark.height !== ch) { this.dark = document.createElement('canvas'); this.dark.width = cw; this.dark.height = ch; this.darkCtx = this.dark.getContext('2d'); }
+    const g = this.darkCtx, L = this.light;
+    g.setTransform(q, 0, 0, q, 0, 0); g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, W, H);
+    g.fillStyle = `rgba(2,6,20,${(0.97 - 0.1 * this.moon.lit).toFixed(3)})`; g.fillRect(0, 0, W, H);
+    g.globalCompositeOperation = 'destination-out';
+    const hole = (x, y, rx, ry, rot, stops) => {
+      g.save(); g.translate(x, y); g.rotate(rot); g.scale(rx, ry);
+      const rg = g.createRadialGradient(0, 0, 0, 0, 0, 1); for (const [k, a] of stops) rg.addColorStop(k, `rgba(0,0,0,${a})`);
+      g.fillStyle = rg; g.beginPath(); g.arc(0, 0, 1, 0, TAU); g.fill(); g.restore();
+    };
+    if (L.on) {
+      const [sx, sy] = this.toScreen(L.x, L.y), wob = this.weather.id === 'breezy' ? 1 + Math.sin(t * 3.1) * 0.04 : 1, H0 = BN.HALO;
+      hole(sx, sy, BN.CORE * L.st * H0 * wob, BN.CORE * H0 * wob, L.a, [[0, 1], [0.25, 1], [1 / H0, 0.93], [0.5, 0.5], [0.72, 0.18], [1, 0]]);
+      // spill along the beam, from the lamp out to the spot
+      const bw = this.bow(), [bx, by] = this.toScreen(bw.x, bw.y);
+      for (let k = 1; k <= 4; k++) { const u = k / 5; hole(lerp(bx, sx, u), lerp(by, sy, u), 26 + 34 * u, 26 + 34 * u, 0, [[0, 0.22], [1, 0]]); }
+    }
+    const [ox, oy] = this.toScreen(this.boat.x, this.boat.y);
+    hole(ox, oy, 125, 125, 0, [[0, 0.62], [0.6, 0.35], [1, 0]]);   // the deck light and the nav lights
+    ctx.drawImage(this.dark, 0, 0, W, H);
+  }
+  drawGlow(ctx, t, vis) {
+    const L = this.light, bw = this.bow(), f = this.fwd();
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    if (L.on) {
+      // the warm spill of the lamp, and the beam through the water from the bow
+      ctx.save(); ctx.translate(L.x, L.y); ctx.rotate(L.a); ctx.scale(BN.CORE * L.st * 1.5, BN.CORE * 1.5);
+      const rg = ctx.createRadialGradient(0, 0, 0, 0, 0, 1); rg.addColorStop(0, 'rgba(255,214,150,0.2)'); rg.addColorStop(0.6, 'rgba(255,200,130,0.08)'); rg.addColorStop(1, 'rgba(255,200,130,0)');
+      ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(0, 0, 1, 0, TAU); ctx.fill(); ctx.restore();
+      const d = dist(bw.x, bw.y, L.x, L.y), pa = L.a + Math.PI / 2, wEnd = BN.CORE * 0.8;
+      const bg = ctx.createLinearGradient(bw.x, bw.y, L.x, L.y); bg.addColorStop(0, 'rgba(255,240,205,0.14)'); bg.addColorStop(1, 'rgba(255,240,205,0.02)');
+      ctx.fillStyle = bg; ctx.beginPath(); ctx.moveTo(bw.x + Math.cos(pa) * 4, bw.y + Math.sin(pa) * 4); ctx.lineTo(L.x + Math.cos(pa) * wEnd, L.y + Math.sin(pa) * wEnd); ctx.lineTo(L.x - Math.cos(pa) * wEnd, L.y - Math.sin(pa) * wEnd); ctx.lineTo(bw.x - Math.cos(pa) * 4, bw.y - Math.sin(pa) * 4); ctx.closePath(); ctx.fill();
+      // specks drifting in the beam, and glints off the ripples where the light hits the surface
+      for (const s of this.snow) {
+        const x = L.x + s.x * 0.3, y = L.y + s.y * 0.3, I = this.lightAt(x, y); if (I < 0.15) continue;
+        ctx.fillStyle = `rgba(255,250,230,${(0.5 * I * s.z * (0.5 + 0.5 * Math.sin(t * 2 + s.ph))).toFixed(3)})`; ctx.fillRect(x + Math.sin(t * 0.5 + s.ph) * 6, y + ((t * 6 * s.z) % 20), 1.4, 1.4);
+      }
+      const nG = this.weather.id === 'glass' ? 3 : this.weather.id === 'breezy' ? 14 : 7;
+      for (let i = 0; i < nG; i++) {
+        const u = h01(i * 3.1 + Math.floor(t * 1.2 + i * 0.37)), v = h01(i * 7.7 + Math.floor(t * 1.2 + i * 0.37)), x = L.x + (u - 0.5) * BN.CORE * 2.2, y = L.y + (v - 0.5) * BN.CORE * 2, I = this.lightAt(x, y);
+        if (I < 0.25) continue; const k = Math.sin(((t * 1.2 + i * 0.37) % 1) * Math.PI), l = 6 + 8 * u;
+        ctx.strokeStyle = `rgba(255,248,225,${(0.28 * I * k).toFixed(3)})`; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x - l, y); ctx.quadraticCurveTo(x, y - 2.5, x + l, y); ctx.stroke();
+      }
+    }
+    // eyes shining back at the light
+    const eye = (x, y, r, col, a) => { if (a < 0.03) return; ctx.globalAlpha = clamp(a * 1.25, 0, 1); ctx.drawImage(bnGlow(col), x - r * 4.5, y - r * 4.5, r * 9, r * 9); };
+    for (const b of this.bugs) {
+      if (b.gone || b.eyes < 0.03 || !vis(b.x, b.y, 80)) continue;
+      const C = b.C, ca = Math.cos(b.h), sa = Math.sin(b.h), fx = b.st === 'den' ? -C * 0.4 : C * 1.28, tw = 0.85 + 0.15 * Math.sin(t * 9 + b.id);
+      for (const s of [-1, 1]) eye(b.x + ca * fx - sa * s * C * 0.1, b.y + sa * fx + ca * s * C * 0.1, 1.9 + C * 0.035, BN_EYE.bug, b.eyes * tw);
+    }
+    for (const s of this.shrimp) { if (!vis(s.x, s.y, 60)) continue; for (const d of s.dots) { if (d.gone > 0) continue; const I = this.lightAt(s.x + d.dx, s.y + d.dy); eye(s.x + d.dx, s.y + d.dy, 0.9, BN_EYE.shrimp, clamp(I / 0.25, 0, 1) * (0.6 + 0.4 * Math.sin(t * 5 + d.ph))); } }
+    for (const c of this.crits) {
+      if (!vis(c.x, c.y, 120)) continue; const I = clamp(this.lightAt(c.x, c.y) / 0.25, 0, 1); if (I < 0.03) continue;
+      const ca = Math.cos(c.h), sa = Math.sin(c.h);
+      if (c.kind === 'crab') for (const s of [-1, 1]) eye(c.x + ca * 8 - sa * s * 2.2, c.y + sa * 8 + ca * s * 2.2, 0.9, BN_EYE.crab, I * 0.8);
+      else if (c.kind === 'nurse') for (const s of [-1, 1]) eye(c.x + ca * c.len * 0.3 - sa * s * c.len * 0.07, c.y + sa * c.len * 0.3 + ca * s * c.len * 0.07, 1.4, BN_EYE.shark, I * 0.7);
+    }
+    for (const f2 of this.bait) { const I = this.lightAt(f2.x, f2.y); if (I > 0.3 && Math.sin(t * 7 + f2.ph * 5) > 0.85) eye(f2.x, f2.y, 0.8, BN_EYE.fish, I * 0.6); }
+    ctx.globalAlpha = 1;
+    this.bio.draw(ctx);
+    // the boat's running lights: red to port, green to starboard, the white all-round light aft
+    const b = this.boat, s = BN.BOAT, P = (dx, dy) => [b.x + (f.x * dx - f.y * dy) * s, b.y + (f.y * dx + f.x * dy) * s];
+    for (const [dx, dy, col, r] of [[66, -14.5, '#ff3b3b', 9], [66, 14.5, '#3bff7a', 9], [-60, 0, '#fff7e0', 11]]) { const [x, y] = P(dx, dy); ctx.globalAlpha = 0.9; ctx.drawImage(bnGlow(col), x - r * 2, y - r * 2, r * 4, r * 4); }
+    ctx.globalAlpha = 1;
+    if (L.on) { const lx = b.x + f.x * 64, ly = b.y + f.y * 64; ctx.drawImage(bnGlow('#fff2c8'), lx - 14, ly - 14, 28, 28); }
+    ctx.restore();
+    this.drawGuides(ctx, t);
+  }
+  // what the player needs to read in the dark: how far the net reaches, the bug the light is on, where to drop
+  drawGuides(ctx, t) {
+    if (this.gauge || this.intro) return;
+    const bw = this.bow(), tgt = this.netTarget(), n = this.net;
+    ctx.save(); ctx.setLineDash([6, 9]); ctx.lineWidth = 2; ctx.strokeStyle = tgt ? 'rgba(120,255,170,0.35)' : 'rgba(255,255,255,0.1)';
+    ctx.beginPath(); ctx.arc(bw.x, bw.y, BN.REACH, this.boat.h - 1.9, this.boat.h + 1.9); ctx.stroke(); ctx.restore();
+    const L = this.light, lk = L.lock;
+    if (lk && this.open(lk) && n.state === 'carry') {   // brackets on the bug the light is holding
+      const r = lk.C * 1.9, k = 0.6 + 0.4 * Math.sin(t * 5);
+      ctx.save(); ctx.translate(lk.x, lk.y); ctx.strokeStyle = `rgba(255,214,90,${(0.45 + 0.35 * k).toFixed(3)})`; ctx.lineWidth = 2.5;
+      for (let i = 0; i < 4; i++) { ctx.rotate(Math.PI / 2); ctx.beginPath(); ctx.moveTo(r, r - 9); ctx.lineTo(r, r); ctx.lineTo(r - 9, r); ctx.stroke(); }
+      ctx.restore();
+    }
+    if (tgt) {
+      // close enough to net: the tag says what kind of bug it is, and (while you're learning) where to drop the net
+      const T = TEMPER[tgt.temper] || TEMPER.skittish;
+      ctx.font = fnt(12, 800); const pw = ctx.measureText(T.name).width + 18, px = tgt.x - pw / 2, py = tgt.y + tgt.C * 1.7 + 8;   // under the bug: the top of the screen is busy
+      ctx.fillStyle = 'rgba(4,24,34,0.82)'; rr(ctx, px, py, pw, 18, 9); ctx.fill(); ctx.strokeStyle = T.col; ctx.lineWidth = 1.5; ctx.stroke();
+      text(ctx, T.name, px + pw / 2, py + 9.5, { size: 12, align: 'center', base: 'middle', color: T.col, weight: 800 });
+      if (this.coach || this.coachSaw.behind) {
+        const bx = tgt.x - Math.cos(tgt.h) * (tgt.C * 1.15 + 14), by = tgt.y - Math.sin(tgt.h) * (tgt.C * 1.15 + 14), k = (Math.sin(t * 5) + 1) / 2;
+        ctx.save(); ctx.setLineDash([5, 6]); ctx.lineDashOffset = -t * 20; ctx.strokeStyle = `rgba(95,224,138,${(0.6 + 0.35 * k).toFixed(3)})`; ctx.lineWidth = 2.5; ell(ctx, bx, by, BN.HOOP, BN.HOOP); ctx.stroke(); ctx.restore();
+        text(ctx, (Game.touch ? 'TAP' : 'CLICK') + ' HERE', bx, by + 4, { size: 14, align: 'center', base: 'middle', color: '#bff5cf', weight: 800, stroke: 'rgba(0,0,0,0.7)', sw: 4 });
+      }
+    }
+    // the eyes to go after, while you're learning: an arrow over them
+    const eyes = this.coachEyes();
+    if (eyes) {
+      const [sx, sy] = this.toScreen(eyes.x, eyes.y), on = sx > 40 && sx < Game.W - 40 && sy > 150 && sy < Game.H - 40;
+      if (on) {
+        const y = eyes.y - 48 - Math.abs(Math.sin(t * 4)) * 12;
+        ctx.save(); ctx.translate(eyes.x, y); ctx.fillStyle = PAL.sun; ctx.strokeStyle = PAL.ink; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-11, -14); ctx.lineTo(11, -14); ctx.lineTo(11, 0); ctx.lineTo(19, 0); ctx.lineTo(0, 19); ctx.lineTo(-19, 0); ctx.lineTo(-11, 0); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+        text(ctx, 'EYES!', eyes.x, y - 22, { size: 16, align: 'center', color: PAL.sun, weight: 800, stroke: PAL.ink, sw: 5 });
+      }
+    }
+  }
+  // while you're learning: the bug whose eyes you can see but haven't put the light on yet
+  coachEyes() {
+    if (!this.coach || this.net.state !== 'carry' || this.netTarget() || (this.light.lock && this.open(this.light.lock))) return null;
+    let best = null, bd = 1e9;
+    for (const b of this.bugs) { if (!this.open(b) || b.eyes < 0.2) continue; const d = dist(b.x, b.y, this.light.x, this.light.y); if (d < bd) { bd = d; best = b; } }
+    return best;
+  }
+  drawHud(ctx, W, H, t) {
+    this.drawTopBar(ctx);
+    // the bag, and tonight's moon under it
+    const gx = W - 214;
+    panel(ctx, gx, 64, 200, 30, { r: 15 });
+    drawMoon(ctx, gx + 18, 79, 8.5, this.moon.phase, { glow: false });
+    text(ctx, this.moon.name, gx + 34, 84, { size: 14, weight: 800, color: '#dfe8ff', maxW: 156 });
+    panel(ctx, gx, 12, 200, 46, { r: 23 });
+    text(ctx, 'BAG', gx + 14, 41, { size: 15, weight: 800, color: '#cfe3ea' });
+    for (let i = 0; i < BH.BAG; i++) { const lx = gx + 64 + i * 22, lob = this.bag[i]; ctx.globalAlpha = lob ? 1 : 0.25; ctx.save(); ctx.translate(lx, 36); ctx.rotate(-0.5); drawLobsterSide(ctx, 16, { gold: lob && lob.gold }); ctx.restore(); ctx.globalAlpha = 1; }
+    // the boat: how fast your buddy idles along
+    const sx = 14, sy = H - 74;
+    panel(ctx, sx, sy - 22, 234, 82, { r: 18 });
+    const lk = this.light.lock && this.open(this.light.lock), holding = this.net.state !== 'carry' || (lk && this.boat.v < 3 && this.notch > 0);
+    text(ctx, 'BOAT · ' + (holding ? 'holding up' : this.boat.v > 3 ? BN_SPEED[this.notch].say : this.notch ? 'getting going' : BN_SPEED[0].say), sx + 14, sy - 4, { size: 12, color: '#9fb8c2', weight: 800, maxW: 206 });
+    BN_SPEED.forEach((S, i) => UI.button(ctx, 'speed' + i, sx + 10 + i * 72, sy + 6, 66, 44, S.name, () => this.setNotch(i), { style: this.notch === i ? 'primary' : 'ghost', size: 15, r: 12, key: 'Digit' + (i + 1), disabled: !!(this.gauge || this.help) }));
+    // the action button, only when there's something to do: NET when a bug's in the light within reach, TWIST while
+    // one's in the hoop (WAIT until it kicks up into the bag). Tapping the water does the same.
+    const a = this.actionZone(), active = this.actionShown();
+    let label = '', fill = PAL.good, fg = PAL.ink, hot = false;
+    if (this.net.state === 'pin') { const kick = this.net.kick > 0; label = kick ? 'TWIST' : 'WAIT'; fill = kick ? PAL.good : '#8fa9b3'; hot = kick; }
+    else if (active) { label = 'NET'; fill = PAL.sun; }
+    this.actionLabel = active ? label : '';   // what the button says (the tests read it)
+    if (active && !this.gauge && !this.help) {
+      const down = this.actionHeld(), pulse = down ? 0.93 : 1 + Math.sin(t * (hot ? 16 : 6)) * (hot ? 0.07 : 0.03);
+      ctx.save(); ctx.translate(a.x, a.y + (down ? 3 : 0)); ctx.scale(pulse, pulse);
+      ctx.fillStyle = rgba(fill, 0.25); ell(ctx, 0, 0, a.r + 12, a.r + 12); ctx.fill();
+      ctx.fillStyle = fill; ell(ctx, 0, 0, a.r, a.r); ctx.fill();
+      if (down) { ctx.fillStyle = 'rgba(255,255,255,0.22)'; ell(ctx, 0, 0, a.r, a.r); ctx.fill(); }
+      ctx.strokeStyle = down ? '#ffffff' : 'rgba(255,255,255,0.8)'; ctx.lineWidth = down ? 5 : 3; ell(ctx, 0, 0, a.r, a.r); ctx.stroke();
+      if (this.net.state === 'pin' && this.net.kick > 0) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(0, 0, a.r + 6, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(this.net.kick / this.net.win, 0, 1)); ctx.stroke(); }
+      text(ctx, label, 0, 2, { size: label.length > 4 ? 22 : 26, align: 'center', base: 'middle', color: fg, weight: 800 });
+      if (!Game.touch) text(ctx, 'SPACE', 0, 26, { size: 12, align: 'center', base: 'middle', color: fg, weight: 800, alpha: 0.7 });
+      ctx.restore();
+    }
+    // the hoop says when: WAIT while the bug's down in it, TWIST! when it kicks up into the bag
+    if (this.net.state === 'pin') {
+      const [nx, ny] = this.toScreen(this.net.x, this.net.y), kick = this.net.kick > 0, sc = kick ? 1 + Math.sin(t * 30) * 0.06 : 1;
+      ctx.save(); ctx.translate(nx, ny < 160 ? ny + BN.HOOP + 28 : ny - BN.HOOP - 26); ctx.scale(sc, sc);
+      text(ctx, kick ? 'TWIST!' : 'WAIT…', 0, 0, { size: kick ? 28 : 20, align: 'center', base: 'middle', color: kick ? PAL.good : '#cfe3ea', stroke: 'rgba(0,0,0,0.7)', sw: 5, weight: 800 });
+      ctx.restore();
+    }
+    UI.button(ctx, 'bnhelp', W / 2 + 72, 12, 46, 46, '?', () => this.openHelp(), { style: 'dark', size: 22, r: 14, key: 'KeyH', disabled: !!(this.gauge || this.net.state !== 'carry') });
+    if (this.t < 12 && !this.coach && !this.help && !this.gauge) {
+      para(ctx, Game.touch ? 'Drag to sweep the light · tap just behind a bug to drop the net · ? for help' : 'Move the mouse to sweep the light · click just behind a bug to drop the net · H for help', 24, 84, Math.min(520, W - 260), { size: 16, color: '#fff', weight: 700, alpha: 0.85, stroke: 'rgba(0,0,0,0.5)', sw: 4, lh: 20 });
+    }
+    if (this.coach && !this.paused && !this.help && !this.gauge) this.drawCoach(ctx, W, H, t);
+    if (this.quip && !this.help && !this.gauge && !(this.coachMsg() && !Game.toasts.length)) this.drawQuip(ctx, W);
+    if (GFX.showFps) text(ctx, GFX.readout(false, '2D night'), W / 2, H - 8, { size: 13, align: 'center', color: '#fff', weight: 800, stroke: 'rgba(0,0,0,0.6)', sw: 4 });
+    if (this.help) this.drawHelp(ctx, W, H);
+  }
+  coachMsg() {
+    if (!this.coach) return null;
+    const n = this.net, tgt = this.netTarget(), lk = this.light.lock && this.open(this.light.lock) ? this.light.lock : null;
+    if (n.state === 'pin') return n.kick > 0 ? 'It kicked up into the bag: TWIST! (tap)' : 'Hold it there… wait for it to kick up into the bag';
+    if (n.state !== 'carry') return null;
+    if (tgt) return Game.touch ? 'Tap just behind its tail. It shoots backward, into the net.' : 'Click just behind its tail. It shoots backward, into the net.';
+    if (lk) return 'Good. It froze in the light. Your buddy is idling you over…';
+    if (this.coachEyes()) return Game.touch ? 'Orange eyes! Drag the light right onto the bug.' : 'Orange eyes! Move the light right onto the bug.';
+    return Game.touch ? 'Drag on the water to sweep the light. Look for two orange eyes.' : 'Move the mouse to sweep the light. Look for two orange eyes.';
+  }
+  drawCoach(ctx, W, H, t) {
+    const msg = this.coachMsg();
+    if (!msg || Game.toasts.length) return;
+    // between the score on the left and the bag on the right, as high as it goes: the bugs are lower down
+    const x = 70, w = W - 224 - x - 10, y = 64;
+    panel(ctx, x, y, w, 30, { r: 12, fill: 'rgba(255,255,255,0.95)', line: 'rgba(0,0,0,0.1)', shadow: false });
+    text(ctx, msg, x + w / 2, y + 15.5, { size: 15, align: 'center', base: 'middle', color: PAL.ink, weight: 800, maxW: w - 16 });
+    const n = this.net, lk = this.light.lock && this.open(this.light.lock);
+    const step = n.state === 'pin' ? 3 : this.netTarget() ? 2 : lk ? 1 : 0, names = ['FIND', 'LIGHT', 'NET', 'TWIST', 'GAUGE'], pw = Math.min(74, (w - 24) / 5), sx0 = x + w / 2 - (pw * 5 + 24) / 2;
+    names.forEach((nm, i) => {
+      const px = sx0 + i * (pw + 6), now = i === step, done = i < step;
+      ctx.fillStyle = now ? PAL.sun : done ? 'rgba(95,224,138,0.9)' : 'rgba(4,24,34,0.75)'; rr(ctx, px, y + 34, pw, 18, 9); ctx.fill();
+      text(ctx, (i + 1) + ' ' + nm, px + pw / 2, y + 47, { size: 11, align: 'center', color: now || done ? PAL.ink : '#cfe3ea', weight: 800, maxW: pw - 6 });
+    });
+  }
+  drawQuip(ctx, W) {
+    const q = this.quip, C = CHARS[q.who]; if (!C) return;
+    const qw = Math.min(400, W * 0.44), qx = W - qw - 14, qy = 102;
+    ctx.save(); ctx.globalAlpha = Math.min(1, q.t * 3);
+    panel(ctx, qx, qy, qw, 44, { r: 22, fill: 'rgba(255,255,255,0.95)', line: 'rgba(0,0,0,0.1)' });
+    crewAvatar(ctx, q.who, qx + 24, qy + 22, 17);
+    text(ctx, C.name + ': ' + q.msg, qx + 48, qy + 28, { size: 16, color: PAL.ink, weight: 800, maxW: qw - 60 });
+    ctx.restore();
+  }
+  // How to bully net: four steps, each with a small moving picture, and what glows back in the dark.
+  // Opens by itself on each angler's first night, and from ? (or H). The turn clock waits.
+  drawHelp(ctx, W, H) {
+    const t = this.help.t, wide = W >= 900;
+    ctx.fillStyle = 'rgba(2,10,24,0.95)'; ctx.fillRect(0, 0, W, H);
+    UI.region('help-cover', 0, 0, W, H, null);
+    text(ctx, 'How to bully net', W / 2, 44, { display: true, size: 34, align: 'center', color: '#fff' });
+    const cols = wide ? 4 : 2, gap = 12, cw = Math.floor((W - 48 - gap * (cols - 1)) / cols), ch = wide ? 236 : 150, y0 = 70;
+    const steps = [
+      { title: 'Find', body: (Game.touch ? 'Drag on the water to sweep the light.' : 'Move the mouse to sweep the light.') + ' Two orange eyes at the edge of the beam are a bug. Tiny red sparks are shrimp.' },
+      { title: 'Light it', body: 'Put the light right on it. It freezes, but not for long. Your buddy idles over and holds up.' },
+      { title: 'Net it', body: (Game.touch ? 'Tap' : 'Click') + ' just behind its tail. Lobsters shoot backward, right into the net. Drop it in front and they’re gone.' },
+      { title: 'Twist', body: 'Wait for it to kick up into the bag, then TWIST. Too soon and it slips out under the rim. Then gauge it.' }
+    ];
+    steps.forEach((s, i) => {
+      const x = 24 + (i % cols) * (cw + gap), y = y0 + Math.floor(i / cols) * (ch + gap), artW = wide ? cw : Math.min(140, cw * 0.42), artH = wide ? 96 : ch - 20;
+      panel(ctx, x, y, cw, ch, { r: 14, fill: 'rgba(16,40,72,0.95)' });
+      ctx.save(); rr(ctx, x + 6, y + 6, artW - 12, artH - 6, 10); ctx.clip(); ctx.fillStyle = '#04101e'; ctx.fillRect(x, y, artW, artH);
+      this.helpArt(ctx, i, x + artW / 2, y + artH / 2 + 4, t, artW);
+      ctx.restore();
+      const tx = wide ? x + 14 : x + artW + 4, ty = wide ? y + artH + 22 : y + 26, tw = wide ? cw - 28 : cw - artW - 14;
+      ctx.fillStyle = PAL.sun; ell(ctx, tx + 11, ty - 6, 11, 11); ctx.fill();
+      text(ctx, String(i + 1), tx + 11, ty - 5, { size: 14, align: 'center', base: 'middle', color: PAL.ink, weight: 800 });
+      text(ctx, s.title, tx + 28, ty, { size: 19, color: '#fff', weight: 800 });
+      para(ctx, s.body, tx, ty + 24, tw, { size: wide ? 16 : 14, color: '#d6e4f2', weight: 600, lh: wide ? 20 : 17 });
+    });
+    // what glows back in the dark
+    const ky = y0 + (wide ? ch : ch * 2 + gap) + 22;
+    const items = [[BN_EYE.bug, true, 'a lobster: net it'], [BN_EYE.shrimp, false, 'shrimp'], [BN_EYE.crab, true, 'a crab'], [BN_EYE.shark, true, 'a nurse shark: leave it']];
+    let kx = 24;
+    ctx.font = fnt(14, 700);
+    for (const [col, pair, what] of items) {
+      const ww = ctx.measureText(what).width; if (kx + 34 + ww > W - 24) break;
+      ctx.fillStyle = 'rgba(2,8,16,1)'; rr(ctx, kx, ky - 13, 30, 24, 8); ctx.fill();
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; const g = bnGlow(col); if (pair) { ctx.drawImage(g, kx + 5, ky - 9, 12, 12); ctx.drawImage(g, kx + 13, ky - 9, 12, 12); } else ctx.drawImage(g, kx + 10, ky - 6, 9, 9); ctx.restore();
+      text(ctx, what, kx + 36, ky + 4, { size: 14, color: '#d6e4f2', weight: 700 });
+      kx += 36 + ww + 22;
+    }
+    UI.button(ctx, 'help-ok', W / 2 - 110, H - 66, 220, 54, 'Got it', () => this.closeHelp(), { style: 'primary', size: 22, key: 'Enter|Space|Escape|KeyH' });
+  }
+  // the little moving pictures on the help card: a dark patch of flat, the light, a bug
+  helpArt(ctx, i, cx, cy, t, aw) {
+    const C = 15, spot = (x, y, r, a = 1) => { const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, `rgba(214,200,150,${a})`); g.addColorStop(0.55, `rgba(150,140,100,${a * 0.6})`); g.addColorStop(1, 'rgba(20,24,20,0)'); ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2); };
+    const eyes = (x, y, h, a) => { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a; for (const s of [-1, 1]) ctx.drawImage(bnGlow(BN_EYE.bug), x + Math.cos(h) * C * 1.28 - Math.sin(h) * s * C * 0.1 - 6, y + Math.sin(h) * C * 1.28 + Math.cos(h) * s * C * 0.1 - 6, 12, 12); ctx.restore(); };
+    const bug = (x, y, h, o = {}) => { ctx.save(); ctx.translate(x, y); ctx.rotate(h); ctx.translate(C * 0.3, 0); drawLobsterTop(ctx, C, Object.assign({ t }, o)); ctx.restore(); };
+    const hoop = (x, y, a = 1, col = '#dfe5e8') => { ctx.strokeStyle = col; ctx.globalAlpha = a; ctx.lineWidth = 2.5; ell(ctx, x, y, 24, 24); ctx.stroke(); ctx.globalAlpha = 1; };
+    if (i === 0) {   // the light sweeps; eyes glow at its edge; a red speck is a shrimp
+      const sx = cx + Math.sin(t * 1.2) * aw * 0.28; spot(sx, cy, 44);
+      const bx = cx + aw * 0.22, by = cy - 4, I = clamp(1 - Math.abs(sx - bx) / 90, 0, 1);
+      ctx.globalAlpha = clamp(I * 2 - 0.9, 0, 1); bug(bx, by, Math.PI); ctx.globalAlpha = 1; eyes(bx, by, Math.PI, I);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = clamp(1 - Math.abs(sx - (cx - aw * 0.2)) / 90, 0, 1); ctx.drawImage(bnGlow(BN_EYE.shrimp), cx - aw * 0.2 - 4, cy + 14, 8, 8); ctx.restore();
+    } else if (i === 1) {   // the light on a bug: it freezes; a ring drains
+      spot(cx, cy, 50); bug(cx - 6, cy + 4, -0.3);
+      const k = 1 - ((t % 3) / 3); ctx.strokeStyle = PAL.sun; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy - 32, 8, -Math.PI / 2, -Math.PI / 2 + TAU * k); ctx.stroke();
+    } else if (i === 2) {   // the net drops behind the tail; it shoots backward into it
+      spot(cx, cy, 52); const ph = t % 2.6, h = 0, bx0 = cx + 18, hx = cx - 26;
+      const fl = ph > 1.1 ? clamp((ph - 1.1) / 0.25, 0, 1) : 0, bx = lerp(bx0, hx + 6, easeOut(fl));
+      if (ph > 0.6) hoop(hx, cy + 2, Math.min(1, (ph - 0.6) * 4), ph > 1.35 ? PAL.good : '#dfe5e8');
+      bug(bx, cy + 2, h, { curl: fl > 0 && fl < 1 ? 0.8 : 0 });
+      if (ph < 0.9) text(ctx, 'TAP', hx, cy + 7, { size: 13, align: 'center', color: '#bff5cf', weight: 800 });
+    } else {   // in the hoop: it kicks up into the bag, then TWIST
+      spot(cx, cy, 50); const ph = t % 2.2, kick = ph > 0.9 && ph < 1.6;
+      hoop(cx, cy + 2, 1, kick ? PAL.good : '#dfe5e8');
+      ctx.save(); ctx.translate(cx, cy + 2); ctx.scale(kick ? 1.15 : 1, kick ? 1.15 : 1); bug(0, 0, -0.6, { curl: kick ? 0.7 : 0 }); ctx.restore();
+      text(ctx, kick ? 'TWIST!' : 'WAIT…', cx, cy - 32, { size: 15, align: 'center', color: kick ? PAL.good : '#cfe3ea', weight: 800, stroke: 'rgba(0,0,0,0.6)', sw: 4 });
+    }
   }
 }
 
@@ -15856,6 +17107,7 @@ class SeaScene {
   // where the boat is on screen, for effects that pop off it
   boatScreen() { return this.view === 'chase' ? [Game.W / 2, CAM.BOAT_SY - 20] : this.toScreen(this.x, this.y); }
   say(kind, p = 1) { if (!chance(p) || !SEA_QUIPS[kind]) return; this.quip = { who: pick(this.others), msg: pick(SEA_QUIPS[kind]), t: 2.8 }; }
+  nightNext() { return !!(this.c.night && !this.c.nightDone); }   // the trip goes bully netting after the run home
 
   /* ---------- where things are ---------- */
   destXY() {
@@ -16242,7 +17494,12 @@ class SeaScene {
     const c = this.c, pts = skipped ? 0 : this.total || 0;
     if (pts) { c.scores[this.driver] = (c.scores[this.driver] || 0) + pts; c.turns.push({ ch: this.driver, spot: 'run:' + id, total: pts, n: 0 }); }
     c.legs = (c.legs || 0) + 1;
-    if (id === 'home') { this.saveBoat(); Game.go(new DayEndScene()); return; }
+    if (id === 'home') {
+      this.saveBoat();
+      // a trip with a night run goes back out after dark (bully netting); otherwise that's the day
+      if (c.night && !c.nightDone) { startNight(c); Game.go(new NightfallScene()); } else Game.go(new DayEndScene());
+      return;
+    }
     // kept until someone fishes here, so Back to the boat can hand the same captain the same run (reopenLeg)
     c.leg = { ch: this.driver, spot: id, pts, dist: skipped ? 0 : this.legDist, flags: Object.assign({}, this.flags), lines: skipped ? [] : this.lines.filter((l) => !l.end) };
     c.spot = id; c.turn = 0; c.first = Math.max(0, c.crew.indexOf(this.driver)); this.dest = null; this.auto = false; this.saveBoat(); Game.go(new TurnIntroScene());
@@ -16466,7 +17723,7 @@ class SeaScene {
     // the big context button sits in the space between the left buttons and the throttle
     const left = this.dest ? 424 : 312, room = lx - 24 - left, bw = Math.min(300, room), bx = left + (room - bw) / 2;
     if (this.homeRun && this.atHome) {
-      UI.button(ctx, 'tieup', bx, by - 8, bw, 56, 'Tie up at the dock', () => this.arrive('home'), { style: 'primary', size: 20, key: 'Enter', disabled: open || this.v > NO_WAKE, sub: this.v > NO_WAKE ? 'Slow down first' : 'End the day' });
+      UI.button(ctx, 'tieup', bx, by - 8, bw, 56, 'Tie up at the dock', () => this.arrive('home'), { style: 'primary', size: 20, key: 'Enter', disabled: open || this.v > NO_WAKE, sub: this.v > NO_WAKE ? 'Slow down first' : this.nightNext() ? 'Then bully netting after dark' : 'End the day' });
     } else if (this.inSpot) {
       const ok = spotAllowed(this.inSpot, this.c), slow = this.v <= 95;
       if (ok) UI.button(ctx, 'fish', bx, by - 8, bw, 56, spotDo(this.inSpot).here, () => this.arrive(this.inSpot), { style: 'primary', size: 22, key: 'Enter', disabled: open || !slow, sub: slow ? SPOTS[this.inSpot].name : 'Slow down to stop here' });
@@ -16653,7 +17910,7 @@ class SeaScene {
         text(ctx, 'Home dock', sx + 16, cy + 36, { display: true, size: 22, color: '#fff', maxW: sw - 30 });
         text(ctx, 'Tavernier · ' + (dist(this.x, this.y, World.home.x, World.home.dockY) / UNITS_PER_NM).toFixed(1) + ' nm', sx + 16, cy + 60, { size: 14, color: PAL.coral, weight: 800 });
         const end = () => { if (this.c.mode === 'crew' && !this.homeRun) { this.panel = { kind: 'pause', confirm: true }; } else { this.dest = 'home'; this.homeRun = true; this.planRoute(); this.setAuto(true); this.panel = null; } };
-        UI.button(ctx, 'sethome', sx + 14, cy + ch - 132, sw - 28, 54, this.homeRun ? 'Set course home' : 'Head home', end, { style: 'primary', size: 18, sub: this.homeRun ? 'Autopilot drives' : 'Ends the day' });
+        UI.button(ctx, 'sethome', sx + 14, cy + ch - 132, sw - 28, 54, this.homeRun ? 'Set course home' : 'Head home', end, { style: 'primary', size: 18, sub: this.homeRun ? 'Autopilot drives' : this.nightNext() ? 'Then the night run' : 'Ends the day' });
         if (this.homeRun) UI.button(ctx, 'skiphome', sx + 14, cy + ch - 66, sw - 28, 50, 'Skip the ride', () => this.skipTo('home'), { style: 'secondary', size: 17 });
       } else {
         const S = SPOTS[sel], known2 = Charts.isKnown(sel);
@@ -16693,7 +17950,7 @@ class SeaScene {
     ctx.save(); ctx.translate(ax, ay); ctx.scale(pop, pop); crewAvatar(ctx, this.driver, 0, 0, 66, { ring: C.color, bg: '#8fd3ee' }); ctx.restore();
     text(ctx, 'Hand the phone to ' + C.name, ax, 228, { size: 20, align: 'center', color: '#cfe3ea', weight: 700, maxW: W - 60 });
     text(ctx, 'Captain ' + C.name, ax, 282, { display: true, size: 48, align: 'center', color: '#fff', maxW: W - 60 });
-    const job = this.homeRun ? 'Take us home to the dock in Tavernier.' : !this.c.legs ? 'Idle out of the canal, then pick a spot on the chart.' : 'Pick the next spot on the chart and take us there.';
+    const job = this.homeRun ? 'Take us home to the dock in Tavernier.' + (this.nightNext() ? ' Bully netting after dark.' : '') : !this.c.legs ? 'Idle out of the canal, then pick a spot on the chart.' : 'Pick the next spot on the chart and take us there.';
     text(ctx, job, ax, 320, { size: 19, align: 'center', color: PAL.sun, weight: 800, maxW: W - 60 });
     text(ctx, 'Captain’s points for a clean run: no groundings, no tickets.', ax, 348, { size: 16, align: 'center', color: '#cfe3ea', weight: 600, maxW: W - 60 });
     UI.button(ctx, 'wheel', ax - 140, H - 132, 280, 64, 'Take the wheel', () => this.takeWheel(), { style: 'primary', size: 24, key: 'Enter|Space' });
@@ -16713,7 +17970,7 @@ class SeaScene {
     for (const l of lines) { text(ctx, l.label, px + 24, y, { size: 17, color: l.pts < 0 ? '#ff9a8a' : '#fff', weight: 600, maxW: pw - 120 }); text(ctx, (l.pts > 0 ? '+' : '') + l.pts, px + pw - 24, y, { size: 18, align: 'right', color: l.pts < 0 ? PAL.bad : PAL.sun, weight: 800 }); y += 30; }
     const tot = this.total || 0;
     text(ctx, 'Captain’s points: ' + (tot > 0 ? '+' : '') + tot, px + 24, py + ph - 18, { size: 18, color: PAL.sun, weight: 800 });
-    UI.button(ctx, 'letsfish', W / 2 - 130, py + ph + 16, 260, 56, home ? 'Call it a day' : spotDo(this.panel.id).go, () => this.finishLeg(false), { style: 'primary', size: 22, key: 'Enter|Space' });
+    UI.button(ctx, 'letsfish', W / 2 - 130, py + ph + 16, 260, 56, home ? (this.nightNext() ? 'Wait for dark' : 'Call it a day') : spotDo(this.panel.id).go, () => this.finishLeg(false), { style: 'primary', size: 22, key: 'Enter|Space', sub: home && this.nightNext() ? 'Bully netting tonight' : null });
   }
   drawPause(ctx, W, H) {
     ctx.fillStyle = 'rgba(3,22,32,0.82)'; ctx.fillRect(0, 0, W, H);
@@ -16723,7 +17980,7 @@ class SeaScene {
       text(ctx, c.mode === 'crew' ? 'End the trip early?' : 'Head home?', W / 2, 170, { display: true, size: 40, align: 'center', color: '#fff' });
       text(ctx, c.mode === 'crew' ? 'Scores so far go on the board.' : 'You can run home or skip the ride.', W / 2, 206, { size: 18, align: 'center', color: '#cfe3ea', weight: 600 });
       UI.button(ctx, 'run-home', W / 2 - 230, 250, 220, 56, 'Run home', () => { this.dest = 'home'; this.homeRun = true; this.panel = null; this.planRoute(); this.setAuto(true); Music.play('sunset'); }, { style: 'primary', size: 20 });
-      UI.button(ctx, 'end-now', W / 2 + 10, 250, 220, 56, 'End it here', () => { this.panel = null; Game.go(new DayEndScene()); }, { style: 'coral', size: 20 });
+      UI.button(ctx, 'end-now', W / 2 + 10, 250, 220, 56, 'End it here', () => { this.panel = null; Game.go(new DayEndScene()); }, { style: 'coral', size: 20, sub: this.nightNext() ? 'Skips the night run too' : null });
       UI.button(ctx, 'keep', W / 2 - 110, 324, 220, 50, 'Keep going', () => (this.panel = null), { style: 'ghost', size: 18, key: 'Escape' });
       return;
     }
@@ -16749,7 +18006,7 @@ function segCross(ax, ay, bx, by, cx, cy, dx, dy) {
 /* Keys Crew — menus and the trip flow: title, crew pick, the day's briefing (weather and bounties),
    turn hand-offs, results, end of day, logbook, how to play. The boat ride between spots lives in sea.js. */
 
-const SCENE_FOR = { bughunt: () => BugHuntScene, bottom: () => BottomScene, troll: () => TrollScene, flats: () => FlatsScene };  // keyed by spot mode
+const SCENE_FOR = { bughunt: () => BugHuntScene, bottom: () => BottomScene, troll: () => TrollScene, flats: () => FlatsScene, bully: () => BullyNetScene };  // keyed by spot mode
 const WATER_F = [72, 72, 75, 78, 82, 85, 87, 88, 87, 84, 79, 75];
 
 function launchTurn() {
@@ -16762,8 +18019,10 @@ function launchTurn() {
     Game.go(new ResultsScene(ch, spot, res, advanceTrip()));
   } }));
 }
-// where the trip goes after the turn in progress: 'turn' (next angler, same spot), 'sea' or 'home'. Changes nothing.
+// where the trip goes after the turn in progress: 'turn' (next angler, same spot), 'sea', 'home', or 'end' (the night
+// run is over: the end of the day). Changes nothing.
 function tripNext(c) {
+  if (isNightSpot(c.spot)) return c.turn + 1 < nightTurns(c) ? 'turn' : 'end';
   if (c.mode !== 'crew') return 'sea';
   if (c.turn + 1 < c.crew.length) return 'turn';
   return (c.done.includes(c.spot) ? c.done.length : c.done.length + 1) >= c.spotsNeeded ? 'home' : 'sea';
@@ -16772,12 +18031,22 @@ function tripNext(c) {
 function advanceTrip() {
   const c = Trip.cur, kind = tripNext(c);
   if (kind === 'turn') c.turn++;
+  else if (kind === 'end') { c.nightDone = true; c.turn = 0; c.spot = null; }
   else { if (!c.done.includes(c.spot)) c.done.push(c.spot); c.turn = 0; c.spot = null; }
   c.leg = null;   // someone fished here, so the run that got the boat here is settled
   Trip.save();
   return kind;
 }
-function goNext(kind) { Game.go(kind === 'turn' ? new TurnIntroScene() : new SeaScene({ home: kind === 'home' })); }
+function goNext(kind) { Game.go(kind === 'turn' ? new TurnIntroScene() : kind === 'end' ? new DayEndScene() : new SeaScene({ home: kind === 'home' })); }
+// the night run starts: whoever's last on the board nets first (a shot at a comeback), then the rest in crew order
+function startNight(c) {
+  c.spot = NIGHT_SPOT; c.turn = 0; c.leg = null;
+  const low = c.crew.reduce((b, ch) => ((c.scores[ch] || 0) < (c.scores[b] || 0) ? ch : b), c.crew[0]);
+  c.first = Math.max(0, c.crew.indexOf(low));
+  Trip.save();
+}
+// a saved trip picks up where it left off: the end of the day, a hand-off, or the boat
+function resumeScene(c) { return c.nightDone ? new DayEndScene() : c.spot ? new TurnIntroScene() : new SeaScene(); }
 function afterResults() { goNext(advanceTrip()); }
 function dayLabel() { return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }); }
 function crewAvatar(ctx, ch, x, y, r, o = {}) {
@@ -16791,6 +18060,7 @@ function drawCrown(ctx, x, y, s) {
 }
 function oceanBackdrop(ctx, W, H, t, mood = 'day') {
   const hz = H * 0.56;
+  if (mood === 'night') return nightBackdrop(ctx, W, H, t, hz);
   drawSky(ctx, W, hz, mood);
   if (mood === 'sunset') drawSun(ctx, W * 0.7, hz - 26, 34, '#ffd9a0'); else drawSun(ctx, W * 0.82, 88, 30);
   drawCloud(ctx, (W * 0.18 + t * 6) % (W + 200) - 60, 80, 1.1, mood === 'sunset' ? 0.55 : 0.9);
@@ -16808,6 +18078,38 @@ function oceanBackdrop(ctx, W, H, t, mood = 'day') {
   ctx.fillStyle = g; ctx.fillRect(0, hz, W, H - hz);
   ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 2;
   for (let i = 0; i < 14; i++) { const y = hz + 10 + i * i * 1.6, off = (t * (10 + i * 3)) % 80; ctx.beginPath(); for (let x = -80 + off; x < W + 80; x += 80) { ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 20, y - 2 - i * 0.2, x + 40, y); } ctx.stroke(); }
+  return hz;
+}
+
+// After dark in the Keys: stars, tonight's moon and its path on the water, the mangroves black against the sky with a
+// few porch lights, and a channel marker blinking green out on the flat
+function nightBackdrop(ctx, W, H, t, hz) {
+  const moon = moonPhase(), mx = W - 74, my = 52;   // high in the corner, clear of the cards and the headings
+  drawSky(ctx, W, hz, 'night'); drawStars(ctx, W, hz, t, 1 - moon.lit * 0.45);
+  drawMoon(ctx, mx, my, 20, moon.phase);
+  ctx.fillStyle = '#060b16';
+  ctx.beginPath(); ctx.moveTo(0, hz); ctx.quadraticCurveTo(W * 0.08, hz - 16, W * 0.22, hz - 9); ctx.quadraticCurveTo(W * 0.3, hz - 4, W * 0.36, hz); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(W * 0.5, hz); ctx.quadraticCurveTo(W * 0.56, hz - 7, W * 0.66, hz - 5); ctx.quadraticCurveTo(W * 0.7, hz - 2, W * 0.72, hz); ctx.fill();
+  for (const px of [0.05, 0.11, 0.19, 0.6]) {
+    const x = W * px, y = hz - 8;
+    ctx.strokeStyle = '#060b16'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 4, y - 22, x + 2, y - 40); ctx.stroke();
+    ctx.fillStyle = '#060b16'; for (let k = 0; k < 5; k++) { ctx.save(); ctx.translate(x + 2, y - 40); ctx.rotate(-1.2 + k * 0.6 + Math.sin(t + k) * 0.05); ell(ctx, 10, 0, 12, 3); ctx.fill(); ctx.restore(); }
+  }
+  for (const [px, dy] of [[0.13, 6], [0.16, 8], [0.27, 5], [0.62, 4]]) { const k = 0.7 + 0.3 * Math.sin(t * 0.7 + px * 40); ctx.fillStyle = `rgba(255,214,140,${(0.75 * k).toFixed(3)})`; ctx.fillRect(W * px, hz - dy, 2.5, 2); }
+  const g = ctx.createLinearGradient(0, hz, 0, H); g.addColorStop(0, '#16244a'); g.addColorStop(0.35, '#0a1430'); g.addColorStop(1, '#030814');
+  ctx.fillStyle = g; ctx.fillRect(0, hz, W, H - hz);
+  // the moon's path across the water
+  for (let i = 0; i < 70; i++) {
+    const f = (i + 0.5) / 70, d = Math.pow(f, 1.6), y = hz + 3 + d * (H - hz - 3), spread = 6 + d * 90 * (0.4 + moon.lit);
+    const x = mx + (h01(i) - 0.5) * 2 * spread + Math.sin(t * 0.8 + i) * 3, tw = Math.max(0, Math.sin(t * (1.6 + h01(i + 40) * 2.5) + i * 2.3)), a = tw * tw * (0.25 + 0.6 * moon.lit) * (1 - d * 0.5);
+    if (a < 0.03) continue;
+    const len = 3 + d * 24; ctx.fillStyle = `rgba(230,236,255,${a.toFixed(3)})`; ctx.fillRect(x - len / 2, y, len, 1 + d * 1.6);
+  }
+  ctx.strokeStyle = 'rgba(160,190,255,0.08)'; ctx.lineWidth = 2;
+  for (let i = 0; i < 12; i++) { const y = hz + 10 + i * i * 1.8, off = (t * (6 + i * 2)) % 80; ctx.beginPath(); for (let x = -80 + off; x < W + 80; x += 80) { ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 20, y - 2, x + 40, y); } ctx.stroke(); }
+  // a channel marker out on the flat, its green light blinking every four seconds
+  const kx = W * 0.42, ky = hz + 18; ctx.strokeStyle = '#0d1424'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(kx, ky + 10); ctx.lineTo(kx, ky - 22); ctx.stroke(); ctx.fillStyle = '#123a24'; ctx.fillRect(kx - 6, ky - 22, 12, 9);
+  if (t % 4 < 0.5) { const gg = ctx.createRadialGradient(kx, ky - 26, 0, kx, ky - 26, 16); gg.addColorStop(0, 'rgba(140,255,170,0.95)'); gg.addColorStop(1, 'rgba(60,255,120,0)'); ctx.fillStyle = gg; ctx.fillRect(kx - 16, ky - 42, 32, 32); }
   return hz;
 }
 
@@ -16832,7 +18134,8 @@ function waterTemp() { return WATER_F[new Date().getMonth()]; }
 // the spots a list of ids names, as far as this device knows them: undiscovered ones stay a mystery
 function spotNames(ids, joiner = ' · ', lower = false) {
   if (!ids || !ids.length) return lower ? 'anywhere' : 'Anywhere';
-  const known = Charts.known(), names = ids.filter((id) => known.has(id)).map((id) => SPOTS[id].name), hidden = ids.length - names.length;
+  const known = Charts.known(), names = ids.filter((id) => known.has(id) || isNightSpot(id)).map((id) => (isNightSpot(id) ? 'the night run' : SPOTS[id].name)), hidden = ids.length - names.length;
+  if (names.length === 1 && !hidden && isNightSpot(ids[0])) return lower ? 'on the night run' : 'On the night run';
   if (!names.length) return hidden > 1 ? hidden + ' uncharted spots' : (lower ? 'an' : 'An') + ' uncharted spot';
   return names.join(joiner) + (hidden ? joiner + '???' : '');
 }
@@ -16880,6 +18183,9 @@ function drawBountyIcon(ctx, icon, x, y, s, t = 0) {
     const k = s * 0.42; ctx.fillStyle = PAL.coral; ctx.beginPath(); ctx.arc(0, -k * 0.3, k * 0.62, Math.PI * 0.82, Math.PI * 2.18); ctx.lineTo(0, k * 0.95); ctx.closePath(); ctx.fill();
     ctx.strokeStyle = '#8c2d14'; ctx.lineWidth = Math.max(1, k * 0.08); ctx.stroke();
     text(ctx, '?', 0, -k * 0.26, { size: Math.max(9, k * 0.95), align: 'center', base: 'middle', color: '#fff', weight: 800 });
+  } else if (icon === 'moon') {
+    drawMoon(ctx, -s * 0.24, -s * 0.18, s * 0.16, 0.3, { glow: false });
+    const L = s * (s < 50 ? 0.5 : 0.42); ctx.save(); ctx.translate(-L * 0.45, L * 0.32); ctx.rotate(-0.2); drawLobsterSide(ctx, L, { t }); ctx.restore();
   } else if (icon === 'five') {
     drawFish(ctx, 'yellowtail', s * 0.78, { wig: 0 });
     text(ctx, '×5', s * 0.3, s * 0.3, { size: Math.max(10, s * 0.36), align: 'center', base: 'middle', color: '#fff', weight: 800, stroke: PAL.ink, sw: 3 });
@@ -17137,18 +18443,20 @@ class TitleScene {
       const lead = saved.crew.length > 1 ? saved.crew.reduce((b, c) => ((saved.scores[c] || 0) > (saved.scores[b] || 0) ? c : b), saved.crew[0]) : null;
       glow(mx, y, mw, 60, 'rgba(255,106,61,0.85)');
       // a trip left mid-spot comes back to that angler's hand-off; otherwise back on the boat
-      UI.button(ctx, 'resume', mx, y, mw, 60, 'Resume trip', () => { if (!Trip.resume()) { this.saved = null; return; } Game.go(Trip.cur.spot ? new TurnIntroScene() : new SeaScene()); },
-        { style: 'coral', size: 23, sub: saved.crew.map((c) => CHARS[c].name).join(', ') + ' · ' + saved.done.length + '/' + saved.spotsNeeded + ' spots' + (lead && saved.scores[lead] > 0 ? ' · ' + CHARS[lead].name + ' leads' : ''), key: 'Enter' });
+      const where = saved.nightDone ? 'day’s done' : saved.plan === 'night' ? 'night run' : saved.done.length + '/' + saved.spotsNeeded + ' spots' + (isNightSpot(saved.spot) ? ' · night run' : '');
+      UI.button(ctx, 'resume', mx, y, mw, 60, 'Resume trip', () => { if (!Trip.resume()) { this.saved = null; return; } Game.go(resumeScene(Trip.cur)); },
+        { style: 'coral', size: 23, sub: saved.crew.map((c) => CHARS[c].name).join(', ') + ' · ' + where + (lead && saved.scores[lead] > 0 ? ' · ' + CHARS[lead].name + ' leads' : ''), key: 'Enter' });
       y += 72;
     } else glow(mx, y, mw, 64, 'rgba(255,200,69,0.85)');
     UI.button(ctx, 'crew', mx, y, mw, 64, 'Crew Trip', () => Game.go(new CrewSetupScene()), { style: 'primary', size: 27, sub: 'Pass the phone · 1 to 3 players', key: saved ? undefined : 'Enter' }); y += 76;
-    UI.button(ctx, 'solo', mx, y, mw, 52, 'Solo Day', () => Game.go(new SoloSetupScene()), { style: 'secondary', size: 22, sub: 'Fish the Keys your way' }); y += 64;
     const hw = (mw - 12) / 2;
+    UI.button(ctx, 'solo', mx, y, hw, 52, 'Solo Day', () => Game.go(new SoloSetupScene()), { style: 'secondary', size: 21, sub: 'Your way' });
+    UI.button(ctx, 'night', mx + hw + 12, y, hw, 52, 'Night Run', () => Game.go(new CrewSetupScene({ plan: 'night' })), { style: 'dark', fill: '#1d2b5e', color: '#ffe7a0', line: 'rgba(255,231,160,0.45)', size: 21, sub: 'Bully netting' }); y += 64;
     UI.button(ctx, 'log', mx, y, hw, 50, 'Logbook', () => Game.go(new LogbookScene()), { style: 'dark', size: 18, sub: this.nSpecies + ' / ' + SPECIES_ORDER.length + ' species' });
     UI.button(ctx, 'how', mx + hw + 12, y, hw, 50, 'How to play', () => Game.go(new HowToScene()), { style: 'dark', size: 18 });
     // what's new
     const ny = H - 30, nw = pill(ctx, 'NEW', mx, ny, { bg: PAL.coral, color: '#fff', size: 13, h: 22 });
-    text(ctx, 'Drive anywhere in the Keys, find hidden spots, chase daily bounties', mx + nw + 10, ny + 5, { size: 15, color: '#fff', weight: 700, stroke: 'rgba(6,34,50,0.7)', sw: 4, maxW: W - 150 - mx - nw - 10 });
+    text(ctx, 'Bully netting after dark: add a night run to your trip, or tap Night Run', mx + nw + 10, ny + 5, { size: 15, color: '#fff', weight: 700, stroke: 'rgba(6,34,50,0.7)', sw: 4, maxW: W - 150 - mx - nw - 10 });
     // sound + music, and who it's for
     UI.button(ctx, 'snd', W - 64, H - 60, 48, 44, SFX.muted ? '🔇' : '🔊', () => SFX.setMuted(!SFX.muted), { style: 'dark', size: 18 });
     UI.button(ctx, 'mus', W - 120, H - 60, 48, 44, '♫', () => Music.setOn(!Music.on), { style: Music.on ? 'dark' : 'ghost', size: 20, color: Music.on ? '#fff' : '#9fb8c2' });
@@ -17170,34 +18478,54 @@ function charCard(ctx, ch, x, y, w, h, on, t, fn, id) {
   ctx.restore();
   UI.region(id, x, y, w, h, fn);
 }
+// the night-run switch on the setup screens: a moon, and whether there's a night run after the day's spots
+function nightToggle(ctx, x, y, w, on, fn) {
+  const icon = (g, ix, iy, r) => drawMoon(g, ix - 2, iy, r * 0.55, 0.3, { glow: false });
+  UI.button(ctx, 'night', x, y, w, 42, on ? 'Night run: on' : 'Night run: off', fn, { style: on ? 'dark' : 'ghost', fill: on ? '#1d2b5e' : undefined, color: on ? '#ffe7a0' : '#cfe3ea', line: on ? 'rgba(255,231,160,0.6)' : undefined, size: 17, icon, selected: on });
+}
 class CrewSetupScene {
-  // o: the picks to start from (coming back from the briefing keeps them)
-  constructor(o = {}) { this.t = 0; this.crew = new Set(o.crew || CHAR_ORDER); this.plan = o.plan || 'full'; this.len = o.sessionLen || 120; this.saved = !!Trip.load(); }
-  enter() { Music.play('title'); }
+  // o: the picks to start from (coming back from the briefing keeps them). o.plan 'night': a Night Run, bully netting
+  // only (Night Run on the title)
+  constructor(o = {}) {
+    this.t = 0; this.crew = new Set(o.crew || CHAR_ORDER); this.nightOnly = o.plan === 'night';
+    this.plan = this.nightOnly ? 'full' : o.plan || 'full'; this.len = o.sessionLen || 120; this.saved = !!Trip.load();
+    this.night = o.night != null ? !!o.night : Store.get('nightRun', true) !== false; this.rounds = clamp(o.nightRounds | 0 || 1, 1, 2);
+  }
+  enter() { Music.play(this.nightOnly ? 'night' : 'title'); }
   update(dt) { this.t += dt; }
+  opts() {
+    const crew = CHAR_ORDER.filter((c) => this.crew.has(c));
+    return this.nightOnly ? { mode: 'crew', crew, plan: 'night', night: true, nightRounds: this.rounds, sessionLen: this.len } : { mode: 'crew', crew, plan: this.plan, night: this.night, sessionLen: this.len };
+  }
   draw(ctx) {
-    const W = Game.W, H = Game.H;
-    oceanBackdrop(ctx, W, H, this.t, 'day'); ctx.fillStyle = 'rgba(4,28,40,0.55)'; ctx.fillRect(0, 0, W, H);
-    text(ctx, 'Who’s on the boat?', W / 2, 52, { display: true, size: 36, align: 'center', color: '#fff' });
+    const W = Game.W, H = Game.H, N = this.nightOnly;
+    oceanBackdrop(ctx, W, H, this.t, N ? 'night' : 'day'); ctx.fillStyle = N ? 'rgba(2,8,20,0.5)' : 'rgba(4,28,40,0.55)'; ctx.fillRect(0, 0, W, H);
+    text(ctx, N ? 'Who’s going out tonight?' : 'Who’s on the boat?', W / 2, 52, { display: true, size: 36, align: 'center', color: '#fff', maxW: W - 40 });
     const cw = Math.min(250, (W - 80) / 3), gap = 16, x0 = W / 2 - (cw * 3 + gap * 2) / 2;
     CHAR_ORDER.forEach((ch, i) => charCard(ctx, ch, x0 + i * (cw + gap), 74, cw, 268, this.crew.has(ch), this.t, () => { if (this.crew.has(ch)) this.crew.delete(ch); else this.crew.add(ch); }, 'card' + i));
     const oy = 360;
-    text(ctx, 'TRIP', x0, oy + 26, { size: 15, color: '#cfe3ea', weight: 800 });
-    UI.button(ctx, 'half', x0 + 64, oy, 170, 42, 'Half day · 2 spots', () => (this.plan = 'half'), { style: this.plan === 'half' ? 'primary' : 'ghost', size: 17 });
-    UI.button(ctx, 'full', x0 + 244, oy, 170, 42, 'Full day · 4 spots', () => (this.plan = 'full'), { style: this.plan === 'full' ? 'primary' : 'ghost', size: 17 });
+    if (N) {
+      text(ctx, 'ROUNDS', x0, oy + 26, { size: 15, color: '#cfe3ea', weight: 800 });
+      [[1, 'Everyone nets once'], [2, 'Everyone nets twice']].forEach(([n, l], i) => UI.button(ctx, 'rounds' + n, x0 + 84 + i * 190, oy, 180, 42, l, () => (this.rounds = n), { style: this.rounds === n ? 'primary' : 'ghost', size: 17 }));
+    } else {
+      text(ctx, 'TRIP', x0, oy + 26, { size: 15, color: '#cfe3ea', weight: 800 });
+      UI.button(ctx, 'half', x0 + 64, oy, 170, 42, 'Half day · 2 spots', () => (this.plan = 'half'), { style: this.plan === 'half' ? 'primary' : 'ghost', size: 17 });
+      UI.button(ctx, 'full', x0 + 244, oy, 170, 42, 'Full day · 4 spots', () => (this.plan = 'full'), { style: this.plan === 'full' ? 'primary' : 'ghost', size: 17 });
+      nightToggle(ctx, x0 + 424, oy, Math.min(200, W - 20 - x0 - 424), this.night, () => { this.night = !this.night; Store.set('nightRun', this.night); });
+    }
     text(ctx, 'TURNS', x0, oy + 80, { size: 15, color: '#cfe3ea', weight: 800 });
-    [[90, '90 sec'], [120, '2 min'], [180, '3 min']].forEach(([v, l], i) => UI.button(ctx, 'len' + v, x0 + 64 + i * 112, oy + 54, 102, 42, l, () => (this.len = v), { style: this.len === v ? 'primary' : 'ghost', size: 17 }));
-    const turns = (this.plan === 'full' ? 4 : 2) * this.crew.size, mins = Math.round((turns * this.len) / 60 + turns * 0.5);
-    text(ctx, this.crew.size ? `${turns} turns · about ${mins} minutes` : 'Pick at least one angler', x0 + cw * 3 + gap * 2, oy + 26, { size: 16, align: 'right', color: '#cfe3ea', weight: 700 });
+    [[90, '90 sec'], [120, '2 min'], [180, '3 min']].forEach(([v, l], i) => UI.button(ctx, 'len' + v, x0 + (N ? 84 : 64) + i * 112, oy + 54, 102, 42, l, () => (this.len = v), { style: this.len === v ? 'primary' : 'ghost', size: 17 }));
+    // how long it'll take, between Back and Let's go
+    const n = this.crew.size, nights = N ? n * this.rounds : this.night ? n : 0, turns = N ? nights : (this.plan === 'full' ? 4 : 2) * n + nights, mins = Math.round((turns * this.len) / 60 + turns * 0.5);
+    const sum = !n ? 'Pick at least one angler' : turns + ' turns' + (nights && !N ? ' (' + nights + ' after dark)' : '') + ' · about ' + mins + ' minutes';
+    text(ctx, sum, (150 + W - 250) / 2, H - 38, { size: 16, align: 'center', color: '#cfe3ea', weight: 700, maxW: W - 420 });
     UI.button(ctx, 'back', 20, H - 66, 120, 48, 'Back', () => Game.go(new TitleScene()), { style: 'ghost', size: 18, key: 'Escape' });
-    UI.button(ctx, 'go', W - 240, H - 72, 220, 56, 'Let’s go', () => {
-      const o = { mode: 'crew', crew: CHAR_ORDER.filter((c) => this.crew.has(c)), plan: this.plan, sessionLen: this.len };
-      Game.go(new BriefingScene(o, () => new CrewSetupScene(o)));
-    }, { style: 'primary', size: 24, disabled: !this.crew.size, key: 'Enter', sub: this.saved ? 'Replaces your saved trip' : 'See today’s bounties' });
+    UI.button(ctx, 'go', W - 240, H - 72, 220, 56, 'Let’s go', () => { const o = this.opts(); Game.go(new BriefingScene(o, () => new CrewSetupScene(o))); },
+      { style: 'primary', size: 24, disabled: !n, key: 'Enter', sub: this.saved ? 'Replaces your saved trip' : N ? 'See tonight’s bounties' : 'See today’s bounties' });
   }
 }
 class SoloSetupScene {
-  constructor(o = {}) { this.t = 0; this.ch = (o.crew && o.crew[0]) || 'michael'; this.len = o.sessionLen || 120; }
+  constructor(o = {}) { this.t = 0; this.ch = (o.crew && o.crew[0]) || 'michael'; this.len = o.sessionLen || 120; this.night = o.night != null ? !!o.night : Store.get('nightRun', true) !== false; }
   enter() { Music.play('title'); }
   update(dt) { this.t += dt; }
   draw(ctx) {
@@ -17209,10 +18537,11 @@ class SoloSetupScene {
     const oy = 372;
     text(ctx, 'TURNS', x0, oy + 26, { size: 15, color: '#cfe3ea', weight: 800 });
     [[90, '90 sec'], [120, '2 min'], [180, '3 min']].forEach(([v, l], i) => UI.button(ctx, 'len' + v, x0 + 64 + i * 112, oy, 102, 42, l, () => (this.len = v), { style: this.len === v ? 'primary' : 'ghost', size: 17 }));
-    text(ctx, 'Run the boat anywhere, find new spots, fish them as often as you like.', x0, oy + 76, { size: 16, color: '#cfe3ea', weight: 600, maxW: cw * 3 + gap * 2 });
+    nightToggle(ctx, x0 + 404, oy, Math.min(200, W - 20 - x0 - 404), this.night, () => { this.night = !this.night; Store.set('nightRun', this.night); });
+    text(ctx, 'Run the boat anywhere, find new spots, fish them as often as you like.' + (this.night ? ' Bully net after dark.' : ''), x0, oy + 76, { size: 16, color: '#cfe3ea', weight: 600, maxW: cw * 3 + gap * 2 });
     UI.button(ctx, 'back', 20, H - 66, 120, 48, 'Back', () => Game.go(new TitleScene()), { style: 'ghost', size: 18, key: 'Escape' });
     UI.button(ctx, 'go', W - 240, H - 72, 220, 56, 'Let’s go', () => {
-      const o = { mode: 'solo', crew: [this.ch], plan: 'solo', sessionLen: this.len };
+      const o = { mode: 'solo', crew: [this.ch], plan: 'solo', night: this.night, sessionLen: this.len };
       Game.go(new BriefingScene(o, () => new SoloSetupScene(o)));
     }, { style: 'primary', size: 24, key: 'Enter', sub: 'See today’s bounties' });
   }
@@ -17224,10 +18553,11 @@ class BriefingScene {
   // The weather and the bounties are rolled here so they can be shown; the trip starts at Cast off.
   constructor(o, back) {
     this.o = o; this.back = back || (() => (o.mode === 'crew' ? new CrewSetupScene(o) : new SoloSetupScene(o)));
-    this.t = 0; this.weather = rollWeather(); this.bounties = Bounties.roll(); this.ticks = 0;
+    this.night = o.plan === 'night'; this.moon = moonPhase();
+    this.t = 0; this.weather = rollWeather(); this.bounties = Bounties.roll(3, { night: !!o.night, plan: o.plan }); this.ticks = 0;
     this.saved = o.mode === 'crew' ? Trip.load() : null; this.ask = false;
   }
-  enter() { Music.play('title'); SFX.setAmbient(0.5, false); }
+  enter() { Music.play(this.night ? 'night' : 'title'); SFX.setAmbient(0.5, false, this.night); }
   update(dt) {
     this.t += dt;
     const n = Math.min(this.bounties.length, Math.floor((this.t - 0.15) / 0.16) + 1);
@@ -17237,14 +18567,15 @@ class BriefingScene {
   castOff(sure) {
     if (this.saved && !sure) { this.ask = true; return; }
     Trip.start(Object.assign({}, this.o, { weather: this.weather, bounties: this.bounties }));
-    SFX.play('horn'); Game.go(new SeaScene());
+    // a Night Run goes straight out to the flats; a day starts at the dock
+    if (this.night) { startNight(Trip.cur); SFX.play('lighton'); Game.go(new TurnIntroScene()); } else { SFX.play('horn'); Game.go(new SeaScene()); }
   }
   draw(ctx) {
-    const W = Game.W, H = Game.H, t = this.t, o = this.o, crew = o.mode === 'crew';
-    oceanBackdrop(ctx, W, H, t, 'day'); ctx.fillStyle = 'rgba(4,28,40,0.62)'; ctx.fillRect(0, 0, W, H);
-    text(ctx, 'Today’s bounties', W / 2, 50, { display: true, size: 36, align: 'center', color: '#fff' });
+    const W = Game.W, H = Game.H, t = this.t, o = this.o, crew = o.mode === 'crew', N = this.night;
+    oceanBackdrop(ctx, W, H, t, N ? 'night' : 'day'); ctx.fillStyle = N ? 'rgba(2,8,20,0.55)' : 'rgba(4,28,40,0.62)'; ctx.fillRect(0, 0, W, H);
+    text(ctx, N ? 'Tonight’s bounties' : 'Today’s bounties', W / 2, 50, { display: true, size: 36, align: 'center', color: '#fff' });
     const wx = this.weather;
-    text(ctx, dayLabel() + '  ·  ' + wx.name + ', ' + wx.wind + '  ·  Water ' + waterTemp() + '°F', W / 2, 80, { size: 17, align: 'center', color: '#cfe3ea', weight: 700, maxW: W - 60 });
+    text(ctx, dayLabel() + '  ·  ' + (N ? this.moon.name + '  ·  ' : '') + wx.name + ', ' + wx.wind + '  ·  Water ' + waterTemp() + '°F', W / 2, 80, { size: 17, align: 'center', color: '#cfe3ea', weight: 700, maxW: W - 60 });
     // three cards, as tall as the wordiest one; the cards, the rules and the crew sit centered under the header
     const n = this.bounties.length, gap = 16, cw = Math.min(260, (W - 56 - gap * (n - 1)) / n), x0 = W / 2 - (cw * n + gap * (n - 1)) / 2;
     const whereOf = (b) => (b.id === 'newspot' ? 'Run past a ? on the chart' : spotNames(b.where));
@@ -17258,12 +18589,12 @@ class BriefingScene {
       panel(ctx, x, y0, cw, ch, { r: 20, fill: 'rgba(8,44,62,0.94)', line: 'rgba(255,214,90,0.55)' });
       // the art on a little sunburst
       ctx.save(); rr(ctx, x + 10, y0 + 10, cw - 20, 104, 14); ctx.clip();
-      const sg = ctx.createLinearGradient(0, y0 + 10, 0, y0 + 114); sg.addColorStop(0, '#1f8fbf'); sg.addColorStop(1, '#0c5f8a'); ctx.fillStyle = sg; ctx.fillRect(x + 10, y0 + 10, cw - 20, 104);
+      const sg = ctx.createLinearGradient(0, y0 + 10, 0, y0 + 114), nb = b.group === 'night'; sg.addColorStop(0, nb ? '#22346e' : '#1f8fbf'); sg.addColorStop(1, nb ? '#0b1432' : '#0c5f8a'); ctx.fillStyle = sg; ctx.fillRect(x + 10, y0 + 10, cw - 20, 104);
       drawSunburst(ctx, cx, y0 + 62, 150, t + i, 'rgba(255,214,90,0.13)');
       drawBountyIcon(ctx, b.icon, cx, y0 + 62, Math.min(130, cw * 0.56), t + i * 0.7);
       pill(ctx, '+' + b.bonus, x + cw - 18, y0 + 30, { size: 19, h: 30, padX: 11, align: 'right' });
       ctx.restore();
-      const group = b.id === 'newspot' ? 'EXPLORE' : { bugs: 'LOBSTER', reef: 'THE REEF', offshore: 'OFFSHORE', flats: 'BACKCOUNTRY', any: 'ANYWHERE' }[b.group] || '';
+      const group = b.id === 'newspot' ? 'EXPLORE' : { bugs: 'LOBSTER', reef: 'THE REEF', offshore: 'OFFSHORE', flats: 'BACKCOUNTRY', any: 'ANYWHERE', night: 'AFTER DARK' }[b.group] || '';
       text(ctx, group, x + 18, y0 + 136, { size: 13, color: PAL.coral, weight: 800 });
       const used = para(ctx, b.text, x + 18, y0 + 160, cw - 36, { size: 19, weight: 800, color: '#fff', lh: 22 });
       para(ctx, whereOf(b), x + 18, y0 + 160 + used + 2, cw - 36, { size: 14, weight: 700, color: '#9fd6e6', lh: 17 });
@@ -17271,8 +18602,9 @@ class BriefingScene {
     });
     // the rules, the crew and the plan
     const ry = y0 + ch + 32;
-    text(ctx, crew && o.crew.length > 1 ? 'First one to finish a bounty takes the bonus. Pick your spots on the chart.' : 'Finish them for bonus points. Pick your spots on the chart.', W / 2, ry, { size: 17, align: 'center', color: '#fff', weight: 700, maxW: W - 60 });
-    const plan = crew ? (o.plan === 'full' ? 'Full day · 4 spots' : 'Half day · 2 spots') : 'Solo day';
+    const first = crew && o.crew.length > 1 ? 'First one to finish a bounty takes the bonus. ' : 'Finish them for bonus points. ';
+    text(ctx, first + (N ? 'Bully netting on the flats off Tavernier.' : 'Pick your spots on the chart.'), W / 2, ry, { size: 17, align: 'center', color: '#fff', weight: 700, maxW: W - 60 });
+    const plan = N ? 'Night run · ' + ((o.nightRounds || 1) > 1 ? (o.nightRounds || 1) + ' rounds' : '1 round') : (crew ? (o.plan === 'full' ? 'Full day · 4 spots' : 'Half day · 2 spots') : 'Solo day') + (o.night ? ' + night run' : '');
     const label = plan + ' · ' + fmtTime(o.sessionLen) + ' turns';
     ctx.font = fnt(15, 700); const lw = ctx.measureText(label).width, aw = o.crew.length * 30, tx = W / 2 - (aw + 10 + lw) / 2;
     o.crew.forEach((c, i) => crewAvatar(ctx, c, tx + 14 + i * 30, ry + 30, 13));
@@ -17324,11 +18656,12 @@ class TurnIntroScene {
     const c = (this.c = Trip.cur); this.t = 0; this.spot = c.spot; this.turn = c.turn; this.ch = c.mode === 'crew' ? Trip.angler(c, c.turn) : c.crew[0];
     this.paid = Bounties.sync();   // a spot found on the way here pays its bounty, if the boat didn't already
   }
-  enter() { Music.play('title'); if (this.paid.length) bountyToast(this.paid); }
+  enter() { const N = isNightSpot(this.spot); Music.play(N ? 'night' : 'title'); if (N) SFX.setAmbient(0.45, false, true); if (this.paid.length) bountyToast(this.paid); }
   update(dt) { this.t += dt; }
   draw(ctx) {
-    const W = Game.W, H = Game.H, c = this.c, ch = this.ch, C = CHARS[ch], S = SPOTS[this.spot];
-    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#0d5f86'); g.addColorStop(1, '#062a3f'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    const W = Game.W, H = Game.H, c = this.c, ch = this.ch, C = CHARS[ch], S = SPOTS[this.spot], N = isNightSpot(this.spot);
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, N ? '#0e1a3c' : '#0d5f86'); g.addColorStop(1, N ? '#02060f' : '#062a3f'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    if (N) { const m = this.moon || (this.moon = moonPhase()); drawStars(ctx, W, H * 0.6, this.t, 0.8 - m.lit * 0.35, 90); drawMoon(ctx, W - 70, 96, 18, m.phase); }
     const ax = W * 0.27, ay = H * 0.42;
     drawSunburst(ctx, ax, ay + 10, 380, this.t, rgba(C.color, 0.16));
     const pop = easeBack(Math.min(1, this.t / 0.4));
@@ -17339,10 +18672,12 @@ class TurnIntroScene {
     text(ctx, c.mode === 'crew' && c.crew.length > 1 ? 'Hand the phone to ' + C.name : 'You’re up', x, 92, { size: 20, color: '#cfe3ea', weight: 700, maxW: mw });
     text(ctx, C.name + '’s turn', x, 148, { display: true, size: 50, color: '#fff', maxW: mw });
     text(ctx, S.name + ' · ' + S.kind, x, 186, { size: 23, color: PAL.sun, weight: 800, maxW: mw });
-    const tipH = para(ctx, S.tip, x, 218, mw, { size: 17, weight: 600, color: '#fff', lh: 22 });
+    // at night: the moon, and the round on a Night Run that goes round twice
+    if (N) { const nt = nightTurns(c), rd = Math.floor(this.turn / c.crew.length) + 1, rounds = nt / c.crew.length; text(ctx, (rounds > 1 ? 'Round ' + rd + ' of ' + rounds + ' · ' : '') + this.moon.name + ' · ' + this.moon.bugs, x, 212, { size: 15, color: '#cfd8ff', weight: 700, maxW: mw }); }
+    const tipY = N ? 240 : 218, tipH = para(ctx, S.tip, x, tipY, mw, { size: 17, weight: 600, color: '#fff', lh: 22 });
     // the day's bounties, the ones you can get here lit up
     if (Bounties.list(c).length) {
-      const ly = Math.max(282, 218 + tipH - 4), rowH = clamp(Math.floor((H - 128 - ly - 20) / Bounties.list(c).length), 22, 30);
+      const ly = Math.max(282, tipY + tipH - 4), rowH = clamp(Math.floor((H - 128 - ly - 20) / Bounties.list(c).length), 22, 30);
       drawBountyList(ctx, x, ly, Math.min(mw, 470), { bounties: Bounties.list(c), spot: this.spot, size: rowH > 25 ? 15 : 14, rowH, title: 'BOUNTIES' });
     }
     // the board, for a crew
@@ -17355,12 +18690,54 @@ class TurnIntroScene {
         crewAvatar(ctx, k, bx - sw - 18, 38, 13); bx -= sw + 46;
       }
     }
-    UI.button(ctx, 'ready', x, H - 112, Math.min(280, mw), 64, 'I’m ready', () => launchTurn(), { style: 'primary', size: 26, key: 'Enter|Space', sub: fmtTime(c.sessionLen) + ' on the clock' });
+    UI.button(ctx, 'ready', x, H - 112, Math.min(280, mw), 64, N ? 'Light it up' : 'I’m ready', () => launchTurn(), { style: 'primary', size: 26, key: 'Enter|Space', sub: fmtTime(c.sessionLen) + ' on the clock' });
     // before anyone has fished this spot the captain can still pick another one; after that, everyone fishes it.
     // Esc goes back a step: to the boat while that's open, otherwise out to the title (a crew trip stays saved).
-    const canLeave = c.mode !== 'crew' || this.turn === 0;
+    const canLeave = !N && (c.mode !== 'crew' || this.turn === 0);   // at night there's no boat ride to go back to
     UI.button(ctx, 'menu', 20, 18, 96, 40, 'Title', () => (c.mode === 'crew' ? Game.go(new TitleScene()) : (this.ask = true)), { style: 'ghost', size: 17, key: canLeave ? undefined : 'Escape' });
     if (canLeave) UI.button(ctx, 'chart', 20, H - 64, 170, 46, 'Back to the boat', () => { reopenLeg(c); c.spot = null; c.turn = 0; Trip.save(); Game.go(new SeaScene()); }, { style: 'ghost', size: 17, key: 'Escape' });
+    if (this.ask) askLeaveSolo(ctx, () => (this.ask = false), () => Game.go(new TitleScene()));
+  }
+}
+
+/* ================= NIGHTFALL: tied up at the dock, the sun goes down, and the crew heads back out ================= */
+// Between the run home and the night run. The last of the sunset fades into stars; tonight's moon and what it means
+// for the bugs, who nets first, and what's still up for grabs after dark.
+class NightfallScene {
+  constructor() { const c = (this.c = Trip.cur); this.t = 0; this.moon = moonPhase(); this.order = c.crew.map((_, i) => Trip.angler(c, i)); this.paid = Bounties.sync(); }
+  enter() { Music.play('night'); SFX.setAmbient(0.5, false, true); if (this.paid.length) bountyToast(this.paid); }
+  update(dt) { this.t += dt; }
+  draw(ctx) {
+    const W = Game.W, H = Game.H, t = this.t, c = this.c, k = easeInOut(clamp((t - 0.3) / 2.4, 0, 1));
+    oceanBackdrop(ctx, W, H, t, 'night');
+    if (k < 1) { ctx.save(); ctx.globalAlpha = 1 - k; oceanBackdrop(ctx, W, H, t, 'sunset'); ctx.restore(); }
+    // the dock: planks, pilings, a string of bulbs, and the boat tied up with its running lights on
+    const hz = H * 0.56, dx = W - 250;
+    ctx.fillStyle = '#0a0f1a'; ctx.fillRect(dx, hz + 52, 250, 12); for (let i = 0; i < 5; i++) ctx.fillRect(dx + 14 + i * 56, hz + 52, 7, 60);
+    for (let i = 0; i < 9; i++) { const bx = dx + 10 + i * 29, by = hz + 22 + Math.sin(i * 1.1) * 3, a = (0.6 + 0.4 * Math.sin(t * 2 + i)) * k; ctx.fillStyle = `rgba(255,214,140,${a.toFixed(3)})`; ell(ctx, bx, by, 2.4, 2.4); ctx.fill(); }
+    ctx.strokeStyle = 'rgba(20,24,30,0.9)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(dx, hz + 18); for (let i = 0; i <= 9; i++) ctx.lineTo(dx + 10 + i * 29, hz + 22 + Math.sin(i * 1.1) * 3); ctx.stroke();
+    ctx.save(); ctx.globalAlpha = 0.85 - 0.4 * k; drawBoatSide(ctx, dx - 40, hz + 70 + Math.sin(t * 1.4) * 1.5, 0.32, { crew: c.crew, t }); ctx.restore();
+    for (const [ox, col] of [[-40 + 174 * 0.32, '#ff3b3b'], [-40 + 150 * 0.32, '#3bff7a']]) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = k; ctx.drawImage(bnGlow(col), dx + ox - 9, hz + 70 - 50 * 0.32 - 9, 18, 18); ctx.restore(); }
+    ctx.fillStyle = 'rgba(2,8,20,0.42)'; ctx.fillRect(0, 0, W, H);
+    // the words
+    text(ctx, 'The sun’s down', W / 2, 62, { display: true, size: 42, align: 'center', color: '#fff', stroke: '#0a1230', sw: 7, maxW: W - 40 });
+    text(ctx, 'Grab the light and the bully net. The bugs come out after dark.', W / 2, 96, { size: 18, align: 'center', color: '#dfe6ff', weight: 700, maxW: W - 40 });
+    const lw = Math.min(400, W * 0.46), lx = 24, top = 126;
+    panel(ctx, lx, top, lw, 196, { r: 18, fill: 'rgba(6,14,36,0.9)', line: 'rgba(255,231,160,0.3)' });
+    drawMoon(ctx, lx + 46, top + 50, 24, this.moon.phase);
+    text(ctx, this.moon.name, lx + 86, top + 44, { size: 20, color: '#fff', weight: 800, maxW: lw - 100 });
+    text(ctx, this.moon.bugs, lx + 86, top + 66, { size: 14, color: '#cfd8ff', weight: 700, maxW: lw - 100 });
+    const wx = c.weather || {}; text(ctx, 'Tavernier Flats · 3–6 ft · ' + (wx.name || 'Light chop') + (wx.wind ? ', ' + wx.wind : ''), lx + 18, top + 104, { size: 14, color: PAL.sun, weight: 800, maxW: lw - 36 });
+    if (c.crew.length > 1) {
+      text(ctx, 'NETTING ORDER', lx + 18, top + 136, { size: 13, color: '#9fb8c2', weight: 800 });
+      this.order.forEach((ch, i) => { crewAvatar(ctx, ch, lx + 36 + i * 44, top + 164, 16); text(ctx, String(i + 1), lx + 50 + i * 44, top + 182, { size: 12, color: PAL.sun, weight: 800 }); });
+      para(ctx, 'Last on the board nets first: a shot at a comeback.', lx + 50 + c.crew.length * 44, top + 160, lw - 68 - c.crew.length * 44, { size: 14, color: '#cfe3ea', weight: 600, lh: 17 });
+    } else para(ctx, CHARS[c.crew[0]].name + ' nets, ' + CHARS[CHAR_ORDER.find((x) => x !== c.crew[0])].name + ' runs the boat.', lx + 18, top + 140, lw - 36, { size: 15, color: '#cfe3ea', weight: 600, lh: 19 });
+    const bl = Bounties.list(c), here = bl.filter((b) => Bounties.here(b, NIGHT_SPOT)), rx = lx + lw + 20, rw = W - rx - 24;
+    if (here.length && rw > 220) drawBountyList(ctx, rx, top + 4, rw, { bounties: bl, spot: NIGHT_SPOT, only: 'here', title: 'UP FOR GRABS TONIGHT', size: 15, rowH: 32 });
+    else if (rw > 220) para(ctx, bl.length ? 'No bounties left for tonight. Just bugs, and the board.' : 'Just bugs, and the board.', rx, top + 20, rw, { size: 16, color: '#cfe3ea', weight: 600, lh: 20 });
+    UI.button(ctx, 'golight', W / 2 - 150, H - 84, 300, 62, 'Let’s go bully netting', () => Game.go(new TurnIntroScene()), { style: 'primary', size: 23, key: 'Enter|Space', sub: 'Your trip is saved here' });
+    UI.button(ctx, 'menu', 20, H - 64, 100, 46, 'Title', () => (c.mode === 'crew' ? Game.go(new TitleScene()) : (this.ask = true)), { style: 'ghost', size: 17, key: 'Escape' });
     if (this.ask) askLeaveSolo(ctx, () => (this.ask = false), () => Game.go(new TitleScene()));
   }
 }
@@ -17390,7 +18767,7 @@ class ResultsScene {
   }
   leave(toTitle) { if (this.left) return; this.left = true; if (!this.advanced) advanceTrip(); if (toTitle) Game.go(new TitleScene()); else goNext(this.nextKind); }
   enter() {
-    SFX.setAmbient(0.4, false); Music.play('title'); window.addEventListener('wheel', this.onWheel, { passive: true });
+    const N = isNightSpot(this.spot); SFX.setAmbient(0.4, false, N); Music.play(N ? 'night' : 'title'); window.addEventListener('wheel', this.onWheel, { passive: true });
     if (this.res.total > 0) this.parts.burst(Game.W * 0.72, 120, 40, { kind: 'confetti', color: [PAL.sun, PAL.coral, '#42d3c4', '#fff'], min: 100, max: 380, g: 400, lifeMin: 1.4, lifeMax: 2.4, sMin: 3, sMax: 6, drag: 0.5 });
   }
   exit() { window.removeEventListener('wheel', this.onWheel); }
@@ -17423,11 +18800,11 @@ class ResultsScene {
     if (this.t < this.doneAt) this.target = this.maxScroll;
     if (!this.drag) this.scroll = approach(this.scroll, this.target, 14, dt);
   }
-  nextLabel() { return this.nextKind === 'turn' ? 'Next up: ' + CHARS[this.nextUp].name : this.nextKind === 'home' ? 'Run home' : 'Back to the boat'; }
+  nextLabel() { return this.nextKind === 'turn' ? 'Next up: ' + CHARS[this.nextUp].name : this.nextKind === 'home' ? 'Run home' : this.nextKind === 'end' ? 'Call it a night' : 'Back to the boat'; }
   listBox() { const W = Game.W, H = Game.H, cardW = Math.min(330, W * 0.36), lw = W - cardW - 70; return { x: 30, w: lw, top: 98, bot: H - 146, rowH: 34, cardW }; }
   draw(ctx) {
-    const W = Game.W, H = Game.H, C = CHARS[this.ch], r = this.res, L = this.listBox(), lw = L.w;
-    const bgTop = '#0d5f86', bgBot = '#062a3f';
+    const W = Game.W, H = Game.H, C = CHARS[this.ch], r = this.res, L = this.listBox(), lw = L.w, N = isNightSpot(this.spot);
+    const bgTop = N ? '#11204a' : '#0d5f86', bgBot = N ? '#030a18' : '#062a3f';
     const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, bgTop); g.addColorStop(1, bgBot); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     text(ctx, r.header || SPOTS[this.spot].name, 30, 50, { display: true, size: 34, color: '#fff', maxW: lw });
     text(ctx, C.name + ' · ' + SPOTS[this.spot].kind, 30, 78, { size: 17, color: C.color, weight: 800, maxW: lw });
@@ -17508,7 +18885,7 @@ class ResultsScene {
     if (r.best) {
       const bh = bragCardHeight(L.cardW), s = Math.min(1, (H - 40) / bh);
       ctx.save(); ctx.translate(cx + L.cardW * (1 - s) / 2, 20); ctx.scale(s, s);
-      drawBragCard(ctx, 0, 0, L.cardW, r.best, { t: this.t, under: spotMode(this.spot) === 'bughunt', place: (SPOTS[this.spot] && SPOTS[this.spot].place) || 'Florida Keys', crew: this.c.crew, caption: this.caption, weather: this.c.weather, comments: this.comments });
+      drawBragCard(ctx, 0, 0, L.cardW, r.best, { t: this.t, under: spotMode(this.spot) === 'bughunt', night: N, moon: N ? moonPhase().phase : null, place: (SPOTS[this.spot] && SPOTS[this.spot].place) || 'Florida Keys', crew: this.c.crew, caption: this.caption, weather: this.c.weather, comments: this.comments });
       ctx.restore();
     } else {
       panel(ctx, cx, 40, L.cardW, 300, { r: 18 });
@@ -17531,22 +18908,29 @@ class DayEndScene {
     this.awards = [];
     const bf = top(fish, (x) => x.weight); if (bf) this.awards.push(['Biggest fish', bf.ch, bf.name + ' · ' + fmtLb(bf.weight)]);
     const bb = top(bugs, (x) => x.weight); if (bb) this.awards.push(['Biggest bug', bb.ch, (bb.cl ? bb.cl.toFixed(2) + '" · ' : '') + fmtLb(bb.weight)]);
+    // the night run: who bagged the most bugs by the light (a crew)
+    this.night = !!c.nightDone;
+    const nb = {}; for (const k of bugs) if (isNightSpot(k.spot)) nb[k.ch] = (nb[k.ch] || 0) + 1;
+    const tn = c.crew.reduce((b, ch) => ((nb[ch] || 0) > (nb[b] || 0) ? ch : b), c.crew[0]);
+    if (c.crew.length > 1 && nb[tn]) this.awards.push(['Top netter', tn, nb[tn] + (nb[tn] > 1 ? ' legal bugs' : ' legal bug') + ' by the light']);
     if (c.crew.length > 1) { const counts = {}; c.catches.forEach((k) => (counts[k.ch] = (counts[k.ch] || 0) + 1)); const mc = c.crew.reduce((b, ch) => ((counts[ch] || 0) > (counts[b] || 0) ? ch : b), c.crew[0]); if (counts[mc]) this.awards.push(['Most catches', mc, counts[mc] + ' landed']); }
     const firsts = c.catches.filter((k) => k.isNew); if (firsts.length && this.awards.length < 3) this.awards.push(['New in the logbook', firsts[0].ch, firsts.map((k) => SPECIES[k.key].short).filter((v, i, a) => a.indexOf(v) === i).join(', ')]);
+    this.awards = this.awards.slice(0, 3);   // three fit above the buttons
     this.bounties = Bounties.list(c);
   }
   enter() {
     const c = this.c;
     if (c.mode === 'crew') { Records.addTrip({ date: c.date, crew: c.crew, scores: c.scores, winner: this.order[0], bounties: [this.bounties.filter((b) => b.done).length, this.bounties.length] }); Trip.clear(); }
-    SFX.play('slam'); SFX.setAmbient(0.6, false); Music.play('sunset');
+    SFX.play('slam'); SFX.setAmbient(0.6, false, this.night); Music.play(this.night ? 'night' : 'sunset');
     this.parts.burst(Game.W / 2, 160, 80, { kind: 'confetti', color: [PAL.sun, PAL.coral, '#42d3c4', '#fff'], min: 120, max: 460, g: 380, lifeMin: 1.8, lifeMax: 3, sMin: 3, sMax: 7, drag: 0.5 });
   }
   update(dt) { this.t += dt; this.parts.update(dt); }
   draw(ctx) {
     const W = Game.W, H = Game.H, t = this.t, c = this.c;
-    const hz = oceanBackdrop(ctx, W, H, t, 'sunset');
-    drawBoatSide(ctx, W * 0.84 - t * 6 % 60, hz + 40, 0.42, { crew: c.crew, t });
-    ctx.fillStyle = 'rgba(10,14,40,0.35)'; ctx.fillRect(0, 0, W, H);
+    const hz = oceanBackdrop(ctx, W, H, t, this.night ? 'night' : 'sunset');
+    ctx.save(); if (this.night) ctx.globalAlpha = 0.5;   // the boat in the dark
+    drawBoatSide(ctx, W * 0.84 - t * 6 % 60, hz + 40, 0.42, { crew: c.crew, t }); ctx.restore();
+    ctx.fillStyle = this.night ? 'rgba(2,6,20,0.3)' : 'rgba(10,14,40,0.35)'; ctx.fillRect(0, 0, W, H);
     // the high-five
     const hx = W * 0.5, hy = 122;
     if (c.crew.length > 1) {
@@ -17559,7 +18943,8 @@ class DayEndScene {
     } else { ctx.save(); ctx.translate(hx, hy + 30); crewAvatar(ctx, c.crew[0], 0, 0, 64, { expr: 'grin' }); ctx.restore(); }
     // a crew's day ends on who won it
     const o = this.order, lead = c.mode === 'crew' && o.length > 1 && c.scores[o[0]] > 0, tied = lead && c.scores[o[0]] === c.scores[o[1]];
-    const head = !lead ? 'Out. 🙌' : tied ? 'A tie at the top!' : CHARS[o[0]].name + ' is Captain of the Day!';
+    const nightOnly = c.plan === 'night', cap = nightOnly ? 'Captain of the Night' : 'Captain of the Day';
+    const head = !lead ? (this.night ? 'What a night. 🦞' : 'Out. 🙌') : tied ? 'A tie at the top!' : CHARS[o[0]].name + ' is ' + cap + '!';
     text(ctx, head, hx, 48, { display: true, size: lead ? 40 : 46, align: 'center', color: '#fff', stroke: '#1d1636', sw: 8, maxW: W - 40 });
     const tiedNames = tied ? o.filter((k) => c.scores[k] === c.scores[o[0]]).map((k) => CHARS[k].name) : [];
     text(ctx, tied ? tiedNames.slice(0, -1).join(', ') + ' and ' + tiedNames[tiedNames.length - 1] + ' share it. Same water next season.' : 'Same crew. Same water. See you next season.', W / 2, 82, { size: 18, align: 'center', color: '#ffe3c0', weight: 700, alpha: 0.95, maxW: W - 40 });
@@ -17592,7 +18977,7 @@ class DayEndScene {
       crewAvatar(ctx, ch, bx + 38, y + 8, 17);
       if (i === 0 && lead && !tied) drawCrown(ctx, bx + 38, y - 12, 10);
       text(ctx, CHARS[ch].name, bx + 66, y + (i === 0 && lead ? 4 : 14), { size: 19, color: '#fff', weight: 800 });
-      if (i === 0 && lead) text(ctx, tied ? 'Tied at the top' : 'Captain of the Day', bx + 66, y + 22, { size: 13, color: PAL.sun, weight: 800 });
+      if (i === 0 && lead) text(ctx, tied ? 'Tied at the top' : cap, bx + 66, y + 22, { size: 13, color: PAL.sun, weight: 800 });
       text(ctx, c.scores[ch].toLocaleString(), bx + bw2 - 18, y + 15, { size: 23, align: 'right', color: PAL.sun, weight: 800 });
     });
     const ax = W - bw2 - 24, aw = W - ax - 24;
@@ -17605,7 +18990,7 @@ class DayEndScene {
       text(ctx, detail, ax + 62, y + 24, { size: 13, color: '#cfe3ea', weight: 600, maxW: aw - 76 });
     });
     const solo = c.mode !== 'crew';
-    UI.button(ctx, 'again', W / 2 - 250, H - 62, 160, 48, solo ? 'New day' : 'New trip', () => Game.go(solo ? new SoloSetupScene() : new CrewSetupScene()), { style: 'primary', size: 19, key: 'Enter' });
+    UI.button(ctx, 'again', W / 2 - 250, H - 62, 160, 48, solo ? 'New day' : nightOnly ? 'Another night' : 'New trip', () => Game.go(solo ? new SoloSetupScene() : new CrewSetupScene(nightOnly ? { plan: 'night', crew: c.crew, sessionLen: c.sessionLen, nightRounds: c.nightRounds } : {})), { style: 'primary', size: 19, key: 'Enter' });
     UI.button(ctx, 'log', W / 2 - 80, H - 62, 160, 48, 'Logbook', () => Game.go(new LogbookScene()), { style: 'secondary', size: 19 });
     UI.button(ctx, 'title', W / 2 + 90, H - 62, 160, 48, 'Title', () => Game.go(new TitleScene()), { style: 'ghost', size: 19, key: 'Escape' });
     this.parts.draw(ctx);
@@ -17768,9 +19153,10 @@ class LogbookScene {
 
 /* ================= HOW TO PLAY ================= */
 const HOWTO = [
-  { title: 'The trip', art: 'boat', lines: ['Crew Trip: pass one phone around. The captain drives the boat to a spot, then everyone fishes it.', 'Bigger fish and bigger bugs score more. Trophies, slams and clean releases add bonuses.', 'Every day has three bounties, like a mahi over 20\u00a0lb. The first one to finish a bounty takes its bonus.', 'Full day is four spots, half day is two. Then run home at sunset. Most points is Captain of the Day.'] },
+  { title: 'The trip', art: 'boat', lines: ['Crew Trip: pass one phone around. The captain drives the boat to a spot, then everyone fishes it.', 'Bigger fish and bigger bugs score more. Trophies, slams and clean releases add bonuses.', 'Every day has three bounties, like a mahi over 20\u00a0lb. The first one to finish a bounty takes its bonus.', 'Full day is four spots, half day is two. Then run home at sunset (and go bully netting after dark, if the night run is on). Most points is Captain of the Day.'] },
   { title: 'Running the boat', art: 'boat', lines: ['Hold left or right of the boat to turn (or ← →). The throttle is on the right: STOP, IDLE, SLOW, CRUISE, FULL.', 'Open the Chart and pick what to catch up top: Lobster, Reef, Offshore or Bayside. Set course and the autopilot drives.', 'The bay side is behind the islands. Get there through a creek under a bridge: Tavernier Creek is by the dock.', 'Light water is shallow: slow down or you run aground. No-wake zones mean SLOW or FWC pulls you over.', 'Some spots aren’t charted yet. Run past a ? on the chart to find them.'] },
   { title: 'Lobster (the Bug Hunt)', art: 'lobster', lines: ['Lobster spots are on the chart (tap Lobster). Look for antennae poking out of holes.', 'Hold on the hole (or TICKLE). When the antennae shake it says LET GO: let go, wait, then hold again.', 'Calm bugs are easy. Wary old bugs (often the big ones) give you a split second, and bolt once they’re out.', 'When it walks out, tap the bug to net it. Pro move: tap behind its tail; it flips backward into the net.', 'Gauge every bug: past the 3" gauge and no eggs. Stuck? Tap ? in the dive for the how-to.'] },
+  { title: 'Bully netting (at night)', art: 'night', lines: ['Turn the night run on when you set up a trip, or tap Night Run on the title. After dark the crew idles the flats with a light on the bow.', 'Drag to sweep the light (or move the mouse). Two orange eyes are a bug. Put the light on it: it freezes, and your buddy idles you over.', 'Tap just behind its tail to drop the net: lobsters shoot backward, right in. Drop it in front of them and they’re gone.', 'When it kicks up into the bag, TWIST. Then gauge it like a dive. Leave the rays and the nurse sharks alone.'] },
   { title: 'Bottom fishing', art: 'grouper', lines: ['Watch the fish finder on the right. Arches are fish (red means big), blue speckle is bait.', 'Drag up or down (or on the fish finder) to drop your bait to the marks. Squid for snapper, pinfish for grouper and jacks.', 'Small twitches are nibbles. Wait. When the rod slams down, tap to set the hook.', 'Nothing on the finder? Tap Move ◀ ▶ to idle along the ledge or the wreck until it lights up.', 'The ▸ under the finder (or F) makes it smaller, then tucks it away. Tap it again to bring it back.'] },
   { title: 'Trolling', art: 'mahi', lines: ['Drag up and down to steer. Your lures follow the path the boat took.', 'Frigate birds and weed lines mean mahi. Diving terns and bait balls mean tuna.', 'The fish are out there, but you have to find them. Read the birds and the weed.', 'Trap floats wrap your prop and foul your lures. Tripletail like to hide under them.'] },
   { title: 'Bayside fishing (the flats)', art: 'bonefish', lines: ['Your buddy poles the skiff (◀ ▶ bottom right) and calls fish by the clock: 12 is straight ahead. Look for tails and wakes.', 'Press and hold where you want the fly, then let go. Land it a few feet in front of the fish, never on it.', 'Tap to strip the fly at the fish’s pace. When it eats (IT ATE IT!), tap to set the hook.', 'Until you hook your first one, a ring shows the fish, CAST HERE shows where to cast, and a ring on the fly shows when to strip.'] },
@@ -17791,6 +19177,13 @@ class HowToScene {
     ctx.save(); ctx.translate(ax, ay); ctx.scale(ak, ak);
     if (P.art === 'boat') drawBoatSide(ctx, 0, 60, 0.7, { crew: CHAR_ORDER, t });
     else if (P.art === 'lobster') drawLobsterSide(ctx, 150, { t });
+    else if (P.art === 'night') {   // a bug in the beam on a dark flat, the net coming down behind it
+      const g = ctx.createRadialGradient(0, 0, 10, 0, 0, 150); g.addColorStop(0, '#7d7a5c'); g.addColorStop(0.5, '#2f3a2c'); g.addColorStop(1, 'rgba(4,10,20,0)');
+      ctx.fillStyle = g; ell(ctx, 0, 0, 150, 150); ctx.fill();
+      ctx.save(); ctx.rotate(-0.5); ctx.translate(20, 0); drawLobsterTop(ctx, 46, { t }); ctx.restore();
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; for (const sd of [-1, 1]) { const ex = 20 * Math.cos(-0.5) + 46 * 0.98 * Math.cos(-0.5) - sd * 4.6 * Math.sin(-0.5), ey = 20 * Math.sin(-0.5) + 46 * 0.98 * Math.sin(-0.5) + sd * 4.6 * Math.cos(-0.5); ctx.drawImage(bnGlow(BN_EYE.bug), ex - 10, ey - 10, 20, 20); } ctx.restore();
+      const k = (Math.sin(t * 2) + 1) / 2; ctx.strokeStyle = `rgba(223,229,232,${0.5 + 0.5 * k})`; ctx.lineWidth = 4; ell(ctx, -54, 34, 60, 60); ctx.stroke();
+    }
     else if (P.art === 'grouper') drawFish(ctx, 'blackgrouper', 220, { t });
     else if (P.art === 'mahi') drawFish(ctx, 'mahi', 240, { t });
     else if (P.art === 'bonefish') drawFish(ctx, 'bonefish', 210, { t });

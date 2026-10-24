@@ -128,7 +128,7 @@ const SFX = {
       if (ac.state === 'suspended' && ac.resume) ac.resume().catch(() => {});
     } catch (e) { this.ac = null; this.master = null; return; }
     try { Music.attach(); } catch (e) { console.warn('music unavailable', e); }
-    if (this.wantAmb) this.setAmbient(this.wantAmb[0], this.wantAmb[1]);   // a scene asked for the sea before the first tap
+    if (this.wantAmb) this.setAmbient(this.wantAmb[0], this.wantAmb[1], this.wantAmb[2]);   // a scene asked for the sea before the first tap
     this.warm();
     if (!this.timer) this.timer = setInterval(() => { try { this.house(); } catch (e) { /* ambience never stops the game */ } }, 100);
     if (!this.vis) {
@@ -139,7 +139,7 @@ const SFX = {
   // the whole mixer, on any (Offline)AudioContext
   build(ac) {
     this.ac = ac; this.bank = {}; this.waves = {}; this.crk = null; this.engine = this.water = this.amb = this.drag = null;
-    this.st = { eng: [-1, -1], amb: [-1, false], drag: [-1, -1], hull: 0, hullAuto: 0, hullScene: null };
+    this.st = { eng: [-1, -1], amb: [-1, false, false], drag: [-1, -1], hull: 0, hullAuto: 0, hullScene: null };
     const sr = ac.sampleRate, G = (v, to) => { const g = ac.createGain(); g.gain.value = v; if (to) g.connect(to); return g; };
     const nb = ac.createBuffer(1, sr * 2, sr), d = nb.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; this.nb = nb;
     // slow random wander (−1..1, a new target every half second, eased): swells, wobble, gusts
@@ -179,7 +179,7 @@ const SFX = {
     const b = this[k]; if (!b) return; this[k] = null;
     for (const n of b.src) { try { n.stop(); } catch (e) { /* already stopped */ } }
     try { b.g.disconnect(); } catch (e) { /* gone */ }
-    if (k === 'engine') this.st.eng = [-1, -1]; else if (k === 'amb') this.st.amb = [-1, false]; else if (k === 'drag') this.st.drag = [-1, -1];
+    if (k === 'engine') this.st.eng = [-1, -1]; else if (k === 'amb') this.st.amb = [-1, false, false]; else if (k === 'drag') this.st.drag = [-1, -1];
   },
   warm() { // render the rest of the sample bank in small idle slices after the first tap, so no song or sound waits on it
     const q = ['steel', 'kick', 'shaker', 'rim', 'conga', 'marimba', 'bell', 'hat', 'snare', 'pluck', 'crash', 'tom', 'clap', 'cowbell', 'boom', 'ratchet', 'clave'];
@@ -275,7 +275,7 @@ const SFX = {
     const hg = G(0.08, top), hb = F('bandpass', 2400, 0.5, hg); n2.connect(hb); sw.connect(G(0.05, hg.gain));
     const ug = G(0.75, und), ul = F('lowpass', 210, 0.7, ug); n2.connect(ul); sw.connect(G(0.4, ug.gain));
     const cg = G(0.5, und), ch = F('highpass', 2200, 0.6, cg); B(this.crackle(), 1).connect(ch);   // snapping shrimp, far off on the reef
-    return { src, g, top, und, off: null, L: 0, under: false, nl: 0, ng: 0, nb: 0 };
+    return { src, g, top, und, off: null, L: 0, under: false, night: false, nl: 0, ng: 0, nb: 0, nc: 0, nh: 0, nm: 0 };
   },
   crackle() {
     if (this.crk) return this.crk;
@@ -283,12 +283,13 @@ const SFX = {
     for (let k = 0; k < 4 * 60; k++) { const i0 = randi(0, n - 40), a = Math.pow(Math.random(), 3) * (chance(0.5) ? 1 : -1); for (let j = 0; j < 24; j++) d[i0 + j] += a * Math.exp(-j / 3) * (j % 2 ? -1 : 1); }
     return (this.crk = b);
   },
-  setAmbient(level, under) {
-    this.wantAmb = [level, under];
-    if (!this.ac) return; const L = clamp(+level || 0, 0, 1), u = !!under, s = this.st;
-    if (Math.abs(L - s.amb[0]) < 0.01 && u === s.amb[1]) return; s.amb[0] = L; s.amb[1] = u;
+  // night: the same lapping water, but crickets and frogs off the mangroves and a night heron instead of the gulls
+  setAmbient(level, under, night) {
+    this.wantAmb = [level, under, night];
+    if (!this.ac) return; const L = clamp(+level || 0, 0, 1), u = !!under, n = !!night, s = this.st;
+    if (Math.abs(L - s.amb[0]) < 0.01 && u === s.amb[1] && n === s.amb[2]) return; s.amb[0] = L; s.amb[1] = u; s.amb[2] = n;
     let a = this.amb; if (!a) { if (!L) return; a = this.amb = this.mkAmb(); }
-    const t = this.ac.currentTime; a.off = L ? null : t; a.L = L; a.under = u;
+    const t = this.ac.currentTime; a.off = L ? null : t; a.L = L; a.under = u; a.night = n;
     a.g.gain.setTargetAtTime(L * 0.1, t, 0.4);
     a.top.gain.setTargetAtTime(u ? 0.0001 : 1, t, 0.15); a.und.gain.setTargetAtTime(u ? 1 : 0.0001, t, 0.15);
   },
@@ -301,9 +302,25 @@ const SFX = {
     } else {
       if (a.nl < now) a.nl = now + rand(0.2, 1.2);
       while (a.nl < end) { this.lapAt(a.nl, L); a.nl += rand(1.2, 3.4); }
-      if (a.ng < now) a.ng = now + rand(5, 16);
-      while (a.ng < end) { if (L > 0.25) this.gullAt(a.ng, 0.016 * L, rand(-0.85, 0.85), true); a.ng += rand(16, 38); }
+      if (a.night) {
+        if (a.nc < now) a.nc = now + rand(0.1, 0.6);
+        while (a.nc < end) { this.cricketAt(a.nc, L, rand(-0.9, 0.9)); a.nc += chance(0.3) ? rand(0.25, 0.45) : rand(0.6, 1.8); }
+        if (a.nh < now) a.nh = now + rand(8, 20);
+        while (a.nh < end) { this.heronAt(a.nh, 0.03 * L, rand(-0.8, 0.8)); a.nh += rand(18, 40); }
+        if (a.nm < now) a.nm = now + rand(6, 14);
+        while (a.nm < end) { this.noise(rand(0.25, 0.4), { at: a.nm, filter: 'lowpass', f: 1400, to: 300, vol: 0.03 * L, att: 0.006, pan: rand(-0.9, 0.9), verb: 0.5 }); a.nm += rand(9, 24); }   // a mullet jumping out in the dark
+      } else {
+        if (a.ng < now) a.ng = now + rand(5, 16);
+        while (a.ng < end) { if (L > 0.25) this.gullAt(a.ng, 0.016 * L, rand(-0.85, 0.85), true); a.ng += rand(16, 38); }
+      }
     }
+  },
+  cricketAt(t, L, pan) { // a field cricket: a few quick, bright pulses
+    const f = rand(4300, 4900), n = randi(2, 4);
+    for (let k = 0; k < n; k++) this.tone(f, 0.022, { at: t + k * 0.034, vol: 0.009 * L, att: 0.004, pan, bp: f, q: 4 });
+  },
+  heronAt(t, v, pan) { // a black-crowned night heron: one hoarse "quok" from the mangroves
+    this.tone(430, 0.16, { at: t, type: 'sawtooth', fseq: [[0, 470], [0.05, 520], [0.16, 300]], bp: 900, q: 1.6, vol: v, att: 0.01, pan, verb: 0.55 });
   },
   lapAt(t, L) { // a wave lapping the hull: soft swash, sometimes a little glug
     const v = L * rand(0.5, 1);
@@ -581,6 +598,24 @@ const SFX = {
     bump() { // hull thunk against a piling or the bottom
       this.tone(95, 0.3, { to: 45, vol: 0.3, att: 0.003 }); this.noise(0.12, { filter: 'lowpass', f: 500, vol: 0.24 }); this.tone(190, 0.09, { type: 'triangle', to: 120, vol: 0.1 });
       this.noise(0.35, { filter: 'bandpass', f: 900, to: 400, vol: 0.08, delay: 0.03 });
+    },
+    lighton() { // the spotlight's switch, and the lamp coming up
+      this.noise(0.012, { filter: 'highpass', f: 3500, vol: 0.12, att: 0.001 }); this.tone(1900, 0.03, { type: 'square', to: 1400, vol: 0.03, att: 0.001, lp: 4000 });
+      this.tone(120, 0.5, { type: 'sawtooth', lp: 300, vol: 0.025, att: 0.15, delay: 0.02 });
+    },
+    plunge() { // a bully net's hoop slapping down through the surface
+      this.noise(0.18, { filter: 'bandpass', f: 500, to: 1800, q: 1.4, vol: 0.18, att: 0.06 });
+      this.noise(0.4, { filter: 'lowpass', f: 2200, to: 260, vol: 0.28, att: 0.006, delay: 0.17 }); this.tone(170, 0.14, { to: 80, vol: 0.12, delay: 0.17 }); this.drops(3, 0.3, 0.6, 0.02);
+    },
+    flip() { // a lobster tail-flipping off the bottom: a thump and a puff of sand
+      this.tone(210, 0.07, { to: 90, vol: 0.12, att: 0.002 }); this.noise(0.12, { filter: 'lowpass', f: 900, to: 300, vol: 0.09, att: 0.003 });
+    },
+    twist() { // twisting the pole: the bag wraps round the hoop, the mesh rattles
+      this.noise(0.24, { filter: 'bandpass', f: 700, to: 2600, q: 1.8, vol: 0.2, att: 0.05 });
+      for (let k = 0; k < 4; k++) this.noise(0.03, { filter: 'bandpass', f: rand(2400, 3600), q: 3, vol: 0.06, delay: 0.1 + k * 0.045, att: 0.002 });
+    },
+    skitter() { // a houndfish skipping across the surface
+      for (let k = 0; k < 7; k++) this.noise(0.05, { filter: 'bandpass', f: rand(1600, 2600), q: 2, vol: 0.07 * (1 - k * 0.1), delay: k * 0.07, att: 0.003, pan: -0.6 + k * 0.2 });
     }
   }
 };
@@ -787,6 +822,8 @@ const SUNSET_B = [['F5', null, 'E5', null, 'D5', null, 'A5', null], ['G5', null,
 const SUNSET_FORM = ['A', 'M', 'B', 'M2', 'S', 'B2'];
 const REEF_MEL = [['A5', null, null, null, 'G5', null, 'E5', null], ['B5', null, null, null, 'G5', null, null, null], ['A5', null, 'F5', null, 'C6', null, null, null], ['B5', null, 'G5', null, 'E5', null, null, null]];
 const REEF_B = [['D6', null, null, 'C6', 'A5', null, null, null], ['C6', null, null, null, 'E5', null, 'G5', null], ['F5', null, 'G5', null, 'A5', null, 'Bb5', null], ['G5', null, null, null, null, null, null, null]];
+const NIGHT_MEL = [['A5', null, null, 'G5', 'F5', null, 'E5', null], ['D5', null, null, null, 'F5', null, null, null], ['C5', null, 'D5', null, 'E5', null, 'A5', null], ['G5', null, null, null, null, null, null, null]];
+const NIGHT_B = [['F5', null, 'E5', null, 'D5', null, 'A4', null], ['Bb4', null, 'D5', null, 'F5', null, 'A5', null], ['G5', null, 'F5', null, 'E5', null, 'C5', null], ['E5', null, null, 'D5', 'E5', null, null, null]];
 const SONGS = {
   // menus and the chart: bright calypso. Intro, A, A', B, B', A + harmony, a congas breakdown, A again
   title: { bpm: 116, vol: 0.8, swing: 0.05, fx: { l: 0.16, r: 0.1, lead: 0.22, dly: 0.1, dt: 0.75, fb: 0.25 }, step(i, t, M) {
@@ -869,6 +906,22 @@ const SONGS = {
     else M.mel(t, p, FIGHT_MEL[q], 0.052, { harm: KEY_EM, oct: k > 0.5 || q === 3 });
     if (fillBar) M.fill(t, p, 0.15, b === 15 ? 'tom' : 'snare');
     if (p === 0 && (b & 3) === 0 && bar > 0) M.crash(t, 0.04);
+  } },
+  // bully netting after dark: slow and low, a warm pad and a soft marimba, the steel pan drifting in and out on the echo.
+  // A (pads and the arpeggio), A + bells, B (new chords), B + a flute; the second time round the steel takes the tune
+  night: { bpm: 74, vol: 0.85, lp: 3400, fx: { c: 0.06, l: 0.28, r: 0.28, lead: 0.4, dly: 0.24, dt: 1.5, fb: 0.4 }, step(i, t, M) {
+    const bar = i >> 4, p = i & 15, b = bar & 15, sec = ['A', 'A2', 'B', 'B2'][b >> 2], q = b & 3, beat = 60 / 74, pass = (bar >> 4) & 1, rv = M.bv;
+    const [root, ch] = (sec[0] === 'B' ? [['G1', ['G2', 'Bb2', 'D3', 'F3']], ['A1', ['A2', 'C#3', 'E3', 'G3']], ['D2', ['D3', 'F3', 'A3', 'C4']], ['C2', ['C3', 'E3', 'G3', 'Bb3']]]
+      : [['D2', ['D3', 'F3', 'A3', 'C4']], ['Bb1', ['Bb2', 'D3', 'F3', 'A3']], ['F2', ['F3', 'A3', 'C4', 'E4']], ['C2', ['C3', 'E3', 'G3', 'D4']]])[q];
+    if (p === 0) { M.pad(t, ch, 0.02, beat * 4.2, { lp: 560 }); M.bass(t, nf(root), 0.26, beat * 1.4); }
+    if (p === 10) M.bass(t, nf(root) * 1.5, 0.14, beat * 0.8);
+    if (p % 4 === 2 && !(q === 3 && p > 8)) M.marimba(t, nf(ch[[0, 2, 1, 3][p >> 2]]) * 2, 0.03, p % 8 === 2 ? 'l' : 'r');
+    if (p === 8) M.rim(t, 0.045);
+    if (p % 4 === 3 && rv[1] < 0.7) M.shk(t, 0.012);
+    if (p === 14 && bar % 2) M.bell(t, nf(ch[3]) * 4, 0.01, 'r');
+    const row = sec === 'A2' ? NIGHT_MEL[q] : sec === 'B2' ? NIGHT_B[q] : null;
+    if (row) { if (pass) M.mel(t, p, row, 0.055, { roll: rv[3] < 0.5 }); else M.mel(t, p, row, sec === 'B2' ? 0.045 : 0.04, { voice: sec === 'B2' ? 'lead' : 'bell' }); }
+    if (q === 3 && p >= 12 && sec[0] === 'A') M.pluck(t, nf(ch[p - 12]) * 4, 0.018, 'r');
   } },
   // the shark is coming: two notes, faster as it gets closer; strings, booms and a high tick creep in with Music.intensity
   shark: { bpm: 100, vol: 0.95, lp: 7000, fx: { c: 0.06, l: 0.25, r: 0.25, lead: 0.3 }, step(i, t, M) {
