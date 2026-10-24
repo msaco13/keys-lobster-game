@@ -1,5 +1,5 @@
 # Checks every pull request before it can go live: the scripts parse, the committed single-file game in dist/
-# matches the source, the built game plays (test/smoke.mjs), the autopilot reaches every spot without running
+# matches the source, the built game plays (test/smoke.mjs), the night run plays (test/night.mjs), the autopilot reaches every spot without running
 # aground, and the 3D view's safeguards still fall back on slow or broken graphics.
 name: Check
 
@@ -40,6 +40,10 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Smoke test the built game
         run: node test/smoke.mjs dist/keys-crew.html
+      - name: Bully netting at night
+        run: node test/night.mjs "$PWD"
+      - name: Fixed bugs stay fixed
+        run: node test/fixes.mjs "$PWD"
       - name: Autopilot reaches every spot
         run: node test/autopilot.mjs "$PWD"
       - name: 3D safeguards

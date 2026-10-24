@@ -358,7 +358,7 @@ class FightScene {
     if (!this.won) {
       const [title, sub] = LOSS_TEXT[this.reason] || ['Lost it', ''];
       ctx.save(); ctx.translate(W / 2, H / 2 - 30); ctx.scale(easeBack(Math.min(1, oT / 0.3)), easeBack(Math.min(1, oT / 0.3)));
-      text(ctx, title, 0, 0, { display: true, size: 60, align: 'center', base: 'middle', color: PAL.coral, stroke: '#04202d', sw: 10 });
+      text(ctx, title, 0, 0, { display: true, size: 60, align: 'center', base: 'middle', color: PAL.coral, stroke: '#04202d', sw: 10, maxW: W - 60 });
       ctx.restore();
       text(ctx, sub, W / 2, H / 2 + 30, { size: 22, align: 'center', color: '#fff', weight: 600, maxW: W - 80 });
       if (oT > 0.9) text(ctx, Game.touch ? 'Tap to keep fishing' : 'Click or press Space to keep fishing', W / 2, H / 2 + 80, { size: 18, align: 'center', color: '#cfe3ea', weight: 700, alpha: 0.6 + Math.sin(this.t * 4) * 0.3 });
@@ -381,9 +381,13 @@ class FightScene {
     if (c.released) tags.push(['RELEASED', '#7fd98f']);
     let tx = px;
     ctx.font = fnt(15, 800);
-    for (const [tg, col] of tags) { const tw = ctx.measureText(tg).width + 22; ctx.fillStyle = col; rr(ctx, tx, y, tw, 28, 14); ctx.fill(); text(ctx, tg, tx + tw / 2, y + 15, { size: 15, align: 'center', base: 'middle', color: '#04202d', weight: 800 }); tx += tw + 8; }
+    for (const [tg, col] of tags) {
+      const tw = ctx.measureText(tg).width + 22;
+      if (tx > px && tx + tw > px + pw) { tx = px; y += 34; }   // a narrow screen: the tags wrap onto a second row
+      ctx.fillStyle = col; rr(ctx, tx, y, tw, 28, 14); ctx.fill(); text(ctx, tg, tx + tw / 2, y + 15, { size: 15, align: 'center', base: 'middle', color: '#04202d', weight: 800 }); tx += tw + 8; ctx.font = fnt(15, 800);
+    }
     y += tags.length ? 52 : 18;
-    for (const l of c.lines) { text(ctx, l.label, px, y, { size: 19, color: '#cfe3ea', weight: 600 }); text(ctx, '+' + l.pts, px + pw, y, { size: 19, align: 'right', color: '#fff', weight: 800 }); y += 28; }
+    for (const l of c.lines) { text(ctx, l.label, px, y, { size: 19, color: '#cfe3ea', weight: 600, maxW: pw - 64 }); text(ctx, '+' + l.pts, px + pw, y, { size: 19, align: 'right', color: '#fff', weight: 800 }); y += 28; }
     ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(px, y - 14, pw, 2);
     text(ctx, 'Total', px, y + 14, { size: 22, color: '#fff', weight: 800 });
     text(ctx, '+' + c.pts, px + pw, y + 14, { size: 28, align: 'right', color: PAL.sun, weight: 800 });

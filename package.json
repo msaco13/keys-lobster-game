@@ -13,6 +13,8 @@
     "test:balance": "node test/balance.mjs \"$PWD\"",
     "test:sim": "node test/sim.mjs \"$PWD\"",
     "test:nav": "node test/nav.mjs \"$PWD\"",
+    "test:night": "node test/night.mjs \"$PWD\"",
+    "test:fixes": "node test/fixes.mjs \"$PWD\"",
     "test:sea": "mkdir -p test/shots && node test/sea.mjs \"$PWD\" test/shots && node test/autopilot.mjs \"$PWD\"",
     "test:bug": "mkdir -p test/shots && node test/bug.mjs \"$PWD\" test/shots",
     "test:3d": "mkdir -p test/shots && node test/sea3d.mjs \"$PWD\" test/shots",

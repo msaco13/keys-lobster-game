@@ -26,7 +26,8 @@ for (const run of RUNS) {
   page.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
   await page.goto('file://' + root + '/index.html');
   await page.waitForFunction(() => typeof Game !== 'undefined' && Game.scene, null, { timeout: 8000 });
-  await page.evaluate(() => { localStorage.clear(); Game.go(new TitleScene(), true); });
+  // the 3D boat ride has its own tests (test/gfx.mjs); a software-drawn 3D frame here only makes the clicks wait
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem('keyscrew_gfx', JSON.stringify('classic')); GFX.mode = 'classic'; Game.go(new TitleScene(), true); });
   await page.waitForTimeout(400);
 
   const scene = () => page.evaluate(() => Game.scene.constructor.name);
@@ -46,7 +47,7 @@ for (const run of RUNS) {
   const has = (id) => page.evaluate((id) => !!UI.byId(id), id);
   const jump = async (expr, ms = 300) => { await page.evaluate(`Game.go(${expr}, true)`); await page.waitForTimeout(ms); };
   const expectScene = async (want, ctx) => { const got = await scene(); if (got !== want) throw new Error(`${ctx}: expected ${want}, got ${got}`); };
-  const fresh = async () => { await page.evaluate(() => { localStorage.clear(); Trip.cur = null; }); await jump('new TitleScene()'); };
+  const fresh = async () => { await page.evaluate(() => { localStorage.clear(); localStorage.setItem('keyscrew_gfx', JSON.stringify('classic')); Trip.cur = null; }); await jump('new TitleScene()'); };
   const shot = async (name) => { if (!shotDir || run.touch) return; await page.waitForFunction(() => Game.fade === 0, null, { timeout: 3000 }).catch(() => {}); await page.waitForTimeout(120); await page.screenshot({ path: `${shotDir}/${run.name}-${name}.png` }); };
   const startCrew = (crew = ['michael', 'jorge', 'jemel'], plan = 'half') => page.evaluate(([crew, plan]) => { Trip.start({ mode: 'crew', crew, plan, sessionLen: 90 }); }, [crew, plan]);
   const toTurn = async (spot = 'bughunt', turn = 0) => { await page.evaluate(([s, t]) => { Trip.cur.spot = s; Trip.cur.turn = t; Trip.save(); }, [spot, turn]); await jump('new TurnIntroScene()', 500); };
@@ -70,6 +71,36 @@ for (const run of RUNS) {
   await path_('title -> solo -> back', async () => {
     await fresh(); await click('solo'); await expectScene('SoloSetupScene', 'solo'); await click('back'); await expectScene('TitleScene', 'back');
     await click('solo'); await key('Escape'); await expectScene('TitleScene', 'Esc from solo setup');
+  });
+  await path_('title -> night run -> back; briefing back keeps the picks', async () => {
+    await fresh(); await click('night'); await expectScene('CrewSetupScene', 'night run');
+    if (!(await page.evaluate(() => Game.scene.nightOnly))) throw new Error('Night Run should open the night setup');
+    await click('back'); await expectScene('TitleScene', 'back');
+    await click('night'); await click('rounds2'); await click('len90'); await click('go'); await expectScene('BriefingScene', 'go');
+    await click('back'); await expectScene('CrewSetupScene', 'back from the night briefing');
+    const picks = await page.evaluate(() => Game.scene.nightOnly + '/' + Game.scene.rounds + '/' + Game.scene.len); if (picks !== 'true/2/90') throw new Error('back from the briefing lost the night picks: ' + picks);
+    await key('Escape'); await expectScene('TitleScene', 'Esc from the night setup');
+  });
+  await path_('night run: cast off -> hand-off -> net -> pause -> quit -> resume -> results -> ... -> day end', async () => {
+    await fresh(); await click('night'); await click('card2'); await click('go'); await click('castoff'); await expectScene('TurnIntroScene', 'cast off');
+    if (await has('chart')) throw new Error('no Back to the boat at night');
+    await click('ready'); await page.waitForTimeout(300); await expectScene('BullyNetScene', 'ready');
+    await click('pause'); await click('totitle'); await click('quityes'); await expectScene('TitleScene', 'quit from the night');
+    await click('resume'); await expectScene('TurnIntroScene', 'resume to the night hand-off');
+    for (const who of ['Jorge', null]) {
+      await click('ready'); await page.waitForTimeout(300); await timeOut();
+      const lb = await page.evaluate(() => Game.scene.nextLabel()); if (lb !== (who ? 'Next up: ' + who : 'Call it a night')) throw new Error('night results label ' + lb);
+      await click('next');
+    }
+    await expectScene('DayEndScene', 'after the night'); if (await page.evaluate(() => !!Trip.load())) throw new Error('a finished night is still offered for resume');
+    await click('again'); await expectScene('CrewSetupScene', 'Another night'); if (!(await page.evaluate(() => Game.scene.nightOnly))) throw new Error('Another night should open the night setup');
+  });
+  await path_('day trip: run home -> nightfall -> title -> resume -> hand-off', async () => {
+    await fresh(); await page.evaluate(() => { Trip.start({ mode: 'crew', crew: ['michael', 'jorge'], plan: 'half', night: true, sessionLen: 90 }); Trip.cur.done = ['bughunt', 'flats']; Trip.save(); });
+    await jump('new SeaScene()', 500); if (await has('wheel')) await click('wheel');
+    await page.evaluate(() => Game.scene.skipTo('home')); await settle(); await page.waitForTimeout(300); await expectScene('NightfallScene', 'tied up');
+    await shot('nightfall');
+    await click('menu'); await expectScene('TitleScene', 'Title from nightfall'); await click('resume'); await expectScene('TurnIntroScene', 'resume at night');
   });
   await path_('title -> logbook -> back', async () => {
     await fresh(); await click('log'); await expectScene('LogbookScene', 'logbook'); await click('back'); await expectScene('TitleScene', 'back');
@@ -209,6 +240,13 @@ for (const run of RUNS) {
     await click('quityes'); await expectScene('TitleScene', 'solo quit');
     if (await has('resume')) throw new Error('solo day should not offer Resume trip');
   });
+  await path_('solo: the boat\'s Quit to title asks first (the day isn\'t saved)', async () => {
+    await fresh(); await page.evaluate(() => Trip.start({ mode: 'solo', crew: ['jorge'], plan: 'solo', sessionLen: 90 })); await jump('new SeaScene()', 500);
+    await click('pause'); await click('totitle'); if (!(await has('ask-leave'))) throw new Error('quitting a solo day from the boat did not ask');
+    await click('ask-stay'); await expectScene('SeaScene', 'keep fishing'); if (!(await has('totitle'))) throw new Error('Keep fishing should go back to the pause menu');
+    await click('totitle'); await key('Escape'); if (!(await has('totitle'))) throw new Error('Esc on the question should go back to the pause menu');
+    await click('totitle'); await click('ask-leave'); await expectScene('TitleScene', 'leave the solo day');
+  });
   await path_('solo: results -> back to the boat', async () => {
     await fresh(); await page.evaluate(() => Trip.start({ mode: 'solo', crew: ['michael'], plan: 'solo', sessionLen: 90 }));
     await toTurn('bughunt', 0); await click('ready'); await page.waitForTimeout(300); await timeOut();
@@ -239,6 +277,12 @@ for (const run of RUNS) {
       ['SoloSetup', async () => { await fresh(); await jump('new SoloSetupScene()'); }],
       ['Briefing', async () => { await fresh(); await jump("new BriefingScene({ mode: 'crew', crew: ['michael', 'jorge'], plan: 'half', sessionLen: 90 })", 900); }],
       ['Briefing+saved', async () => { await fresh(); await startCrew(); await jump("new BriefingScene({ mode: 'crew', crew: ['michael', 'jorge'], plan: 'half', sessionLen: 90 })", 900); }],
+      ['NightSetup', async () => { await fresh(); await jump("new CrewSetupScene({ plan: 'night' })"); }],
+      ['NightBriefing', async () => { await fresh(); await jump("new BriefingScene({ mode: 'crew', crew: ['michael', 'jorge'], plan: 'night', nightRounds: 1, sessionLen: 90 })", 900); }],
+      ['Nightfall', async () => { await fresh(); await startCrew(); await page.evaluate(() => { Trip.cur.night = true; startNight(Trip.cur); }); await jump('new NightfallScene()', 600); }],
+      ['TurnIntro night', async () => { await fresh(); await startCrew(); await page.evaluate(() => { Trip.cur.night = true; startNight(Trip.cur); }); await jump('new TurnIntroScene()', 500); }],
+      ['Night', async () => { await fresh(); await startCrew(); await page.evaluate(() => { Trip.cur.night = true; startNight(Trip.cur); Store.set('coach_bully1_michael', true); }); await jump("new BullyNetScene({ ch: 'michael', spot: 'bullynet', len: 90, weather: Trip.cur.weather, onEnd: () => {} })", 1200); }],
+      ['DayEnd night', async () => { await fresh(); await startCrew(); await page.evaluate(() => { Trip.cur.night = true; Trip.cur.nightDone = true; Trip.save(); }); await jump('new DayEndScene()', 500); }],
       ['TurnIntro first', async () => { await fresh(); await startCrew(); await toTurn('bughunt', 0); }],
       ['TurnIntro later', async () => { await fresh(); await startCrew(); await toTurn('bughunt', 1); }],
       ['Results', async () => { await fresh(); await startCrew(); await page.evaluate(() => { Trip.cur.spot = 'bottom'; const c = makeCatch('redgrouper', 12, 'michael', 'bottom'); const res = { catches: [c], lines: [{ label: 'Red grouper', pts: c.pts, key: 'redgrouper' }], total: c.pts, best: c }; Trip.record('michael', 'bottom', res); Game.go(new ResultsScene('michael', 'bottom', res, advanceTrip()), true); }); await page.waitForTimeout(400); await page.evaluate(() => { Game.scene.t = 99; }); await page.waitForTimeout(200); }],
@@ -256,7 +300,7 @@ for (const run of RUNS) {
         const v = s[k];
         if (v === null || ['number', 'string', 'boolean'].includes(typeof v)) o[k] = v; else if (v instanceof Set) o[k] = [...v].join(',');
       }
-      return JSON.stringify({ sc: s.constructor.name, next: Game.next ? Game.next.constructor.name : null, o, m: SFX.muted, mu: Music.on, trip: Trip.cur && JSON.stringify(Trip.cur) });
+      return JSON.stringify({ sc: s.constructor.name, next: Game.next ? Game.next.constructor.name : null, o, m: SFX.muted, mu: Music.on, g: GFX.mode + '/' + GFX.showFps, trip: Trip.cur && JSON.stringify(Trip.cur) });
     });
     for (const [name, setup, pausedScreen] of SCREENS) {
       try {
@@ -276,7 +320,7 @@ for (const run of RUNS) {
           await setup();
           if (!(await has(r.id))) { notes.push(`${run.name} ${name}: "${r.id}" missing after re-setup`); continue; }
           // a choice that's already picked (Full day, 2 min, the selected solo angler) has nothing to change
-          const picked = await page.evaluate((id) => { const s = Game.scene; return id === s.plan || id === 'len' + s.len || (typeof s.ch === 'string' && id === 'card' + CHAR_ORDER.indexOf(s.ch)); }, r.id);
+          const picked = await page.evaluate((id) => { const s = Game.scene; return id === s.plan || id === 'len' + s.len || id === 'rounds' + s.rounds || id === 'speed' + s.notch || (typeof s.ch === 'string' && id === 'card' + CHAR_ORDER.indexOf(s.ch) && !(s instanceof BullyNetScene)); }, r.id);
           const before = await snap();
           const pt = await page.evaluate((id) => { const q = UI.byId(id); return { x: Game.ox + (q.x + q.w / 2) * Game.scale, y: Game.oy + (q.y + q.h / 2) * Game.scale }; }, r.id);
           await page.mouse.click(pt.x, pt.y); await page.waitForTimeout(60);

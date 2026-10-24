@@ -2,7 +2,7 @@
 /* Keys Crew — menus and the trip flow: title, crew pick, the day's briefing (weather and bounties),
    turn hand-offs, results, end of day, logbook, how to play. The boat ride between spots lives in sea.js. */
 
-const SCENE_FOR = { bughunt: () => BugHuntScene, bottom: () => BottomScene, troll: () => TrollScene, flats: () => FlatsScene };  // keyed by spot mode
+const SCENE_FOR = { bughunt: () => BugHuntScene, bottom: () => BottomScene, troll: () => TrollScene, flats: () => FlatsScene, bully: () => BullyNetScene };  // keyed by spot mode
 const WATER_F = [72, 72, 75, 78, 82, 85, 87, 88, 87, 84, 79, 75];
 
 function launchTurn() {
@@ -15,8 +15,10 @@ function launchTurn() {
     Game.go(new ResultsScene(ch, spot, res, advanceTrip()));
   } }));
 }
-// where the trip goes after the turn in progress: 'turn' (next angler, same spot), 'sea' or 'home'. Changes nothing.
+// where the trip goes after the turn in progress: 'turn' (next angler, same spot), 'sea', 'home', or 'end' (the night
+// run is over: the end of the day). Changes nothing.
 function tripNext(c) {
+  if (isNightSpot(c.spot)) return c.turn + 1 < nightTurns(c) ? 'turn' : 'end';
   if (c.mode !== 'crew') return 'sea';
   if (c.turn + 1 < c.crew.length) return 'turn';
   return (c.done.includes(c.spot) ? c.done.length : c.done.length + 1) >= c.spotsNeeded ? 'home' : 'sea';
@@ -25,12 +27,22 @@ function tripNext(c) {
 function advanceTrip() {
   const c = Trip.cur, kind = tripNext(c);
   if (kind === 'turn') c.turn++;
+  else if (kind === 'end') { c.nightDone = true; c.turn = 0; c.spot = null; }
   else { if (!c.done.includes(c.spot)) c.done.push(c.spot); c.turn = 0; c.spot = null; }
   c.leg = null;   // someone fished here, so the run that got the boat here is settled
   Trip.save();
   return kind;
 }
-function goNext(kind) { Game.go(kind === 'turn' ? new TurnIntroScene() : new SeaScene({ home: kind === 'home' })); }
+function goNext(kind) { Game.go(kind === 'turn' ? new TurnIntroScene() : kind === 'end' ? new DayEndScene() : new SeaScene({ home: kind === 'home' })); }
+// the night run starts: whoever's last on the board nets first (a shot at a comeback), then the rest in crew order
+function startNight(c) {
+  c.spot = NIGHT_SPOT; c.turn = 0; c.leg = null;
+  const low = c.crew.reduce((b, ch) => ((c.scores[ch] || 0) < (c.scores[b] || 0) ? ch : b), c.crew[0]);
+  c.first = Math.max(0, c.crew.indexOf(low));
+  Trip.save();
+}
+// a saved trip picks up where it left off: the end of the day, a hand-off, or the boat
+function resumeScene(c) { return c.nightDone ? new DayEndScene() : c.spot ? new TurnIntroScene() : new SeaScene(); }
 function afterResults() { goNext(advanceTrip()); }
 function dayLabel() { return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }); }
 function crewAvatar(ctx, ch, x, y, r, o = {}) {
@@ -44,6 +56,7 @@ function drawCrown(ctx, x, y, s) {
 }
 function oceanBackdrop(ctx, W, H, t, mood = 'day') {
   const hz = H * 0.56;
+  if (mood === 'night') return nightBackdrop(ctx, W, H, t, hz);
   drawSky(ctx, W, hz, mood);
   if (mood === 'sunset') drawSun(ctx, W * 0.7, hz - 26, 34, '#ffd9a0'); else drawSun(ctx, W * 0.82, 88, 30);
   drawCloud(ctx, (W * 0.18 + t * 6) % (W + 200) - 60, 80, 1.1, mood === 'sunset' ? 0.55 : 0.9);
@@ -61,6 +74,38 @@ function oceanBackdrop(ctx, W, H, t, mood = 'day') {
   ctx.fillStyle = g; ctx.fillRect(0, hz, W, H - hz);
   ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 2;
   for (let i = 0; i < 14; i++) { const y = hz + 10 + i * i * 1.6, off = (t * (10 + i * 3)) % 80; ctx.beginPath(); for (let x = -80 + off; x < W + 80; x += 80) { ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 20, y - 2 - i * 0.2, x + 40, y); } ctx.stroke(); }
+  return hz;
+}
+
+// After dark in the Keys: stars, tonight's moon and its path on the water, the mangroves black against the sky with a
+// few porch lights, and a channel marker blinking green out on the flat
+function nightBackdrop(ctx, W, H, t, hz) {
+  const moon = moonPhase(), mx = W - 74, my = 52;   // high in the corner, clear of the cards and the headings
+  drawSky(ctx, W, hz, 'night'); drawStars(ctx, W, hz, t, 1 - moon.lit * 0.45);
+  drawMoon(ctx, mx, my, 20, moon.phase);
+  ctx.fillStyle = '#060b16';
+  ctx.beginPath(); ctx.moveTo(0, hz); ctx.quadraticCurveTo(W * 0.08, hz - 16, W * 0.22, hz - 9); ctx.quadraticCurveTo(W * 0.3, hz - 4, W * 0.36, hz); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(W * 0.5, hz); ctx.quadraticCurveTo(W * 0.56, hz - 7, W * 0.66, hz - 5); ctx.quadraticCurveTo(W * 0.7, hz - 2, W * 0.72, hz); ctx.fill();
+  for (const px of [0.05, 0.11, 0.19, 0.6]) {
+    const x = W * px, y = hz - 8;
+    ctx.strokeStyle = '#060b16'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 4, y - 22, x + 2, y - 40); ctx.stroke();
+    ctx.fillStyle = '#060b16'; for (let k = 0; k < 5; k++) { ctx.save(); ctx.translate(x + 2, y - 40); ctx.rotate(-1.2 + k * 0.6 + Math.sin(t + k) * 0.05); ell(ctx, 10, 0, 12, 3); ctx.fill(); ctx.restore(); }
+  }
+  for (const [px, dy] of [[0.13, 6], [0.16, 8], [0.27, 5], [0.62, 4]]) { const k = 0.7 + 0.3 * Math.sin(t * 0.7 + px * 40); ctx.fillStyle = `rgba(255,214,140,${(0.75 * k).toFixed(3)})`; ctx.fillRect(W * px, hz - dy, 2.5, 2); }
+  const g = ctx.createLinearGradient(0, hz, 0, H); g.addColorStop(0, '#16244a'); g.addColorStop(0.35, '#0a1430'); g.addColorStop(1, '#030814');
+  ctx.fillStyle = g; ctx.fillRect(0, hz, W, H - hz);
+  // the moon's path across the water
+  for (let i = 0; i < 70; i++) {
+    const f = (i + 0.5) / 70, d = Math.pow(f, 1.6), y = hz + 3 + d * (H - hz - 3), spread = 6 + d * 90 * (0.4 + moon.lit);
+    const x = mx + (h01(i) - 0.5) * 2 * spread + Math.sin(t * 0.8 + i) * 3, tw = Math.max(0, Math.sin(t * (1.6 + h01(i + 40) * 2.5) + i * 2.3)), a = tw * tw * (0.25 + 0.6 * moon.lit) * (1 - d * 0.5);
+    if (a < 0.03) continue;
+    const len = 3 + d * 24; ctx.fillStyle = `rgba(230,236,255,${a.toFixed(3)})`; ctx.fillRect(x - len / 2, y, len, 1 + d * 1.6);
+  }
+  ctx.strokeStyle = 'rgba(160,190,255,0.08)'; ctx.lineWidth = 2;
+  for (let i = 0; i < 12; i++) { const y = hz + 10 + i * i * 1.8, off = (t * (6 + i * 2)) % 80; ctx.beginPath(); for (let x = -80 + off; x < W + 80; x += 80) { ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 20, y - 2, x + 40, y); } ctx.stroke(); }
+  // a channel marker out on the flat, its green light blinking every four seconds
+  const kx = W * 0.42, ky = hz + 18; ctx.strokeStyle = '#0d1424'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(kx, ky + 10); ctx.lineTo(kx, ky - 22); ctx.stroke(); ctx.fillStyle = '#123a24'; ctx.fillRect(kx - 6, ky - 22, 12, 9);
+  if (t % 4 < 0.5) { const gg = ctx.createRadialGradient(kx, ky - 26, 0, kx, ky - 26, 16); gg.addColorStop(0, 'rgba(140,255,170,0.95)'); gg.addColorStop(1, 'rgba(60,255,120,0)'); ctx.fillStyle = gg; ctx.fillRect(kx - 16, ky - 42, 32, 32); }
   return hz;
 }
 
@@ -85,7 +130,8 @@ function waterTemp() { return WATER_F[new Date().getMonth()]; }
 // the spots a list of ids names, as far as this device knows them: undiscovered ones stay a mystery
 function spotNames(ids, joiner = ' · ', lower = false) {
   if (!ids || !ids.length) return lower ? 'anywhere' : 'Anywhere';
-  const known = Charts.known(), names = ids.filter((id) => known.has(id)).map((id) => SPOTS[id].name), hidden = ids.length - names.length;
+  const known = Charts.known(), names = ids.filter((id) => known.has(id) || isNightSpot(id)).map((id) => (isNightSpot(id) ? 'the night run' : SPOTS[id].name)), hidden = ids.length - names.length;
+  if (names.length === 1 && !hidden && isNightSpot(ids[0])) return lower ? 'on the night run' : 'On the night run';
   if (!names.length) return hidden > 1 ? hidden + ' uncharted spots' : (lower ? 'an' : 'An') + ' uncharted spot';
   return names.join(joiner) + (hidden ? joiner + '???' : '');
 }
@@ -133,6 +179,9 @@ function drawBountyIcon(ctx, icon, x, y, s, t = 0) {
     const k = s * 0.42; ctx.fillStyle = PAL.coral; ctx.beginPath(); ctx.arc(0, -k * 0.3, k * 0.62, Math.PI * 0.82, Math.PI * 2.18); ctx.lineTo(0, k * 0.95); ctx.closePath(); ctx.fill();
     ctx.strokeStyle = '#8c2d14'; ctx.lineWidth = Math.max(1, k * 0.08); ctx.stroke();
     text(ctx, '?', 0, -k * 0.26, { size: Math.max(9, k * 0.95), align: 'center', base: 'middle', color: '#fff', weight: 800 });
+  } else if (icon === 'moon') {
+    drawMoon(ctx, -s * 0.24, -s * 0.18, s * 0.16, 0.3, { glow: false });
+    const L = s * (s < 50 ? 0.5 : 0.42); ctx.save(); ctx.translate(-L * 0.45, L * 0.32); ctx.rotate(-0.2); drawLobsterSide(ctx, L, { t }); ctx.restore();
   } else if (icon === 'five') {
     drawFish(ctx, 'yellowtail', s * 0.78, { wig: 0 });
     text(ctx, '×5', s * 0.3, s * 0.3, { size: Math.max(10, s * 0.36), align: 'center', base: 'middle', color: '#fff', weight: 800, stroke: PAL.ink, sw: 3 });
@@ -390,18 +439,20 @@ class TitleScene {
       const lead = saved.crew.length > 1 ? saved.crew.reduce((b, c) => ((saved.scores[c] || 0) > (saved.scores[b] || 0) ? c : b), saved.crew[0]) : null;
       glow(mx, y, mw, 60, 'rgba(255,106,61,0.85)');
       // a trip left mid-spot comes back to that angler's hand-off; otherwise back on the boat
-      UI.button(ctx, 'resume', mx, y, mw, 60, 'Resume trip', () => { if (!Trip.resume()) { this.saved = null; return; } Game.go(Trip.cur.spot ? new TurnIntroScene() : new SeaScene()); },
-        { style: 'coral', size: 23, sub: saved.crew.map((c) => CHARS[c].name).join(', ') + ' · ' + saved.done.length + '/' + saved.spotsNeeded + ' spots' + (lead && saved.scores[lead] > 0 ? ' · ' + CHARS[lead].name + ' leads' : ''), key: 'Enter' });
+      const where = saved.nightDone ? 'day’s done' : saved.plan === 'night' ? 'night run' : saved.done.length + '/' + saved.spotsNeeded + ' spots' + (isNightSpot(saved.spot) ? ' · night run' : '');
+      UI.button(ctx, 'resume', mx, y, mw, 60, 'Resume trip', () => { if (!Trip.resume()) { this.saved = null; return; } Game.go(resumeScene(Trip.cur)); },
+        { style: 'coral', size: 23, sub: saved.crew.map((c) => CHARS[c].name).join(', ') + ' · ' + where + (lead && saved.scores[lead] > 0 ? ' · ' + CHARS[lead].name + ' leads' : ''), key: 'Enter' });
       y += 72;
     } else glow(mx, y, mw, 64, 'rgba(255,200,69,0.85)');
     UI.button(ctx, 'crew', mx, y, mw, 64, 'Crew Trip', () => Game.go(new CrewSetupScene()), { style: 'primary', size: 27, sub: 'Pass the phone · 1 to 3 players', key: saved ? undefined : 'Enter' }); y += 76;
-    UI.button(ctx, 'solo', mx, y, mw, 52, 'Solo Day', () => Game.go(new SoloSetupScene()), { style: 'secondary', size: 22, sub: 'Fish the Keys your way' }); y += 64;
     const hw = (mw - 12) / 2;
+    UI.button(ctx, 'solo', mx, y, hw, 52, 'Solo Day', () => Game.go(new SoloSetupScene()), { style: 'secondary', size: 21, sub: 'Your way' });
+    UI.button(ctx, 'night', mx + hw + 12, y, hw, 52, 'Night Run', () => Game.go(new CrewSetupScene({ plan: 'night' })), { style: 'dark', fill: '#1d2b5e', color: '#ffe7a0', line: 'rgba(255,231,160,0.45)', size: 21, sub: 'Bully netting' }); y += 64;
     UI.button(ctx, 'log', mx, y, hw, 50, 'Logbook', () => Game.go(new LogbookScene()), { style: 'dark', size: 18, sub: this.nSpecies + ' / ' + SPECIES_ORDER.length + ' species' });
     UI.button(ctx, 'how', mx + hw + 12, y, hw, 50, 'How to play', () => Game.go(new HowToScene()), { style: 'dark', size: 18 });
     // what's new
     const ny = H - 30, nw = pill(ctx, 'NEW', mx, ny, { bg: PAL.coral, color: '#fff', size: 13, h: 22 });
-    text(ctx, 'Drive anywhere in the Keys, find hidden spots, chase daily bounties', mx + nw + 10, ny + 5, { size: 15, color: '#fff', weight: 700, stroke: 'rgba(6,34,50,0.7)', sw: 4, maxW: W - 150 - mx - nw - 10 });
+    text(ctx, 'Bully netting after dark: add a night run to your trip, or tap Night Run', mx + nw + 10, ny + 5, { size: 15, color: '#fff', weight: 700, stroke: 'rgba(6,34,50,0.7)', sw: 4, maxW: W - 150 - mx - nw - 10 });
     // sound + music, and who it's for
     UI.button(ctx, 'snd', W - 64, H - 60, 48, 44, SFX.muted ? '🔇' : '🔊', () => SFX.setMuted(!SFX.muted), { style: 'dark', size: 18 });
     UI.button(ctx, 'mus', W - 120, H - 60, 48, 44, '♫', () => Music.setOn(!Music.on), { style: Music.on ? 'dark' : 'ghost', size: 20, color: Music.on ? '#fff' : '#9fb8c2' });
@@ -423,34 +474,54 @@ function charCard(ctx, ch, x, y, w, h, on, t, fn, id) {
   ctx.restore();
   UI.region(id, x, y, w, h, fn);
 }
+// the night-run switch on the setup screens: a moon, and whether there's a night run after the day's spots
+function nightToggle(ctx, x, y, w, on, fn) {
+  const icon = (g, ix, iy, r) => drawMoon(g, ix - 2, iy, r * 0.55, 0.3, { glow: false });
+  UI.button(ctx, 'night', x, y, w, 42, on ? 'Night run: on' : 'Night run: off', fn, { style: on ? 'dark' : 'ghost', fill: on ? '#1d2b5e' : undefined, color: on ? '#ffe7a0' : '#cfe3ea', line: on ? 'rgba(255,231,160,0.6)' : undefined, size: 17, icon, selected: on });
+}
 class CrewSetupScene {
-  // o: the picks to start from (coming back from the briefing keeps them)
-  constructor(o = {}) { this.t = 0; this.crew = new Set(o.crew || CHAR_ORDER); this.plan = o.plan || 'full'; this.len = o.sessionLen || 120; this.saved = !!Trip.load(); }
-  enter() { Music.play('title'); }
+  // o: the picks to start from (coming back from the briefing keeps them). o.plan 'night': a Night Run, bully netting
+  // only (Night Run on the title)
+  constructor(o = {}) {
+    this.t = 0; this.crew = new Set(o.crew || CHAR_ORDER); this.nightOnly = o.plan === 'night';
+    this.plan = this.nightOnly ? 'full' : o.plan || 'full'; this.len = o.sessionLen || 120; this.saved = !!Trip.load();
+    this.night = o.night != null ? !!o.night : Store.get('nightRun', true) !== false; this.rounds = clamp(o.nightRounds | 0 || 1, 1, 2);
+  }
+  enter() { Music.play(this.nightOnly ? 'night' : 'title'); }
   update(dt) { this.t += dt; }
+  opts() {
+    const crew = CHAR_ORDER.filter((c) => this.crew.has(c));
+    return this.nightOnly ? { mode: 'crew', crew, plan: 'night', night: true, nightRounds: this.rounds, sessionLen: this.len } : { mode: 'crew', crew, plan: this.plan, night: this.night, sessionLen: this.len };
+  }
   draw(ctx) {
-    const W = Game.W, H = Game.H;
-    oceanBackdrop(ctx, W, H, this.t, 'day'); ctx.fillStyle = 'rgba(4,28,40,0.55)'; ctx.fillRect(0, 0, W, H);
-    text(ctx, 'Who’s on the boat?', W / 2, 52, { display: true, size: 36, align: 'center', color: '#fff' });
+    const W = Game.W, H = Game.H, N = this.nightOnly;
+    oceanBackdrop(ctx, W, H, this.t, N ? 'night' : 'day'); ctx.fillStyle = N ? 'rgba(2,8,20,0.5)' : 'rgba(4,28,40,0.55)'; ctx.fillRect(0, 0, W, H);
+    text(ctx, N ? 'Who’s going out tonight?' : 'Who’s on the boat?', W / 2, 52, { display: true, size: 36, align: 'center', color: '#fff', maxW: W - 40 });
     const cw = Math.min(250, (W - 80) / 3), gap = 16, x0 = W / 2 - (cw * 3 + gap * 2) / 2;
     CHAR_ORDER.forEach((ch, i) => charCard(ctx, ch, x0 + i * (cw + gap), 74, cw, 268, this.crew.has(ch), this.t, () => { if (this.crew.has(ch)) this.crew.delete(ch); else this.crew.add(ch); }, 'card' + i));
     const oy = 360;
-    text(ctx, 'TRIP', x0, oy + 26, { size: 15, color: '#cfe3ea', weight: 800 });
-    UI.button(ctx, 'half', x0 + 64, oy, 170, 42, 'Half day · 2 spots', () => (this.plan = 'half'), { style: this.plan === 'half' ? 'primary' : 'ghost', size: 17 });
-    UI.button(ctx, 'full', x0 + 244, oy, 170, 42, 'Full day · 4 spots', () => (this.plan = 'full'), { style: this.plan === 'full' ? 'primary' : 'ghost', size: 17 });
+    if (N) {
+      text(ctx, 'ROUNDS', x0, oy + 26, { size: 15, color: '#cfe3ea', weight: 800 });
+      [[1, 'Everyone nets once'], [2, 'Everyone nets twice']].forEach(([n, l], i) => UI.button(ctx, 'rounds' + n, x0 + 84 + i * 190, oy, 180, 42, l, () => (this.rounds = n), { style: this.rounds === n ? 'primary' : 'ghost', size: 17 }));
+    } else {
+      text(ctx, 'TRIP', x0, oy + 26, { size: 15, color: '#cfe3ea', weight: 800 });
+      UI.button(ctx, 'half', x0 + 64, oy, 170, 42, 'Half day · 2 spots', () => (this.plan = 'half'), { style: this.plan === 'half' ? 'primary' : 'ghost', size: 17 });
+      UI.button(ctx, 'full', x0 + 244, oy, 170, 42, 'Full day · 4 spots', () => (this.plan = 'full'), { style: this.plan === 'full' ? 'primary' : 'ghost', size: 17 });
+      nightToggle(ctx, x0 + 424, oy, Math.min(200, W - 20 - x0 - 424), this.night, () => { this.night = !this.night; Store.set('nightRun', this.night); });
+    }
     text(ctx, 'TURNS', x0, oy + 80, { size: 15, color: '#cfe3ea', weight: 800 });
-    [[90, '90 sec'], [120, '2 min'], [180, '3 min']].forEach(([v, l], i) => UI.button(ctx, 'len' + v, x0 + 64 + i * 112, oy + 54, 102, 42, l, () => (this.len = v), { style: this.len === v ? 'primary' : 'ghost', size: 17 }));
-    const turns = (this.plan === 'full' ? 4 : 2) * this.crew.size, mins = Math.round((turns * this.len) / 60 + turns * 0.5);
-    text(ctx, this.crew.size ? `${turns} turns · about ${mins} minutes` : 'Pick at least one angler', x0 + cw * 3 + gap * 2, oy + 26, { size: 16, align: 'right', color: '#cfe3ea', weight: 700 });
+    [[90, '90 sec'], [120, '2 min'], [180, '3 min']].forEach(([v, l], i) => UI.button(ctx, 'len' + v, x0 + (N ? 84 : 64) + i * 112, oy + 54, 102, 42, l, () => (this.len = v), { style: this.len === v ? 'primary' : 'ghost', size: 17 }));
+    // how long it'll take, between Back and Let's go
+    const n = this.crew.size, nights = N ? n * this.rounds : this.night ? n : 0, turns = N ? nights : (this.plan === 'full' ? 4 : 2) * n + nights, mins = Math.round((turns * this.len) / 60 + turns * 0.5);
+    const sum = !n ? 'Pick at least one angler' : turns + ' turns' + (nights && !N ? ' (' + nights + ' after dark)' : '') + ' · about ' + mins + ' minutes';
+    text(ctx, sum, (150 + W - 250) / 2, H - 38, { size: 16, align: 'center', color: '#cfe3ea', weight: 700, maxW: W - 420 });
     UI.button(ctx, 'back', 20, H - 66, 120, 48, 'Back', () => Game.go(new TitleScene()), { style: 'ghost', size: 18, key: 'Escape' });
-    UI.button(ctx, 'go', W - 240, H - 72, 220, 56, 'Let’s go', () => {
-      const o = { mode: 'crew', crew: CHAR_ORDER.filter((c) => this.crew.has(c)), plan: this.plan, sessionLen: this.len };
-      Game.go(new BriefingScene(o, () => new CrewSetupScene(o)));
-    }, { style: 'primary', size: 24, disabled: !this.crew.size, key: 'Enter', sub: this.saved ? 'Replaces your saved trip' : 'See today’s bounties' });
+    UI.button(ctx, 'go', W - 240, H - 72, 220, 56, 'Let’s go', () => { const o = this.opts(); Game.go(new BriefingScene(o, () => new CrewSetupScene(o))); },
+      { style: 'primary', size: 24, disabled: !n, key: 'Enter', sub: this.saved ? 'Replaces your saved trip' : N ? 'See tonight’s bounties' : 'See today’s bounties' });
   }
 }
 class SoloSetupScene {
-  constructor(o = {}) { this.t = 0; this.ch = (o.crew && o.crew[0]) || 'michael'; this.len = o.sessionLen || 120; }
+  constructor(o = {}) { this.t = 0; this.ch = (o.crew && o.crew[0]) || 'michael'; this.len = o.sessionLen || 120; this.night = o.night != null ? !!o.night : Store.get('nightRun', true) !== false; }
   enter() { Music.play('title'); }
   update(dt) { this.t += dt; }
   draw(ctx) {
@@ -462,10 +533,11 @@ class SoloSetupScene {
     const oy = 372;
     text(ctx, 'TURNS', x0, oy + 26, { size: 15, color: '#cfe3ea', weight: 800 });
     [[90, '90 sec'], [120, '2 min'], [180, '3 min']].forEach(([v, l], i) => UI.button(ctx, 'len' + v, x0 + 64 + i * 112, oy, 102, 42, l, () => (this.len = v), { style: this.len === v ? 'primary' : 'ghost', size: 17 }));
-    text(ctx, 'Run the boat anywhere, find new spots, fish them as often as you like.', x0, oy + 76, { size: 16, color: '#cfe3ea', weight: 600, maxW: cw * 3 + gap * 2 });
+    nightToggle(ctx, x0 + 404, oy, Math.min(200, W - 20 - x0 - 404), this.night, () => { this.night = !this.night; Store.set('nightRun', this.night); });
+    text(ctx, 'Run the boat anywhere, find new spots, fish them as often as you like.' + (this.night ? ' Bully net after dark.' : ''), x0, oy + 76, { size: 16, color: '#cfe3ea', weight: 600, maxW: cw * 3 + gap * 2 });
     UI.button(ctx, 'back', 20, H - 66, 120, 48, 'Back', () => Game.go(new TitleScene()), { style: 'ghost', size: 18, key: 'Escape' });
     UI.button(ctx, 'go', W - 240, H - 72, 220, 56, 'Let’s go', () => {
-      const o = { mode: 'solo', crew: [this.ch], plan: 'solo', sessionLen: this.len };
+      const o = { mode: 'solo', crew: [this.ch], plan: 'solo', night: this.night, sessionLen: this.len };
       Game.go(new BriefingScene(o, () => new SoloSetupScene(o)));
     }, { style: 'primary', size: 24, key: 'Enter', sub: 'See today’s bounties' });
   }
@@ -477,10 +549,11 @@ class BriefingScene {
   // The weather and the bounties are rolled here so they can be shown; the trip starts at Cast off.
   constructor(o, back) {
     this.o = o; this.back = back || (() => (o.mode === 'crew' ? new CrewSetupScene(o) : new SoloSetupScene(o)));
-    this.t = 0; this.weather = rollWeather(); this.bounties = Bounties.roll(); this.ticks = 0;
+    this.night = o.plan === 'night'; this.moon = moonPhase();
+    this.t = 0; this.weather = rollWeather(); this.bounties = Bounties.roll(3, { night: !!o.night, plan: o.plan }); this.ticks = 0;
     this.saved = o.mode === 'crew' ? Trip.load() : null; this.ask = false;
   }
-  enter() { Music.play('title'); SFX.setAmbient(0.5, false); }
+  enter() { Music.play(this.night ? 'night' : 'title'); SFX.setAmbient(0.5, false, this.night); }
   update(dt) {
     this.t += dt;
     const n = Math.min(this.bounties.length, Math.floor((this.t - 0.15) / 0.16) + 1);
@@ -490,14 +563,15 @@ class BriefingScene {
   castOff(sure) {
     if (this.saved && !sure) { this.ask = true; return; }
     Trip.start(Object.assign({}, this.o, { weather: this.weather, bounties: this.bounties }));
-    SFX.play('horn'); Game.go(new SeaScene());
+    // a Night Run goes straight out to the flats; a day starts at the dock
+    if (this.night) { startNight(Trip.cur); SFX.play('lighton'); Game.go(new TurnIntroScene()); } else { SFX.play('horn'); Game.go(new SeaScene()); }
   }
   draw(ctx) {
-    const W = Game.W, H = Game.H, t = this.t, o = this.o, crew = o.mode === 'crew';
-    oceanBackdrop(ctx, W, H, t, 'day'); ctx.fillStyle = 'rgba(4,28,40,0.62)'; ctx.fillRect(0, 0, W, H);
-    text(ctx, 'Today’s bounties', W / 2, 50, { display: true, size: 36, align: 'center', color: '#fff' });
+    const W = Game.W, H = Game.H, t = this.t, o = this.o, crew = o.mode === 'crew', N = this.night;
+    oceanBackdrop(ctx, W, H, t, N ? 'night' : 'day'); ctx.fillStyle = N ? 'rgba(2,8,20,0.55)' : 'rgba(4,28,40,0.62)'; ctx.fillRect(0, 0, W, H);
+    text(ctx, N ? 'Tonight’s bounties' : 'Today’s bounties', W / 2, 50, { display: true, size: 36, align: 'center', color: '#fff' });
     const wx = this.weather;
-    text(ctx, dayLabel() + '  ·  ' + wx.name + ', ' + wx.wind + '  ·  Water ' + waterTemp() + '°F', W / 2, 80, { size: 17, align: 'center', color: '#cfe3ea', weight: 700, maxW: W - 60 });
+    text(ctx, dayLabel() + '  ·  ' + (N ? this.moon.name + '  ·  ' : '') + wx.name + ', ' + wx.wind + '  ·  Water ' + waterTemp() + '°F', W / 2, 80, { size: 17, align: 'center', color: '#cfe3ea', weight: 700, maxW: W - 60 });
     // three cards, as tall as the wordiest one; the cards, the rules and the crew sit centered under the header
     const n = this.bounties.length, gap = 16, cw = Math.min(260, (W - 56 - gap * (n - 1)) / n), x0 = W / 2 - (cw * n + gap * (n - 1)) / 2;
     const whereOf = (b) => (b.id === 'newspot' ? 'Run past a ? on the chart' : spotNames(b.where));
@@ -511,12 +585,12 @@ class BriefingScene {
       panel(ctx, x, y0, cw, ch, { r: 20, fill: 'rgba(8,44,62,0.94)', line: 'rgba(255,214,90,0.55)' });
       // the art on a little sunburst
       ctx.save(); rr(ctx, x + 10, y0 + 10, cw - 20, 104, 14); ctx.clip();
-      const sg = ctx.createLinearGradient(0, y0 + 10, 0, y0 + 114); sg.addColorStop(0, '#1f8fbf'); sg.addColorStop(1, '#0c5f8a'); ctx.fillStyle = sg; ctx.fillRect(x + 10, y0 + 10, cw - 20, 104);
+      const sg = ctx.createLinearGradient(0, y0 + 10, 0, y0 + 114), nb = b.group === 'night'; sg.addColorStop(0, nb ? '#22346e' : '#1f8fbf'); sg.addColorStop(1, nb ? '#0b1432' : '#0c5f8a'); ctx.fillStyle = sg; ctx.fillRect(x + 10, y0 + 10, cw - 20, 104);
       drawSunburst(ctx, cx, y0 + 62, 150, t + i, 'rgba(255,214,90,0.13)');
       drawBountyIcon(ctx, b.icon, cx, y0 + 62, Math.min(130, cw * 0.56), t + i * 0.7);
       pill(ctx, '+' + b.bonus, x + cw - 18, y0 + 30, { size: 19, h: 30, padX: 11, align: 'right' });
       ctx.restore();
-      const group = b.id === 'newspot' ? 'EXPLORE' : { bugs: 'LOBSTER', reef: 'THE REEF', offshore: 'OFFSHORE', flats: 'BACKCOUNTRY', any: 'ANYWHERE' }[b.group] || '';
+      const group = b.id === 'newspot' ? 'EXPLORE' : { bugs: 'LOBSTER', reef: 'THE REEF', offshore: 'OFFSHORE', flats: 'BACKCOUNTRY', any: 'ANYWHERE', night: 'AFTER DARK' }[b.group] || '';
       text(ctx, group, x + 18, y0 + 136, { size: 13, color: PAL.coral, weight: 800 });
       const used = para(ctx, b.text, x + 18, y0 + 160, cw - 36, { size: 19, weight: 800, color: '#fff', lh: 22 });
       para(ctx, whereOf(b), x + 18, y0 + 160 + used + 2, cw - 36, { size: 14, weight: 700, color: '#9fd6e6', lh: 17 });
@@ -524,8 +598,9 @@ class BriefingScene {
     });
     // the rules, the crew and the plan
     const ry = y0 + ch + 32;
-    text(ctx, crew && o.crew.length > 1 ? 'First one to finish a bounty takes the bonus. Pick your spots on the chart.' : 'Finish them for bonus points. Pick your spots on the chart.', W / 2, ry, { size: 17, align: 'center', color: '#fff', weight: 700, maxW: W - 60 });
-    const plan = crew ? (o.plan === 'full' ? 'Full day · 4 spots' : 'Half day · 2 spots') : 'Solo day';
+    const first = crew && o.crew.length > 1 ? 'First one to finish a bounty takes the bonus. ' : 'Finish them for bonus points. ';
+    text(ctx, first + (N ? 'Bully netting on the flats off Tavernier.' : 'Pick your spots on the chart.'), W / 2, ry, { size: 17, align: 'center', color: '#fff', weight: 700, maxW: W - 60 });
+    const plan = N ? 'Night run · ' + ((o.nightRounds || 1) > 1 ? (o.nightRounds || 1) + ' rounds' : '1 round') : (crew ? (o.plan === 'full' ? 'Full day · 4 spots' : 'Half day · 2 spots') : 'Solo day') + (o.night ? ' + night run' : '');
     const label = plan + ' · ' + fmtTime(o.sessionLen) + ' turns';
     ctx.font = fnt(15, 700); const lw = ctx.measureText(label).width, aw = o.crew.length * 30, tx = W / 2 - (aw + 10 + lw) / 2;
     o.crew.forEach((c, i) => crewAvatar(ctx, c, tx + 14 + i * 30, ry + 30, 13));
@@ -577,11 +652,12 @@ class TurnIntroScene {
     const c = (this.c = Trip.cur); this.t = 0; this.spot = c.spot; this.turn = c.turn; this.ch = c.mode === 'crew' ? Trip.angler(c, c.turn) : c.crew[0];
     this.paid = Bounties.sync();   // a spot found on the way here pays its bounty, if the boat didn't already
   }
-  enter() { Music.play('title'); if (this.paid.length) bountyToast(this.paid); }
+  enter() { const N = isNightSpot(this.spot); Music.play(N ? 'night' : 'title'); if (N) SFX.setAmbient(0.45, false, true); if (this.paid.length) bountyToast(this.paid); }
   update(dt) { this.t += dt; }
   draw(ctx) {
-    const W = Game.W, H = Game.H, c = this.c, ch = this.ch, C = CHARS[ch], S = SPOTS[this.spot];
-    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#0d5f86'); g.addColorStop(1, '#062a3f'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    const W = Game.W, H = Game.H, c = this.c, ch = this.ch, C = CHARS[ch], S = SPOTS[this.spot], N = isNightSpot(this.spot);
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, N ? '#0e1a3c' : '#0d5f86'); g.addColorStop(1, N ? '#02060f' : '#062a3f'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    if (N) { const m = this.moon || (this.moon = moonPhase()); drawStars(ctx, W, H * 0.6, this.t, 0.8 - m.lit * 0.35, 90); drawMoon(ctx, W - 70, 96, 18, m.phase); }
     const ax = W * 0.27, ay = H * 0.42;
     drawSunburst(ctx, ax, ay + 10, 380, this.t, rgba(C.color, 0.16));
     const pop = easeBack(Math.min(1, this.t / 0.4));
@@ -592,10 +668,12 @@ class TurnIntroScene {
     text(ctx, c.mode === 'crew' && c.crew.length > 1 ? 'Hand the phone to ' + C.name : 'You’re up', x, 92, { size: 20, color: '#cfe3ea', weight: 700, maxW: mw });
     text(ctx, C.name + '’s turn', x, 148, { display: true, size: 50, color: '#fff', maxW: mw });
     text(ctx, S.name + ' · ' + S.kind, x, 186, { size: 23, color: PAL.sun, weight: 800, maxW: mw });
-    const tipH = para(ctx, S.tip, x, 218, mw, { size: 17, weight: 600, color: '#fff', lh: 22 });
+    // at night: the moon, and the round on a Night Run that goes round twice
+    if (N) { const nt = nightTurns(c), rd = Math.floor(this.turn / c.crew.length) + 1, rounds = nt / c.crew.length; text(ctx, (rounds > 1 ? 'Round ' + rd + ' of ' + rounds + ' · ' : '') + this.moon.name + ' · ' + this.moon.bugs, x, 212, { size: 15, color: '#cfd8ff', weight: 700, maxW: mw }); }
+    const tipY = N ? 240 : 218, tipH = para(ctx, S.tip, x, tipY, mw, { size: 17, weight: 600, color: '#fff', lh: 22 });
     // the day's bounties, the ones you can get here lit up
     if (Bounties.list(c).length) {
-      const ly = Math.max(282, 218 + tipH - 4), rowH = clamp(Math.floor((H - 128 - ly - 20) / Bounties.list(c).length), 22, 30);
+      const ly = Math.max(282, tipY + tipH - 4), rowH = clamp(Math.floor((H - 128 - ly - 20) / Bounties.list(c).length), 22, 30);
       drawBountyList(ctx, x, ly, Math.min(mw, 470), { bounties: Bounties.list(c), spot: this.spot, size: rowH > 25 ? 15 : 14, rowH, title: 'BOUNTIES' });
     }
     // the board, for a crew
@@ -608,12 +686,54 @@ class TurnIntroScene {
         crewAvatar(ctx, k, bx - sw - 18, 38, 13); bx -= sw + 46;
       }
     }
-    UI.button(ctx, 'ready', x, H - 112, Math.min(280, mw), 64, 'I’m ready', () => launchTurn(), { style: 'primary', size: 26, key: 'Enter|Space', sub: fmtTime(c.sessionLen) + ' on the clock' });
+    UI.button(ctx, 'ready', x, H - 112, Math.min(280, mw), 64, N ? 'Light it up' : 'I’m ready', () => launchTurn(), { style: 'primary', size: 26, key: 'Enter|Space', sub: fmtTime(c.sessionLen) + ' on the clock' });
     // before anyone has fished this spot the captain can still pick another one; after that, everyone fishes it.
     // Esc goes back a step: to the boat while that's open, otherwise out to the title (a crew trip stays saved).
-    const canLeave = c.mode !== 'crew' || this.turn === 0;
+    const canLeave = !N && (c.mode !== 'crew' || this.turn === 0);   // at night there's no boat ride to go back to
     UI.button(ctx, 'menu', 20, 18, 96, 40, 'Title', () => (c.mode === 'crew' ? Game.go(new TitleScene()) : (this.ask = true)), { style: 'ghost', size: 17, key: canLeave ? undefined : 'Escape' });
     if (canLeave) UI.button(ctx, 'chart', 20, H - 64, 170, 46, 'Back to the boat', () => { reopenLeg(c); c.spot = null; c.turn = 0; Trip.save(); Game.go(new SeaScene()); }, { style: 'ghost', size: 17, key: 'Escape' });
+    if (this.ask) askLeaveSolo(ctx, () => (this.ask = false), () => Game.go(new TitleScene()));
+  }
+}
+
+/* ================= NIGHTFALL: tied up at the dock, the sun goes down, and the crew heads back out ================= */
+// Between the run home and the night run. The last of the sunset fades into stars; tonight's moon and what it means
+// for the bugs, who nets first, and what's still up for grabs after dark.
+class NightfallScene {
+  constructor() { const c = (this.c = Trip.cur); this.t = 0; this.moon = moonPhase(); this.order = c.crew.map((_, i) => Trip.angler(c, i)); this.paid = Bounties.sync(); }
+  enter() { Music.play('night'); SFX.setAmbient(0.5, false, true); if (this.paid.length) bountyToast(this.paid); }
+  update(dt) { this.t += dt; }
+  draw(ctx) {
+    const W = Game.W, H = Game.H, t = this.t, c = this.c, k = easeInOut(clamp((t - 0.3) / 2.4, 0, 1));
+    oceanBackdrop(ctx, W, H, t, 'night');
+    if (k < 1) { ctx.save(); ctx.globalAlpha = 1 - k; oceanBackdrop(ctx, W, H, t, 'sunset'); ctx.restore(); }
+    // the dock: planks, pilings, a string of bulbs, and the boat tied up with its running lights on
+    const hz = H * 0.56, dx = W - 250;
+    ctx.fillStyle = '#0a0f1a'; ctx.fillRect(dx, hz + 52, 250, 12); for (let i = 0; i < 5; i++) ctx.fillRect(dx + 14 + i * 56, hz + 52, 7, 60);
+    for (let i = 0; i < 9; i++) { const bx = dx + 10 + i * 29, by = hz + 22 + Math.sin(i * 1.1) * 3, a = (0.6 + 0.4 * Math.sin(t * 2 + i)) * k; ctx.fillStyle = `rgba(255,214,140,${a.toFixed(3)})`; ell(ctx, bx, by, 2.4, 2.4); ctx.fill(); }
+    ctx.strokeStyle = 'rgba(20,24,30,0.9)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(dx, hz + 18); for (let i = 0; i <= 9; i++) ctx.lineTo(dx + 10 + i * 29, hz + 22 + Math.sin(i * 1.1) * 3); ctx.stroke();
+    ctx.save(); ctx.globalAlpha = 0.85 - 0.4 * k; drawBoatSide(ctx, dx - 40, hz + 70 + Math.sin(t * 1.4) * 1.5, 0.32, { crew: c.crew, t }); ctx.restore();
+    for (const [ox, col] of [[-40 + 174 * 0.32, '#ff3b3b'], [-40 + 150 * 0.32, '#3bff7a']]) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = k; ctx.drawImage(bnGlow(col), dx + ox - 9, hz + 70 - 50 * 0.32 - 9, 18, 18); ctx.restore(); }
+    ctx.fillStyle = 'rgba(2,8,20,0.42)'; ctx.fillRect(0, 0, W, H);
+    // the words
+    text(ctx, 'The sun’s down', W / 2, 62, { display: true, size: 42, align: 'center', color: '#fff', stroke: '#0a1230', sw: 7, maxW: W - 40 });
+    text(ctx, 'Grab the light and the bully net. The bugs come out after dark.', W / 2, 96, { size: 18, align: 'center', color: '#dfe6ff', weight: 700, maxW: W - 40 });
+    const lw = Math.min(400, W * 0.46), lx = 24, top = 126;
+    panel(ctx, lx, top, lw, 196, { r: 18, fill: 'rgba(6,14,36,0.9)', line: 'rgba(255,231,160,0.3)' });
+    drawMoon(ctx, lx + 46, top + 50, 24, this.moon.phase);
+    text(ctx, this.moon.name, lx + 86, top + 44, { size: 20, color: '#fff', weight: 800, maxW: lw - 100 });
+    text(ctx, this.moon.bugs, lx + 86, top + 66, { size: 14, color: '#cfd8ff', weight: 700, maxW: lw - 100 });
+    const wx = c.weather || {}; text(ctx, 'Tavernier Flats · 3–6 ft · ' + (wx.name || 'Light chop') + (wx.wind ? ', ' + wx.wind : ''), lx + 18, top + 104, { size: 14, color: PAL.sun, weight: 800, maxW: lw - 36 });
+    if (c.crew.length > 1) {
+      text(ctx, 'NETTING ORDER', lx + 18, top + 136, { size: 13, color: '#9fb8c2', weight: 800 });
+      this.order.forEach((ch, i) => { crewAvatar(ctx, ch, lx + 36 + i * 44, top + 164, 16); text(ctx, String(i + 1), lx + 50 + i * 44, top + 182, { size: 12, color: PAL.sun, weight: 800 }); });
+      para(ctx, 'Last on the board nets first: a shot at a comeback.', lx + 50 + c.crew.length * 44, top + 160, lw - 68 - c.crew.length * 44, { size: 14, color: '#cfe3ea', weight: 600, lh: 17 });
+    } else para(ctx, CHARS[c.crew[0]].name + ' nets, ' + CHARS[CHAR_ORDER.find((x) => x !== c.crew[0])].name + ' runs the boat.', lx + 18, top + 140, lw - 36, { size: 15, color: '#cfe3ea', weight: 600, lh: 19 });
+    const bl = Bounties.list(c), here = bl.filter((b) => Bounties.here(b, NIGHT_SPOT)), rx = lx + lw + 20, rw = W - rx - 24;
+    if (here.length && rw > 220) drawBountyList(ctx, rx, top + 4, rw, { bounties: bl, spot: NIGHT_SPOT, only: 'here', title: 'UP FOR GRABS TONIGHT', size: 15, rowH: 32 });
+    else if (rw > 220) para(ctx, bl.length ? 'No bounties left for tonight. Just bugs, and the board.' : 'Just bugs, and the board.', rx, top + 20, rw, { size: 16, color: '#cfe3ea', weight: 600, lh: 20 });
+    UI.button(ctx, 'golight', W / 2 - 150, H - 84, 300, 62, 'Let’s go bully netting', () => Game.go(new TurnIntroScene()), { style: 'primary', size: 23, key: 'Enter|Space', sub: 'Your trip is saved here' });
+    UI.button(ctx, 'menu', 20, H - 64, 100, 46, 'Title', () => (c.mode === 'crew' ? Game.go(new TitleScene()) : (this.ask = true)), { style: 'ghost', size: 17, key: 'Escape' });
     if (this.ask) askLeaveSolo(ctx, () => (this.ask = false), () => Game.go(new TitleScene()));
   }
 }
@@ -643,7 +763,7 @@ class ResultsScene {
   }
   leave(toTitle) { if (this.left) return; this.left = true; if (!this.advanced) advanceTrip(); if (toTitle) Game.go(new TitleScene()); else goNext(this.nextKind); }
   enter() {
-    SFX.setAmbient(0.4, false); Music.play('title'); window.addEventListener('wheel', this.onWheel, { passive: true });
+    const N = isNightSpot(this.spot); SFX.setAmbient(0.4, false, N); Music.play(N ? 'night' : 'title'); window.addEventListener('wheel', this.onWheel, { passive: true });
     if (this.res.total > 0) this.parts.burst(Game.W * 0.72, 120, 40, { kind: 'confetti', color: [PAL.sun, PAL.coral, '#42d3c4', '#fff'], min: 100, max: 380, g: 400, lifeMin: 1.4, lifeMax: 2.4, sMin: 3, sMax: 6, drag: 0.5 });
   }
   exit() { window.removeEventListener('wheel', this.onWheel); }
@@ -676,11 +796,11 @@ class ResultsScene {
     if (this.t < this.doneAt) this.target = this.maxScroll;
     if (!this.drag) this.scroll = approach(this.scroll, this.target, 14, dt);
   }
-  nextLabel() { return this.nextKind === 'turn' ? 'Next up: ' + CHARS[this.nextUp].name : this.nextKind === 'home' ? 'Run home' : 'Back to the boat'; }
+  nextLabel() { return this.nextKind === 'turn' ? 'Next up: ' + CHARS[this.nextUp].name : this.nextKind === 'home' ? 'Run home' : this.nextKind === 'end' ? 'Call it a night' : 'Back to the boat'; }
   listBox() { const W = Game.W, H = Game.H, cardW = Math.min(330, W * 0.36), lw = W - cardW - 70; return { x: 30, w: lw, top: 98, bot: H - 146, rowH: 34, cardW }; }
   draw(ctx) {
-    const W = Game.W, H = Game.H, C = CHARS[this.ch], r = this.res, L = this.listBox(), lw = L.w;
-    const bgTop = '#0d5f86', bgBot = '#062a3f';
+    const W = Game.W, H = Game.H, C = CHARS[this.ch], r = this.res, L = this.listBox(), lw = L.w, N = isNightSpot(this.spot);
+    const bgTop = N ? '#11204a' : '#0d5f86', bgBot = N ? '#030a18' : '#062a3f';
     const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, bgTop); g.addColorStop(1, bgBot); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     text(ctx, r.header || SPOTS[this.spot].name, 30, 50, { display: true, size: 34, color: '#fff', maxW: lw });
     text(ctx, C.name + ' · ' + SPOTS[this.spot].kind, 30, 78, { size: 17, color: C.color, weight: 800, maxW: lw });
@@ -761,7 +881,7 @@ class ResultsScene {
     if (r.best) {
       const bh = bragCardHeight(L.cardW), s = Math.min(1, (H - 40) / bh);
       ctx.save(); ctx.translate(cx + L.cardW * (1 - s) / 2, 20); ctx.scale(s, s);
-      drawBragCard(ctx, 0, 0, L.cardW, r.best, { t: this.t, under: spotMode(this.spot) === 'bughunt', place: (SPOTS[this.spot] && SPOTS[this.spot].place) || 'Florida Keys', crew: this.c.crew, caption: this.caption, weather: this.c.weather, comments: this.comments });
+      drawBragCard(ctx, 0, 0, L.cardW, r.best, { t: this.t, under: spotMode(this.spot) === 'bughunt', night: N, moon: N ? moonPhase().phase : null, place: (SPOTS[this.spot] && SPOTS[this.spot].place) || 'Florida Keys', crew: this.c.crew, caption: this.caption, weather: this.c.weather, comments: this.comments });
       ctx.restore();
     } else {
       panel(ctx, cx, 40, L.cardW, 300, { r: 18 });
@@ -784,22 +904,29 @@ class DayEndScene {
     this.awards = [];
     const bf = top(fish, (x) => x.weight); if (bf) this.awards.push(['Biggest fish', bf.ch, bf.name + ' · ' + fmtLb(bf.weight)]);
     const bb = top(bugs, (x) => x.weight); if (bb) this.awards.push(['Biggest bug', bb.ch, (bb.cl ? bb.cl.toFixed(2) + '" · ' : '') + fmtLb(bb.weight)]);
+    // the night run: who bagged the most bugs by the light (a crew)
+    this.night = !!c.nightDone;
+    const nb = {}; for (const k of bugs) if (isNightSpot(k.spot)) nb[k.ch] = (nb[k.ch] || 0) + 1;
+    const tn = c.crew.reduce((b, ch) => ((nb[ch] || 0) > (nb[b] || 0) ? ch : b), c.crew[0]);
+    if (c.crew.length > 1 && nb[tn]) this.awards.push(['Top netter', tn, nb[tn] + (nb[tn] > 1 ? ' legal bugs' : ' legal bug') + ' by the light']);
     if (c.crew.length > 1) { const counts = {}; c.catches.forEach((k) => (counts[k.ch] = (counts[k.ch] || 0) + 1)); const mc = c.crew.reduce((b, ch) => ((counts[ch] || 0) > (counts[b] || 0) ? ch : b), c.crew[0]); if (counts[mc]) this.awards.push(['Most catches', mc, counts[mc] + ' landed']); }
     const firsts = c.catches.filter((k) => k.isNew); if (firsts.length && this.awards.length < 3) this.awards.push(['New in the logbook', firsts[0].ch, firsts.map((k) => SPECIES[k.key].short).filter((v, i, a) => a.indexOf(v) === i).join(', ')]);
+    this.awards = this.awards.slice(0, 3);   // three fit above the buttons
     this.bounties = Bounties.list(c);
   }
   enter() {
     const c = this.c;
     if (c.mode === 'crew') { Records.addTrip({ date: c.date, crew: c.crew, scores: c.scores, winner: this.order[0], bounties: [this.bounties.filter((b) => b.done).length, this.bounties.length] }); Trip.clear(); }
-    SFX.play('slam'); SFX.setAmbient(0.6, false); Music.play('sunset');
+    SFX.play('slam'); SFX.setAmbient(0.6, false, this.night); Music.play(this.night ? 'night' : 'sunset');
     this.parts.burst(Game.W / 2, 160, 80, { kind: 'confetti', color: [PAL.sun, PAL.coral, '#42d3c4', '#fff'], min: 120, max: 460, g: 380, lifeMin: 1.8, lifeMax: 3, sMin: 3, sMax: 7, drag: 0.5 });
   }
   update(dt) { this.t += dt; this.parts.update(dt); }
   draw(ctx) {
     const W = Game.W, H = Game.H, t = this.t, c = this.c;
-    const hz = oceanBackdrop(ctx, W, H, t, 'sunset');
-    drawBoatSide(ctx, W * 0.84 - t * 6 % 60, hz + 40, 0.42, { crew: c.crew, t });
-    ctx.fillStyle = 'rgba(10,14,40,0.35)'; ctx.fillRect(0, 0, W, H);
+    const hz = oceanBackdrop(ctx, W, H, t, this.night ? 'night' : 'sunset');
+    ctx.save(); if (this.night) ctx.globalAlpha = 0.5;   // the boat in the dark
+    drawBoatSide(ctx, W * 0.84 - t * 6 % 60, hz + 40, 0.42, { crew: c.crew, t }); ctx.restore();
+    ctx.fillStyle = this.night ? 'rgba(2,6,20,0.3)' : 'rgba(10,14,40,0.35)'; ctx.fillRect(0, 0, W, H);
     // the high-five
     const hx = W * 0.5, hy = 122;
     if (c.crew.length > 1) {
@@ -812,7 +939,8 @@ class DayEndScene {
     } else { ctx.save(); ctx.translate(hx, hy + 30); crewAvatar(ctx, c.crew[0], 0, 0, 64, { expr: 'grin' }); ctx.restore(); }
     // a crew's day ends on who won it
     const o = this.order, lead = c.mode === 'crew' && o.length > 1 && c.scores[o[0]] > 0, tied = lead && c.scores[o[0]] === c.scores[o[1]];
-    const head = !lead ? 'Out. 🙌' : tied ? 'A tie at the top!' : CHARS[o[0]].name + ' is Captain of the Day!';
+    const nightOnly = c.plan === 'night', cap = nightOnly ? 'Captain of the Night' : 'Captain of the Day';
+    const head = !lead ? (this.night ? 'What a night. 🦞' : 'Out. 🙌') : tied ? 'A tie at the top!' : CHARS[o[0]].name + ' is ' + cap + '!';
     text(ctx, head, hx, 48, { display: true, size: lead ? 40 : 46, align: 'center', color: '#fff', stroke: '#1d1636', sw: 8, maxW: W - 40 });
     const tiedNames = tied ? o.filter((k) => c.scores[k] === c.scores[o[0]]).map((k) => CHARS[k].name) : [];
     text(ctx, tied ? tiedNames.slice(0, -1).join(', ') + ' and ' + tiedNames[tiedNames.length - 1] + ' share it. Same water next season.' : 'Same crew. Same water. See you next season.', W / 2, 82, { size: 18, align: 'center', color: '#ffe3c0', weight: 700, alpha: 0.95, maxW: W - 40 });
@@ -845,7 +973,7 @@ class DayEndScene {
       crewAvatar(ctx, ch, bx + 38, y + 8, 17);
       if (i === 0 && lead && !tied) drawCrown(ctx, bx + 38, y - 12, 10);
       text(ctx, CHARS[ch].name, bx + 66, y + (i === 0 && lead ? 4 : 14), { size: 19, color: '#fff', weight: 800 });
-      if (i === 0 && lead) text(ctx, tied ? 'Tied at the top' : 'Captain of the Day', bx + 66, y + 22, { size: 13, color: PAL.sun, weight: 800 });
+      if (i === 0 && lead) text(ctx, tied ? 'Tied at the top' : cap, bx + 66, y + 22, { size: 13, color: PAL.sun, weight: 800 });
       text(ctx, c.scores[ch].toLocaleString(), bx + bw2 - 18, y + 15, { size: 23, align: 'right', color: PAL.sun, weight: 800 });
     });
     const ax = W - bw2 - 24, aw = W - ax - 24;
@@ -858,7 +986,7 @@ class DayEndScene {
       text(ctx, detail, ax + 62, y + 24, { size: 13, color: '#cfe3ea', weight: 600, maxW: aw - 76 });
     });
     const solo = c.mode !== 'crew';
-    UI.button(ctx, 'again', W / 2 - 250, H - 62, 160, 48, solo ? 'New day' : 'New trip', () => Game.go(solo ? new SoloSetupScene() : new CrewSetupScene()), { style: 'primary', size: 19, key: 'Enter' });
+    UI.button(ctx, 'again', W / 2 - 250, H - 62, 160, 48, solo ? 'New day' : nightOnly ? 'Another night' : 'New trip', () => Game.go(solo ? new SoloSetupScene() : new CrewSetupScene(nightOnly ? { plan: 'night', crew: c.crew, sessionLen: c.sessionLen, nightRounds: c.nightRounds } : {})), { style: 'primary', size: 19, key: 'Enter' });
     UI.button(ctx, 'log', W / 2 - 80, H - 62, 160, 48, 'Logbook', () => Game.go(new LogbookScene()), { style: 'secondary', size: 19 });
     UI.button(ctx, 'title', W / 2 + 90, H - 62, 160, 48, 'Title', () => Game.go(new TitleScene()), { style: 'ghost', size: 19, key: 'Escape' });
     this.parts.draw(ctx);
@@ -1021,9 +1149,10 @@ class LogbookScene {
 
 /* ================= HOW TO PLAY ================= */
 const HOWTO = [
-  { title: 'The trip', art: 'boat', lines: ['Crew Trip: pass one phone around. The captain drives the boat to a spot, then everyone fishes it.', 'Bigger fish and bigger bugs score more. Trophies, slams and clean releases add bonuses.', 'Every day has three bounties, like a mahi over 20\u00a0lb. The first one to finish a bounty takes its bonus.', 'Full day is four spots, half day is two. Then run home at sunset. Most points is Captain of the Day.'] },
+  { title: 'The trip', art: 'boat', lines: ['Crew Trip: pass one phone around. The captain drives the boat to a spot, then everyone fishes it.', 'Bigger fish and bigger bugs score more. Trophies, slams and clean releases add bonuses.', 'Every day has three bounties, like a mahi over 20\u00a0lb. The first one to finish a bounty takes its bonus.', 'Full day is four spots, half day is two. Then run home at sunset (and go bully netting after dark, if the night run is on). Most points is Captain of the Day.'] },
   { title: 'Running the boat', art: 'boat', lines: ['Hold left or right of the boat to turn (or ← →). The throttle is on the right: STOP, IDLE, SLOW, CRUISE, FULL.', 'Open the Chart and pick what to catch up top: Lobster, Reef, Offshore or Bayside. Set course and the autopilot drives.', 'The bay side is behind the islands. Get there through a creek under a bridge: Tavernier Creek is by the dock.', 'Light water is shallow: slow down or you run aground. No-wake zones mean SLOW or FWC pulls you over.', 'Some spots aren’t charted yet. Run past a ? on the chart to find them.'] },
   { title: 'Lobster (the Bug Hunt)', art: 'lobster', lines: ['Lobster spots are on the chart (tap Lobster). Look for antennae poking out of holes.', 'Hold on the hole (or TICKLE). When the antennae shake it says LET GO: let go, wait, then hold again.', 'Calm bugs are easy. Wary old bugs (often the big ones) give you a split second, and bolt once they’re out.', 'When it walks out, tap the bug to net it. Pro move: tap behind its tail; it flips backward into the net.', 'Gauge every bug: past the 3" gauge and no eggs. Stuck? Tap ? in the dive for the how-to.'] },
+  { title: 'Bully netting (at night)', art: 'night', lines: ['Turn the night run on when you set up a trip, or tap Night Run on the title. After dark the crew idles the flats with a light on the bow.', 'Drag to sweep the light (or move the mouse). Two orange eyes are a bug. Put the light on it: it freezes, and your buddy idles you over.', 'Tap just behind its tail to drop the net: lobsters shoot backward, right in. Drop it in front of them and they’re gone.', 'When it kicks up into the bag, TWIST. Then gauge it like a dive. Leave the rays and the nurse sharks alone.'] },
   { title: 'Bottom fishing', art: 'grouper', lines: ['Watch the fish finder on the right. Arches are fish (red means big), blue speckle is bait.', 'Drag up or down (or on the fish finder) to drop your bait to the marks. Squid for snapper, pinfish for grouper and jacks.', 'Small twitches are nibbles. Wait. When the rod slams down, tap to set the hook.', 'Nothing on the finder? Tap Move ◀ ▶ to idle along the ledge or the wreck until it lights up.', 'The ▸ under the finder (or F) makes it smaller, then tucks it away. Tap it again to bring it back.'] },
   { title: 'Trolling', art: 'mahi', lines: ['Drag up and down to steer. Your lures follow the path the boat took.', 'Frigate birds and weed lines mean mahi. Diving terns and bait balls mean tuna.', 'The fish are out there, but you have to find them. Read the birds and the weed.', 'Trap floats wrap your prop and foul your lures. Tripletail like to hide under them.'] },
   { title: 'Bayside fishing (the flats)', art: 'bonefish', lines: ['Your buddy poles the skiff (◀ ▶ bottom right) and calls fish by the clock: 12 is straight ahead. Look for tails and wakes.', 'Press and hold where you want the fly, then let go. Land it a few feet in front of the fish, never on it.', 'Tap to strip the fly at the fish’s pace. When it eats (IT ATE IT!), tap to set the hook.', 'Until you hook your first one, a ring shows the fish, CAST HERE shows where to cast, and a ring on the fly shows when to strip.'] },
@@ -1044,6 +1173,13 @@ class HowToScene {
     ctx.save(); ctx.translate(ax, ay); ctx.scale(ak, ak);
     if (P.art === 'boat') drawBoatSide(ctx, 0, 60, 0.7, { crew: CHAR_ORDER, t });
     else if (P.art === 'lobster') drawLobsterSide(ctx, 150, { t });
+    else if (P.art === 'night') {   // a bug in the beam on a dark flat, the net coming down behind it
+      const g = ctx.createRadialGradient(0, 0, 10, 0, 0, 150); g.addColorStop(0, '#7d7a5c'); g.addColorStop(0.5, '#2f3a2c'); g.addColorStop(1, 'rgba(4,10,20,0)');
+      ctx.fillStyle = g; ell(ctx, 0, 0, 150, 150); ctx.fill();
+      ctx.save(); ctx.rotate(-0.5); ctx.translate(20, 0); drawLobsterTop(ctx, 46, { t }); ctx.restore();
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; for (const sd of [-1, 1]) { const ex = 20 * Math.cos(-0.5) + 46 * 0.98 * Math.cos(-0.5) - sd * 4.6 * Math.sin(-0.5), ey = 20 * Math.sin(-0.5) + 46 * 0.98 * Math.sin(-0.5) + sd * 4.6 * Math.cos(-0.5); ctx.drawImage(bnGlow(BN_EYE.bug), ex - 10, ey - 10, 20, 20); } ctx.restore();
+      const k = (Math.sin(t * 2) + 1) / 2; ctx.strokeStyle = `rgba(223,229,232,${0.5 + 0.5 * k})`; ctx.lineWidth = 4; ell(ctx, -54, 34, 60, 60); ctx.stroke();
+    }
     else if (P.art === 'grouper') drawFish(ctx, 'blackgrouper', 220, { t });
     else if (P.art === 'mahi') drawFish(ctx, 'mahi', 240, { t });
     else if (P.art === 'bonefish') drawFish(ctx, 'bonefish', 210, { t });

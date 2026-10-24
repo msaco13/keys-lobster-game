@@ -6,6 +6,8 @@
 //     → results → the boat
 //   - on the phone, a tap just outside a small button (pause, a chart pin) still presses it
 //   - every fishing spot opens and runs a few seconds, with a fish fight at each kind of spot
+//   - Night Run on the title goes bully netting: tonight's bounties, the hand-off, the night itself (test/night.mjs
+//     plays it properly)
 //   - a broken or out-of-date save, and a browser that won't save at all, don't take the title screen down
 // Exits 1 on any failure.
 //   node test/smoke.mjs [path/to/keys-crew.html]
@@ -123,7 +125,7 @@ for (const dev of [{ label: 'phone', viewport: { width: 844, height: 390 }, touc
     await S.settle();
     check(order.captain === order.crew[1] && order.first === order.captain && new Set(order.order).size === order.crew.length && (await page.evaluate(() => Game.scene.ch)) === order.captain, dev.label + ': the captain fishes the spot first, then the rest in turn (' + order.order.join(' → ') + ')');
     // every kind of spot opens, runs, and has a fish fight
-    for (const [cls, spot, fight] of [['BottomScene', 'wreck', { sp: 'amberjack', weight: 30, ctxType: 'reef', depth: 100 }], ['TrollScene', 'troll', { sp: 'mahi', weight: 20, ctxType: 'offshore' }], ['FlatsScene', 'flats', { sp: 'redfish', weight: 8, ctxType: 'flats' }], ['BugHuntScene', 'alligator', null], ['BugHuntScene', 'bayrocks', null]]) {
+    for (const [cls, spot, fight] of [['BottomScene', 'wreck', { sp: 'amberjack', weight: 30, ctxType: 'reef', depth: 100 }], ['TrollScene', 'troll', { sp: 'mahi', weight: 20, ctxType: 'offshore' }], ['FlatsScene', 'flats', { sp: 'redfish', weight: 8, ctxType: 'flats' }], ['BullyNetScene', 'bullynet', null], ['BugHuntScene', 'alligator', null], ['BugHuntScene', 'bayrocks', null]]) {
       await page.evaluate(([cls, spot]) => { Game.go(new (eval(cls))({ ch: 'jorge', spot, len: 120, weather: Trip.cur.weather, onEnd: () => {} }), true); }, [cls, spot]);
       await page.waitForTimeout(1500);
       let ok = (await name()) === cls && !(await gameErr());
@@ -148,6 +150,18 @@ for (const dev of [{ label: 'phone', viewport: { width: 844, height: 390 }, touc
         return { coach: s.coach, help: !!s.help, fish: true, spare: win, done: Store.get('coach_flatset_jemel', false) };
       });
       check(card.help && card.left >= 119.9 && !fl.help && fl.fish && fl.spare >= 0.25 && fl.done && !fl.coach && !(await gameErr()), dev.label + ': the flats show how, ring the called fish, give time to set, and stop coaching after the first hook (' + JSON.stringify([card, fl]) + ')');
+    }
+    // bully netting at night, from the title: Night Run → go → cast off (over the saved trip) → the first netter
+    {
+      await page.evaluate(() => Game.go(new TitleScene(), true)); await S.settle();
+      await press('night'); await press('go'); await press('castoff');
+      if (await page.evaluate(() => !!UI.byId('ask-replace'))) await press('ask-replace');
+      const handoff = await name(); await press('ready'); await page.waitForTimeout(800);
+      const st = await page.evaluate(() => ({ scene: Game.scene.constructor.name, help: !!Game.scene.help, light: !!(Game.scene.light) }));
+      if (st.help) await press('help-ok');
+      await page.waitForTimeout(1200);
+      const on = await page.evaluate(() => Game.scene.light && Game.scene.light.on);
+      check(handoff === 'TurnIntroScene' && st.scene === 'BullyNetScene' && on && !(await gameErr()), dev.label + ': Night Run → tonight’s bounties → the hand-off → bully netting, light on (' + JSON.stringify(st) + ')');
     }
     for (const cls of ['LogbookScene', 'HowToScene', 'TitleScene']) { await page.evaluate((cls) => Game.go(new (eval(cls))(), true), cls); await page.waitForTimeout(500); check((await name()) === cls && !(await gameErr()), dev.label + ': ' + cls + ' opens'); }
   } catch (e) { check(false, dev.label + ': ' + e.message); }

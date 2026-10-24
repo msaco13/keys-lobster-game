@@ -343,25 +343,27 @@ function drawLobsterSide(ctx, len, o = {}) {
   ctx.restore();
 }
 // Dorsal view. Origin = rear edge of the carapace, head toward +x. C = carapace length in px.
+// o: t, gold, walk (legs stepping), curl 0..1 (tail tucked under for a tail-flip), ant (antennae swept back 0..1)
 function drawLobsterTop(ctx, C, o = {}) {
-  const t = o.t || 0, LP = o.gold ? LOBPAL.gold : LOBPAL.normal;
+  const t = o.t || 0, LP = o.gold ? LOBPAL.gold : LOBPAL.normal, tk = 1 - 0.55 * (o.curl || 0), sweep = o.ant || 0;
   ctx.save();
-  for (const s of [-1, 1]) drawAntenna(ctx, C * 1.02, s * C * 0.13, C * 2.7, s * (0.3 + Math.sin(t * 1.4 + s) * 0.04), C * 0.085, s, LP);
+  for (const s of [-1, 1]) drawAntenna(ctx, C * 1.02, s * C * 0.13, C * 2.7, s * (0.3 + sweep * 0.9 + Math.sin(t * 1.4 + s) * 0.04), C * 0.085, s, LP);
   ctx.strokeStyle = '#f2dcae'; ctx.lineWidth = C * 0.02;
   for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(C * 1.0, s * C * 0.05); ctx.lineTo(C * 1.35, s * C * 0.12); ctx.lineTo(C * 1.5, s * C * 0.08); ctx.stroke(); }
   ctx.lineCap = 'round';
   for (const s of [-1, 1]) for (let i = 0; i < 5; i++) {
-    const lx = C * (0.12 + i * 0.17), kx = lx + C * 0.12, ky = s * C * 0.58, fx = lx + C * 0.32, fy = s * C * 0.72;
+    const st = o.walk ? Math.sin(t * 11 + i * 1.9 + (s > 0 ? Math.PI : 0)) * C * 0.09 : 0;   // alternate legs step
+    const lx = C * (0.12 + i * 0.17), kx = lx + C * 0.12 + st * 0.5, ky = s * C * 0.58, fx = lx + C * 0.32 + st, fy = s * C * 0.72;
     ctx.strokeStyle = LP.leg; ctx.lineWidth = C * 0.05; ctx.beginPath(); ctx.moveTo(lx, s * C * 0.3); ctx.lineTo(kx, ky); ctx.lineTo(fx, fy); ctx.stroke();
     ctx.strokeStyle = LP.legS; ctx.lineWidth = C * 0.022; ctx.beginPath(); ctx.moveTo(kx, ky); ctx.lineTo((kx + fx) / 2, (ky + fy) / 2); ctx.stroke();
   }
   for (let i = 0; i < 6; i++) {
-    const x0 = -i * C * 0.2, w = C * (0.62 - i * 0.03);
+    const x0 = -i * C * 0.2 * tk, w = C * (0.62 - i * 0.03);
     ctx.fillStyle = i % 2 ? LP.t1 : LP.t2; rr(ctx, x0 - C * 0.215, -w / 2, C * 0.225, w, C * 0.08); ctx.fill();
     ctx.strokeStyle = 'rgba(80,30,10,0.4)'; ctx.lineWidth = C * 0.012; ctx.stroke();
     ctx.fillStyle = LP.spot; ell(ctx, x0 - C * 0.1, -w * 0.26, C * 0.04, C * 0.035); ctx.fill(); ell(ctx, x0 - C * 0.1, w * 0.26, C * 0.04, C * 0.035); ctx.fill();
   }
-  ctx.save(); ctx.translate(-C * 1.2, 0);
+  ctx.save(); ctx.translate(-C * 1.2 * tk, 0);
   for (let k = -2; k <= 2; k++) { ctx.save(); ctx.rotate(Math.PI + k * 0.32); ctx.fillStyle = LP.fan; ell(ctx, C * 0.2, 0, C * 0.22, C * 0.1); ctx.fill(); ctx.strokeStyle = LP.fanE; ctx.lineWidth = C * 0.03; ctx.stroke(); ctx.restore(); }
   ctx.restore();
   const cg = ctx.createLinearGradient(0, -C * 0.4, 0, C * 0.4); cg.addColorStop(0, LP.c2); cg.addColorStop(0.5, LP.cm); cg.addColorStop(1, LP.c2);
@@ -820,10 +822,41 @@ function drawSkiffTop(ctx, x, y, s, o = {}) {
 /* ================= SCENERY ================= */
 function drawSky(ctx, W, h, mood = 'day') {
   const g = ctx.createLinearGradient(0, 0, 0, h);
-  if (mood === 'sunset') { g.addColorStop(0, '#2b3d74'); g.addColorStop(0.45, '#c8577a'); g.addColorStop(0.8, '#f59a52'); g.addColorStop(1, '#ffd08a'); }
+  if (mood === 'night') { g.addColorStop(0, '#040a1c'); g.addColorStop(0.55, '#0b1838'); g.addColorStop(0.9, '#1a2a52'); g.addColorStop(1, '#2a3560'); }
+  else if (mood === 'sunset') { g.addColorStop(0, '#2b3d74'); g.addColorStop(0.45, '#c8577a'); g.addColorStop(0.8, '#f59a52'); g.addColorStop(1, '#ffd08a'); }
   else if (mood === 'dawn') { g.addColorStop(0, '#3b7fcf'); g.addColorStop(0.6, '#9fd0f0'); g.addColorStop(1, '#ffe4b0'); }
   else { g.addColorStop(0, '#2f7fd6'); g.addColorStop(0.65, '#8fcbf1'); g.addColorStop(1, '#d6eefa'); }
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, h);
+}
+// The moon, lit the way it is tonight. phase: 0 new, 0.25 first quarter (lit on the right), 0.5 full, 0.75 last quarter.
+// A soft glow grows with how much of it is lit; the dark part keeps a faint earthshine.
+function drawMoon(ctx, x, y, r, phase, o = {}) {
+  const lit = (1 - Math.cos(phase * TAU)) / 2;
+  ctx.save();
+  if (o.glow !== false) {
+    const g = ctx.createRadialGradient(x, y, r * 0.6, x, y, r * (2.2 + 2.6 * lit)); g.addColorStop(0, `rgba(220,230,255,${0.1 + 0.32 * lit})`); g.addColorStop(1, 'rgba(220,230,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(x - r * 5, y - r * 5, r * 10, r * 10);
+  }
+  ctx.fillStyle = 'rgba(70,82,110,0.55)'; ell(ctx, x, y, r, r); ctx.fill();
+  ctx.translate(x, y); if (phase > 0.5) ctx.scale(-1, 1);
+  const k = Math.cos(phase * TAU);   // 1 new, 0 quarter, -1 full: how far the terminator bulges
+  if (lit > 0.01) {
+    ctx.beginPath(); ctx.arc(0, 0, r, -Math.PI / 2, Math.PI / 2); ctx.ellipse(0, 0, Math.max(0.01, Math.abs(k) * r), r, 0, Math.PI / 2, -Math.PI / 2, k > 0); ctx.closePath();
+    const mg = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.1, 0, 0, r); mg.addColorStop(0, '#fffdf2'); mg.addColorStop(1, '#d9dccb');
+    ctx.fillStyle = mg; ctx.fill();
+    ctx.save(); ctx.clip(); ctx.fillStyle = 'rgba(150,150,130,0.28)';
+    for (const [mx, my, mr] of [[-0.3, -0.25, 0.22], [0.25, 0.1, 0.16], [-0.05, 0.38, 0.13], [0.35, -0.38, 0.1], [-0.42, 0.2, 0.09]]) { ell(ctx, mx * r, my * r, mr * r, mr * r); ctx.fill(); }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+// a sky full of stars, fixed in place (seeded), twinkling. a: how bright (a full moon washes them out)
+function drawStars(ctx, W, h, t, a = 1, n = 120) {
+  const rng = mulberry(4242);
+  for (let i = 0; i < n; i++) {
+    const x = rng() * W, y = Math.pow(rng(), 1.3) * h, r = rng() < 0.08 ? 1.6 : rng() < 0.4 ? 1.1 : 0.7, tw = 0.6 + 0.4 * Math.sin(t * (1 + rng() * 2.5) + i);
+    ctx.fillStyle = `rgba(235,240,255,${(a * tw * (1 - y / h * 0.6)).toFixed(3)})`; ctx.fillRect(x, y, r, r);
+  }
 }
 function drawSun(ctx, x, y, r, color = '#fff6c9') {
   const g = ctx.createRadialGradient(x, y, r * 0.2, x, y, r * 3); g.addColorStop(0, 'rgba(255,248,210,0.9)'); g.addColorStop(0.3, 'rgba(255,236,170,0.35)'); g.addColorStop(1, 'rgba(255,236,170,0)');
@@ -878,7 +911,11 @@ function drawBragCard(ctx, x, y, w, c, o = {}) {
   const iy = y + 58, ih = w * 0.8;
   ctx.save(); ctx.beginPath(); ctx.rect(x, iy, w, ih); ctx.clip(); ctx.translate(x, iy);
   if (o.under) { const g = ctx.createLinearGradient(0, 0, 0, ih); g.addColorStop(0, '#3fb6d6'); g.addColorStop(1, '#0d5f86'); ctx.fillStyle = g; ctx.fillRect(0, 0, w, ih); }
-  if (!o.under) {
+  if (o.night) {   // a flash photo on the boat after dark: the stars, the moon, black water, and everything up close lit white
+    drawSky(ctx, w, ih * 0.6, 'night'); drawStars(ctx, w, ih * 0.6, t, 0.8, 50); drawMoon(ctx, w * 0.82, ih * 0.16, w * 0.045, o.moon == null ? 0.5 : o.moon);
+    const sg = ctx.createLinearGradient(0, ih * 0.58, 0, ih); sg.addColorStop(0, '#0a1630'); sg.addColorStop(1, '#030812'); ctx.fillStyle = sg; ctx.fillRect(0, ih * 0.58, w, ih * 0.42);
+    ctx.fillStyle = 'rgba(255,250,220,0.35)'; for (let i = 0; i < 9; i++) ctx.fillRect(w * 0.82 - 10 + Math.sin(i * 2.3) * 12, ih * 0.62 + i * ih * 0.04, 20 - i, 1.5);
+  } else if (!o.under) {
     drawSky(ctx, w, ih * 0.52, 'day');
     drawCloud(ctx, w * 0.2, ih * 0.16, 0.6, 0.85); drawCloud(ctx, w * 0.8, ih * 0.1, 0.45, 0.75);
     const sg = ctx.createLinearGradient(0, ih * 0.5, 0, ih); sg.addColorStop(0, '#1d72b8'); sg.addColorStop(1, '#0b3f6e'); ctx.fillStyle = sg; ctx.fillRect(0, ih * 0.5, w, ih * 0.5);
@@ -888,6 +925,7 @@ function drawBragCard(ctx, x, y, w, c, o = {}) {
   }
   const s = w * 0.085;
   drawHeroShot(ctx, c.ch, c.key === 'lobster' ? { kind: 'lobster', cl: c.cl } : { kind: 'fish', key: c.key, weight: c.weight }, w * 0.5, ih * 0.42, s, t);
+  if (o.night) { const fg = ctx.createRadialGradient(w * 0.5, ih * 0.45, ih * 0.15, w * 0.5, ih * 0.45, ih * 0.8); fg.addColorStop(0, 'rgba(0,0,0,0)'); fg.addColorStop(1, 'rgba(0,4,16,0.5)'); ctx.fillStyle = fg; ctx.fillRect(0, 0, w, ih); }
   ctx.restore();
   const ay = iy + ih + 26;
   const heart = (hx, hy, r, fill) => { ctx.beginPath(); ctx.moveTo(hx, hy + r * 0.9); ctx.bezierCurveTo(hx - r * 1.4, hy - r * 0.1, hx - r * 0.6, hy - r * 1.2, hx, hy - r * 0.4); ctx.bezierCurveTo(hx + r * 0.6, hy - r * 1.2, hx + r * 1.4, hy - r * 0.1, hx, hy + r * 0.9); ctx.closePath(); if (fill) { ctx.fillStyle = '#ff3b5c'; ctx.fill(); } else { ctx.strokeStyle = '#111'; ctx.lineWidth = 2.2; ctx.stroke(); } };

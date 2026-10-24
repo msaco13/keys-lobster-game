@@ -166,8 +166,18 @@ const SPOTS = {
     tip: 'Snook hug the mangroves. Drum and reds tail on the mud. Cast tight to the roots.' }
 };
 const SPOT_ORDER = ['bughunt', 'bayrocks', 'pickles', 'alligator', 'patches', 'bottom', 'wreck', 'troll', 'hump', 'flats', 'bridge', 'flamingo'];
+// The night run: bully netting on the grass flats after dark. It isn't on the chart (you don't drive there by day): a
+// trip with a night run goes out after the run home, and Night Run on the title goes straight to it.
+const NIGHT_SPOT = 'bullynet';
+SPOTS.bullynet = { id: 'bullynet', name: 'Tavernier Flats', kind: 'Bully Netting', mode: 'bully', variant: 'night', depth: '3–6 ft', at: [8900, 900], r: 300, night: true, place: 'Tavernier, after dark',
+  species: ['lobster'],
+  blurb: 'The grass flats off Tavernier after dark. Idle along with a light on the bow, find the bugs walking in the open, and drop a bully net over them.',
+  tip: 'Sweep the light and look for two orange eyes. Drop the net just behind the tail: it shoots backward, right in. Twist when it kicks up into the bag.' };
+const isNightSpot = (id) => !!(SPOTS[id] && SPOTS[id].night);
+// how many turns the night run has: every angler, once per round (a Night Run can go two rounds)
+const nightTurns = (c) => c.crew.length * clamp(c.nightRounds | 0 || 1, 1, 3);
 // what you do at a spot, for the buttons that take you there: lobster spots are a dive, the rest are fishing
-const spotDo = (id) => (SPOTS[id] && SPOTS[id].mode === 'bughunt' ? { here: 'Dive for lobster', go: 'Let’s go lobstering' } : { here: 'Fish here', go: 'Let’s fish' });
+const spotDo = (id) => (SPOTS[id] && SPOTS[id].mode === 'bughunt' ? { here: 'Dive for lobster', go: 'Let’s go lobstering' } : SPOTS[id] && SPOTS[id].mode === 'bully' ? { here: 'Bully net', go: 'Let’s go bully netting' } : { here: 'Fish here', go: 'Let’s fish' });
 const spotMode = (id) => (SPOTS[id] ? SPOTS[id].mode : id);
 // Spots this device has found on the water (the charted ones are always on the chart)
 const Charts = {
@@ -184,6 +194,17 @@ const CAPTIONS = {
   generic: ['Chill 😎', 'Same crew, same water.', 'Keys therapy.', 'Tight lines and good friends.', 'Another one for the books.', 'Easy day on the water.', 'Ice chest is filling up.', 'Not a bad office.']
 };
 
+// Tonight's moon, from the date: age in days since new, phase 0..1 (0 new, 0.5 full), how much of it is lit, its name,
+// and what it means for bully netting. A dark night brings the bugs out walking; under a bright moon they lie low,
+// but you can make out the bottom.
+function moonPhase(d = new Date()) {
+  const syn = 29.530588853, ref = Date.UTC(2000, 0, 6, 18, 14);   // a known new moon
+  const age = ((((d.getTime ? d.getTime() : +d) - ref) / 86400000) % syn + syn) % syn, phase = age / syn, lit = (1 - Math.cos(phase * TAU)) / 2;
+  const name = ['New moon', 'Waxing crescent', 'First quarter', 'Waxing gibbous', 'Full moon', 'Waning gibbous', 'Last quarter', 'Waning crescent'][Math.floor(phase * 8 + 0.5) % 8];
+  const bugs = lit < 0.3 ? 'Dark night: the bugs are out walking' : lit < 0.75 ? 'Some moon: a fair night for it' : 'Bright moon: the bugs lie low, but you can see';
+  return { age, phase, lit, name, bugs, walk: lerp(1.25, 0.8, lit) };
+}
+
 function rollWeather() {
   const r = Math.random();
   if (r < 0.36) return { id: 'glass', name: 'Glass calm', wind: '0–5 kts', vis: 1.25, drift: 0, aim: 0.75, tag: '#Glass' };
@@ -199,9 +220,10 @@ const Trip = {
     this.cur = {
       id: Date.now(), mode: o.mode, crew: o.crew.slice(), plan: o.plan,
       spotsNeeded: o.plan === 'full' ? 4 : o.plan === 'half' ? 2 : 0,
+      night: !!o.night || o.plan === 'night', nightRounds: clamp(o.nightRounds | 0 || 1, 1, 3), nightDone: false,
       sessionLen: o.sessionLen, weather: o.weather || rollWeather(), date: new Date().toISOString(),
       done: [], spot: null, turn: 0, scores, catches: [], turns: [], legs: 0, boat: null, found: [],
-      bounties: o.bounties || Bounties.roll()   // the day's three goals (the briefing screen rolls them first so it can show them)
+      bounties: o.bounties || Bounties.roll(3, { night: !!o.night, plan: o.plan })   // the day's three goals (the briefing screen rolls them first so it can show them)
     };
     this.save();
   },
@@ -215,7 +237,8 @@ const Trip = {
     if (!ok) { if (t != null) this.clear(); return null; }
     const list = (v) => (Array.isArray(v) ? v : []);
     t.mode = t.mode === 'solo' ? 'solo' : 'crew';
-    t.plan = ['full', 'half', 'open', 'solo'].includes(t.plan) ? t.plan : t.mode === 'solo' ? 'solo' : 'full';
+    t.plan = ['full', 'half', 'open', 'solo', 'night'].includes(t.plan) ? t.plan : t.mode === 'solo' ? 'solo' : 'full';
+    t.night = !!t.night || t.plan === 'night'; t.nightDone = !!t.nightDone; t.nightRounds = clamp(t.nightRounds | 0 || 1, 1, 3);
     if (typeof t.spotsNeeded !== 'number') t.spotsNeeded = t.plan === 'full' ? 4 : t.plan === 'half' ? 2 : 0;
     if (!(t.sessionLen > 0)) t.sessionLen = 120;
     if (!t.weather || typeof t.weather !== 'object' || !t.weather.id) t.weather = rollWeather();
@@ -223,7 +246,7 @@ const Trip = {
     t.catches = list(t.catches).filter((k) => k && typeof k === 'object'); t.turns = list(t.turns).filter((x) => x && typeof x === 'object');
     if (!t.scores || typeof t.scores !== 'object') t.scores = {};
     for (const c of t.crew) if (typeof t.scores[c] !== 'number') t.scores[c] = 0;
-    t.turn = clamp(t.turn | 0, 0, t.crew.length - 1); t.first = clamp(t.first | 0, 0, t.crew.length - 1); t.legs = Math.max(0, t.legs | 0);
+    t.turn = clamp(t.turn | 0, 0, (isNightSpot(t.spot) ? nightTurns(t) : t.crew.length) - 1); t.first = clamp(t.first | 0, 0, t.crew.length - 1); t.legs = Math.max(0, t.legs | 0);
     if (t.boat && !(Number.isFinite(t.boat.x) && Number.isFinite(t.boat.y) && Number.isFinite(t.boat.h))) t.boat = null;
     if (t.bounties != null) t.bounties = list(t.bounties).filter((b) => b && BOUNTY_DEFS[b.id]);
     if (t.steered != null && (typeof t.steered !== 'object' || Array.isArray(t.steered))) t.steered = {};
@@ -278,7 +301,7 @@ const Records = {
 const bountyBowed = (k) => !!(k.lines && k.lines.some((l) => /^Bowed/.test(l.label)));
 const bountyLanded = (keys, min = 0) => (turn) => turn.some((k) => keys.includes(k.key) && k.weight >= min);
 const BOUNTY_DEFS = {
-  bugs3: { group: 'bugs', text: 'Bag 3 legal lobsters in one dive', short: '3 legal bugs', bonus: 200, icon: 'lobster', sp: ['lobster'], test: (turn) => turn.filter((k) => k.key === 'lobster').length >= 3 },
+  bugs3: { group: 'bugs', text: 'Bag 3 legal lobsters in one turn', short: '3 legal bugs', bonus: 200, icon: 'lobster', sp: ['lobster'], test: (turn) => turn.filter((k) => k.key === 'lobster').length >= 3 },
   bigbug: { group: 'bugs', text: 'Gauge a lobster 4 inches or bigger', short: 'A 4-inch bug', bonus: 250, icon: 'lobster', sp: ['lobster'], test: (turn) => turn.some((k) => k.key === 'lobster' && k.cl >= 4) },
   grouper: { group: 'reef', text: 'Land a grouper', short: 'A grouper', bonus: 150, icon: 'redgrouper', sp: ['redgrouper', 'blackgrouper', 'goliath'], test: bountyLanded(['redgrouper', 'blackgrouper', 'goliath']) },
   hogfish: { group: 'reef', text: 'Land a hogfish', short: 'A hogfish', bonus: 150, icon: 'hogfish', sp: ['hogfish'], test: bountyLanded(['hogfish']) },
@@ -300,34 +323,53 @@ const BOUNTY_DEFS = {
   newsp: { group: 'any', text: 'Catch a species you’ve never logged', short: 'A new species', bonus: 200, icon: 'new', need: (known, rec) => SPECIES_ORDER.some((k) => !rec[k]), test: (turn) => turn.some((k) => k.isNew) },
   newspot: { group: 'any', text: 'Find a new spot', short: 'Find a new spot', bonus: 200, icon: 'chart', sea: true, need: (known) => known.size < SPOT_ORDER.length },
   five: { group: 'any', text: 'Land 5 fish in one turn', short: '5 fish in a turn', bonus: 150, icon: 'five', test: (turn) => turn.filter((k) => k.key !== 'lobster').length >= 5 },
-  big50: { group: 'any', text: 'Land a fish over 50 lb', short: 'A 50-pounder', bonus: 250, icon: 'big', test: (turn) => turn.some((k) => k.key !== 'lobster' && k.weight >= 50) }
+  big50: { group: 'any', text: 'Land a fish over 50 lb', short: 'A 50-pounder', bonus: 250, icon: 'big', test: (turn) => turn.some((k) => k.key !== 'lobster' && k.weight >= 50) },
+  // the night run (bully netting): only rolled for a trip that goes out after dark
+  night3: { group: 'night', night: true, text: 'Bully-net 3 legal bugs in one night turn', short: '3 bugs by night', bonus: 200, icon: 'moon', test: (turn, day, res, spot) => isNightSpot(spot) && turn.filter((k) => k.key === 'lobster').length >= 3 },
+  nightpro: { group: 'night', night: true, text: 'Back a bug into the bully net', short: 'Back one in', bonus: 200, icon: 'moon', test: (turn, day, res, spot) => isNightSpot(spot) && !!(res.lines && res.lines.some((l) => /^Backed it into the net/.test(l.label))) },
+  nightlimit: { group: 'night', night: true, text: 'Limit out on the night run: 6 legal bugs', short: 'A night limit', bonus: 400, icon: 'moon', w: 0.45, test: (turn, day, res, spot) => isNightSpot(spot) && turn.filter((k) => k.key === 'lobster').length >= 6 }
 };
 const BOUNTY_GROUPS = ['bugs', 'reef', 'offshore', 'flats'];
 
 const Bounties = {
   DEFS: BOUNTY_DEFS,
-  // where a bounty can be done: the spots whose water holds its species ([] means anywhere)
-  spotsFor(id) { const d = BOUNTY_DEFS[id]; return d && d.sp ? SPOT_ORDER.filter((s) => SPOTS[s].species.some((k) => d.sp.includes(k))) : []; },
-  make(id) { const d = BOUNTY_DEFS[id]; return { id, text: d.text, short: d.short, bonus: d.bonus, icon: d.icon, group: d.group, where: this.spotsFor(id), done: false, by: null, spot: null }; },
-  // three for the day, from different parts of the Keys: usually two places plus one you can do anywhere
-  roll(n = 3) {
+  // where a bounty can be done: the spots whose water holds its species ([] means anywhere). night: the trip goes out
+  // after dark too, so a lobster bounty can be done on the night run
+  spotsFor(id, night) {
+    const d = BOUNTY_DEFS[id]; if (!d) return [];
+    if (d.night) return [NIGHT_SPOT];
+    const at = d.sp ? SPOT_ORDER.filter((s) => SPOTS[s].species.some((k) => d.sp.includes(k))) : [];
+    return night && d.sp && d.sp.includes('lobster') ? at.concat([NIGHT_SPOT]) : at;
+  },
+  make(id, night) { const d = BOUNTY_DEFS[id]; return { id, text: d.text, short: d.short, bonus: d.bonus, icon: d.icon, group: d.group, where: this.spotsFor(id, night), done: false, by: null, spot: null }; },
+  // three for the day, from different parts of the Keys: usually two places plus one you can do anywhere. o.night: the
+  // trip has a night run, so one can be for the night; o.plan 'night': a Night Run, all lobster and night bounties
+  roll(n = 3, o = {}) {
     const known = Charts.known(), rec = Records.all();
     const ok = (id) => { const d = BOUNTY_DEFS[id]; return !d.need || d.need(known, rec); };
-    const groups = BOUNTY_GROUPS.slice().sort(() => Math.random() - 0.5).slice(0, chance(0.7) ? n - 1 : n);
+    if (o.plan === 'night') {
+      const nights = Object.keys(BOUNTY_DEFS).filter((id) => BOUNTY_DEFS[id].night).sort(() => Math.random() - 0.5);
+      return ['bigbug'].concat(nights).slice(0, n).map((id) => this.make(id, true));
+    }
+    const groups = BOUNTY_GROUPS.concat(o.night ? ['night'] : []).sort(() => Math.random() - 0.5).slice(0, chance(0.7) ? n - 1 : n);
     if (groups.length < n) groups.push('any');
     return groups.map((g) => {
       const ids = Object.keys(BOUNTY_DEFS).filter((id) => BOUNTY_DEFS[id].group === g && ok(id));
       // weighted; a goal that only lives at spots nobody has found yet comes up less
       const wt = (id) => (BOUNTY_DEFS[id].w || 1) * (this.spotsFor(id).length && !this.spotsFor(id).some((s) => known.has(s)) ? 0.4 : 1);
       let r = Math.random() * ids.reduce((a, id) => a + wt(id), 0);
-      for (const id of ids) { r -= wt(id); if (r <= 0) return this.make(id); }
-      return this.make(ids[ids.length - 1]);
+      for (const id of ids) { r -= wt(id); if (r <= 0) return this.make(id, o.night); }
+      return this.make(ids[ids.length - 1], o.night);
     });
   },
   list(c = Trip.cur) { return (c && c.bounties) || []; },
   open(c = Trip.cur) { return this.list(c).filter((b) => !b.done); },
-  // can this bounty still be finished at this spot?
-  here(b, spot) { if (b.done) return false; const d = BOUNTY_DEFS[b.id]; if (d && d.sea) return false; return !b.where || !b.where.length || b.where.includes(spot); },
+  // can this bounty still be finished at this spot? At night it's lobster or nothing.
+  here(b, spot) {
+    if (b.done) return false; const d = BOUNTY_DEFS[b.id]; if (d && d.sea) return false;
+    if (isNightSpot(spot)) return !!d && (!!d.night || (d.sp ? d.sp.includes('lobster') : b.id === 'newsp' && !Records.all().lobster));
+    return !b.where || !b.where.length || b.where.includes(spot);
+  },
   // a finished turn: returns the bounties it completes and marks them done for ch. Touches no scores.
   check(ch, spot, res, c = Trip.cur) {
     if (!c || !c.bounties || !res) return [];
@@ -336,7 +378,7 @@ const Bounties = {
     const got = [];
     for (const b of c.bounties) {
       const d = BOUNTY_DEFS[b.id]; if (b.done || !d || !d.test) continue;
-      let ok = false; try { ok = !!d.test(turn, day, res); } catch (e) { ok = false; }
+      let ok = false; try { ok = !!d.test(turn, day, res, spot); } catch (e) { ok = false; }
       if (ok) { b.done = true; b.by = ch; b.spot = spot; got.push(b); }
     }
     return got;
